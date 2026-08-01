@@ -213,15 +213,12 @@
         </div>
         <h2>Questionnaire received<span class="ja">問診票を受け付けました</span></h2>
       </div>
-      <p>Thank you. The doctor will read your answers before your consultation, so your
-      appointment time can go to your questions rather than paperwork.
-      <span class="ja">ありがとうございます。診察前に医師が内容を確認します。</span></p>
-      <p>A copy of your answers has been emailed to you. Please check your inbox, and
-      your spam folder just in case.
-      <span class="ja">回答内容の控えをメールでお送りしました。迷惑メールフォルダもあわせてご確認ください。</span></p>
-      <p>Your answers are also still shown below. If you'd prefer a PDF, use the
+      <p>Thank you. Your answers have been sent to the reception desk, and the doctor
+      will read them before your consultation. Please take a seat.
+      <span class="ja">ありがとうございます。回答は受付に送信され、診察前に医師が確認します。お掛けになってお待ちください。</span></p>
+      <p>Your answers are also still shown below. If you'd like to keep a copy, use the
       <strong>Print / save as PDF</strong> button at the bottom of the form.
-      <span class="ja">回答は下に表示されたままです。PDFで保存したい場合は、フォーム下部のボタンからどうぞ。</span></p>
+      <span class="ja">回答は下に表示されたままです。控えが必要な場合は、フォーム下部のボタンからPDF保存できます。</span></p>
     </div>
 
     <form id="intake-form" novalidate>
@@ -668,24 +665,11 @@
 </footer>
 
 <script>
-  var CONTACT_EMAIL = "staff@klcs.jp";
-  var FORM_ENDPOINT = "https://formsubmit.co/ajax/" + CONTACT_EMAIL;
-
-  // Sends the patient their own "we've got it" email, from staff@klcs.jp.
-  // Paste the Cloudflare Worker URL here once it's deployed, see worker/README.md.
-  // While this is empty nothing is sent and the form behaves exactly as before.
-  var CONFIRM_ENDPOINT = "";
-
-  // Best effort only. By the time this runs the questionnaire itself has already
-  // reached the clinic, so a failure here must never show the patient an error.
-  function sendPatientConfirmation(email, name) {
-    if (!CONFIRM_ENDPOINT || !email) return;
-    fetch(CONFIRM_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email, name: name }),
-    }).catch(function () {});
-  }
+  // Answers go straight to the clinic's Supabase (staging) and appear on the
+  // kiosk app's staff reception view (#staff), where they can be printed.
+  // The anon key is a public client key; RLS only allows inserting, never reading.
+  var SUPABASE_URL = "https://dfkylexozstecjpgvnxg.supabase.co";
+  var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRma3lsZXhvenN0ZWNqcGd2bnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzAxODAsImV4cCI6MjA5ODkwNjE4MH0.7gtNcTLeiISvEJRCxIaHpOwafbLyTAVnYFE2wvqi8Wc";
   var form = document.getElementById("intake-form");
   var statusEl = document.getElementById("if-status");
   var submitBtn = document.getElementById("if-submit");
@@ -1003,49 +987,46 @@
       notes: val("if-notes"),
     };
 
-    // Bilingual email body: "English label ／ 日本語ラベル" -> "English answer ／ 日本語"
-    var payload = {};
-    FIELDS.forEach(function (f) {
+    // Bilingual answer rows, in questionnaire order:
+    // { label: "English label ／ 日本語ラベル", value: "English answer ／ 日本語" }
+    var rows = FIELDS.map(function (f) {
       var raw = String(data[f[0]] || "");
       var ja = toJa(raw);
-      payload[f[1] + " ／ " + f[2]] = !raw ? "—"
-        : (ja && ja !== raw ? raw + " ／ " + ja : raw);
+      return {
+        label: f[1] + " ／ " + f[2],
+        value: !raw ? "—" : (ja && ja !== raw ? raw + " ／ " + ja : raw),
+      };
     });
 
     submitBtn.disabled = true;
-    fetch(FORM_ENDPOINT, {
+    fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(Object.assign({
-        _subject: "【問診票（来院） / In-clinic Questionnaire】" + data.name + "（" + data.date_of_birth + "）",
-        _template: "table",
-        _captcha: "false",
-        // Copies the patient in on their own questionnaire. FormSubmit's
-        // _autoresponse can't be used here: it is documented as not working with
-        // AJAX submissions or with the captcha disabled, and this form is both.
-        _cc: data.email,
-      }, payload)),
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        id: "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+        patient_name: data.name,
+        date_of_birth: data.date_of_birth,
+        answers: rows,
+      }),
     })
-      .then(function (res) { return res.json(); })
-      .then(function (d) {
-        if (d.success === "true" || d.success === true) {
-          // The answers deliberately stay on screen rather than being reset: the
-          // PDF button needs them, and it's the only record the patient gets.
-          form.classList.add("form-locked");
-          submitBtn.style.display = "none";
-          statusEl.className = "form-status";
-          var done = document.getElementById("if-done");
-          done.classList.add("show");
-          done.scrollIntoView({ behavior: "smooth", block: "center" });
-          sendPatientConfirmation(data.email, data.name);
-        } else { throw new Error(); }
+      .then(function (res) {
+        if (!res.ok) { throw new Error("HTTP " + res.status); }
+        // The answers deliberately stay on screen rather than being reset: the
+        // PDF button needs them, and it's the only record the patient gets.
+        form.classList.add("form-locked");
+        submitBtn.style.display = "none";
+        statusEl.className = "form-status";
+        var done = document.getElementById("if-done");
+        done.classList.add("show");
+        done.scrollIntoView({ behavior: "smooth", block: "center" });
       })
       .catch(function () {
-        var body = Object.keys(payload).map(function (k) { return k + ": " + payload[k]; }).join("\n");
-        window.location.href = "mailto:" + CONTACT_EMAIL +
-          "?subject=" + encodeURIComponent("【問診票 / Questionnaire】" + data.name) +
-          "&body=" + encodeURIComponent(body);
-        statusEl.textContent = "We couldn't send the form directly, your mail app should open instead, or email us at " + CONTACT_EMAIL + ".";
+        statusEl.textContent = "We couldn't send your answers. Please show this screen to our reception staff. ／ 送信できませんでした。お手数ですがこの画面を受付スタッフにお見せください。";
         statusEl.className = "form-status err";
       })
       .finally(function () { submitBtn.disabled = false; });

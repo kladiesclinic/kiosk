@@ -19,6 +19,7 @@ import {
 import QRCode from "qrcode";
 import { supabase } from "./supabase.js";
 import StaffGate from "./StaffGate.jsx";
+import StaffView from "./StaffView.jsx";
 import { TEXT, MED_IDS } from "./i18n.js";
 
 const FONT_IMPORT = `
@@ -455,9 +456,15 @@ function Kiosk() {
 }
 
 export default function App() {
-  return (
-    <StaffGate>
-      <Kiosk />
-    </StaffGate>
-  );
+  // #staff を付けて開くとスタッフ用の受付一覧（受付カウンターのPC等で使う想定）。
+  // 受付機（患者向け画面）には受付一覧への導線を出さない — 端末はスタッフログイン済みなので、
+  // ボタンを置くと患者が一覧を開けてしまうため。
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  return <StaffGate>{hash === "#staff" ? <StaffView /> : <Kiosk />}</StaffGate>;
 }
