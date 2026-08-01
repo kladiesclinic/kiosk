@@ -40,12 +40,11 @@ export const TEXT = {
     errorGeneric: "受付処理に失敗しました。お手数ですが受付スタッフにお声がけください。",
     errorForStaff: "スタッフ向け情報",
     meds: {
-      pill_low: "低用量ピル（継続分）",
-      pill_mini: "ミニピル",
-      pill_shift: "月経移動のお薬",
-      kampo: "漢方薬",
-      supplement: "サプリメント",
-      other: "その他のお薬",
+      triquilar: "トリキュラー",
+      marvelon: "マーベロン",
+      aldactone: "アルダクトン",
+      other: "その他の薬",
+      same_as_last: "前回と同じ処方箋",
     },
   },
   en: {
@@ -88,14 +87,13 @@ export const TEXT = {
     errorGeneric: "Sorry, check-in failed. Please speak to our reception staff.",
     errorForStaff: "For staff",
     meds: {
-      pill_low: "Birth control pill (refill)",
-      pill_mini: "Mini-pill",
-      pill_shift: "Period-shifting pill",
-      kampo: "Herbal (Kampo) medicine",
-      supplement: "Supplements",
+      triquilar: "Triquilar",
+      marvelon: "Marvelon",
+      aldactone: "Aldactone",
       other: "Other medication",
+      same_as_last: "Same prescription as last time",
     },
   },
 };
 
-export const MED_IDS = ["pill_low", "pill_mini", "pill_shift", "kampo", "supplement", "other"];
+export const MED_IDS = ["triquilar", "marvelon", "aldactone", "other", "same_as_last"];
