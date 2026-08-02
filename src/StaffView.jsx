@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { jsPDF } from "jspdf";
+import html2canvas from "html2canvas";
 import {
   ClipboardList,
   RefreshCw,
@@ -17,14 +19,53 @@ const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
 `;
 
-// 印刷時は選択中の問診票（.print-area）だけを出す
-const PRINT_CSS = `
-@media print {
-  body { background: #FFFFFF !important; }
-  .staff-screen { display: none !important; }
-  .print-area { display: block !important; }
+// 印刷は「レイアウト用の隠しDOM → 画像化 → A4のPDF → 印刷ダイアログ」の流れ。
+// PDFはダウンロードせず、非表示iframeに読み込んで印刷ダイアログだけを開く
+// （スタッフはそこで印刷するか、必要ならPDF保存を選べる）。
+async function printElementAsPdf(el) {
+  el.style.display = "block";
+  const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#FFFFFF" });
+  el.style.display = "none";
+
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = 210;
+  const pageH = 297;
+  const margin = 10;
+  const imgW = pageW - margin * 2;
+  const imgH = (canvas.height * imgW) / canvas.width;
+  const img = canvas.toDataURL("image/jpeg", 0.95);
+  const usableH = pageH - margin * 2;
+
+  let heightLeft = imgH;
+  let position = margin;
+  pdf.addImage(img, "JPEG", margin, position, imgW, imgH);
+  heightLeft -= usableH;
+  while (heightLeft > 0) {
+    position -= usableH;
+    pdf.addPage();
+    pdf.addImage(img, "JPEG", margin, position, imgW, imgH);
+    heightLeft -= usableH;
+  }
+
+  const blobUrl = pdf.output("bloburl");
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  iframe.src = blobUrl;
+  document.body.appendChild(iframe);
+  iframe.onload = () => {
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch {
+        // 印刷ダイアログを開けない環境ではPDFを別タブで表示（そこから印刷できる）
+        window.open(blobUrl, "_blank");
+      }
+    }, 200);
+  };
+  // ダイアログが閉じられた後の後片付け（十分待ってから）
+  setTimeout(() => iframe.remove(), 120000);
 }
-`;
 
 function todayKey() {
   const d = new Date();
@@ -57,6 +98,18 @@ export default function StaffView() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedForm, setSelectedForm] = useState(null);
   const [loadError, setLoadError] = useState("");
+  const [printing, setPrinting] = useState(false);
+  const printAreaRef = useRef(null);
+
+  const handlePrint = async () => {
+    if (!printAreaRef.current || printing) return;
+    setPrinting(true);
+    try {
+      await printElementAsPdf(printAreaRef.current);
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   const load = async () => {
     const today = todayKey();
@@ -106,7 +159,6 @@ export default function StaffView() {
   return (
     <div style={{ fontFamily: "'Noto Sans JP', sans-serif" }}>
       <style>{FONT_IMPORT}</style>
-      <style>{PRINT_CSS}</style>
 
       <div className="staff-screen min-h-screen" style={{ background: "#FFF8F7" }}>
         <header className="flex items-center justify-between px-6 py-4 flex-wrap gap-3" style={{ borderBottom: "1px solid #F2DFE4", background: "#FFFFFF" }}>
@@ -311,12 +363,13 @@ export default function StaffView() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => window.print()}
+                    onClick={handlePrint}
+                    disabled={printing}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
-                    style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                    style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: printing ? 0.5 : 1 }}
                   >
                     <Printer size={15} />
-                    印刷
+                    {printing ? "PDF作成中..." : "印刷"}
                   </button>
                   <button
                     onClick={() => setSelectedForm(null)}
@@ -344,9 +397,23 @@ export default function StaffView() {
         )}
       </div>
 
-      {/* 印刷専用レイアウト（画面には出さない） */}
+      {/* PDF化用レイアウト（画面外に隠しておき、印刷時だけ画像化する） */}
       {selectedForm && (
-        <div className="print-area" style={{ display: "none", color: "#000000", fontSize: 11 }}>
+        <div
+          ref={printAreaRef}
+          style={{
+            display: "none",
+            position: "fixed",
+            left: "-10000px",
+            top: 0,
+            width: 760,
+            background: "#FFFFFF",
+            padding: 24,
+            color: "#000000",
+            fontSize: 12,
+            fontFamily: "'Noto Sans JP', sans-serif",
+          }}
+        >
           <div style={{ borderBottom: "2px solid #000000", paddingBottom: 6, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <strong style={{ fontSize: 14 }}>問診票 ／ Questionnaire</strong>
             <span style={{ fontSize: 10 }}>
