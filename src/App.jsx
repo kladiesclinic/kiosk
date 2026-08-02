@@ -150,7 +150,11 @@ function Kiosk() {
   const [step, setStep] = useState("home");
   const [visitType, setVisitType] = useState(null); // "pickup" | "consult"
   const [name, setName] = useState("");
-  const [dob, setDob] = useState("");
+  // 生年月日 — <input type="date"> はOSの言語で「年/月/日」表示になってしまい
+  // 英語モードと食い違うので、年・月・日の数字入力に分ける
+  const [dobY, setDobY] = useState("");
+  const [dobM, setDobM] = useState("");
+  const [dobD, setDobD] = useState("");
   const [visitKind, setVisitKind] = useState(null); // "first" | "return"
   const [returnReason, setReturnReason] = useState(null); // "results" | "followup" | "new_symptom"
   const [selectedMeds, setSelectedMeds] = useState([]);
@@ -164,7 +168,9 @@ function Kiosk() {
     setStep("home");
     setVisitType(null);
     setName("");
-    setDob("");
+    setDobY("");
+    setDobM("");
+    setDobD("");
     setVisitKind(null);
     setReturnReason(null);
     setSelectedMeds([]);
@@ -182,11 +188,23 @@ function Kiosk() {
     clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(reset, step === "done" ? 30000 : 120000);
     return () => clearTimeout(idleTimer.current);
-  }, [step, name, dob, visitKind, returnReason, selectedMeds]);
+  }, [step, name, dobY, dobM, dobD, visitKind, returnReason, selectedMeds]);
 
   const toggleMed = (id) => {
     setSelectedMeds((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
   };
+
+  const dobValid =
+    /^\d{4}$/.test(dobY) &&
+    +dobY >= 1900 &&
+    +dobY <= new Date().getFullYear() &&
+    dobM !== "" &&
+    +dobM >= 1 &&
+    +dobM <= 12 &&
+    dobD !== "" &&
+    +dobD >= 1 &&
+    +dobD <= 31;
+  const dobStr = dobValid ? `${dobY}-${String(+dobM).padStart(2, "0")}-${String(+dobD).padStart(2, "0")}` : "";
 
   const checkIn = async (insuranceChoice) => {
     setBusy(true);
@@ -201,7 +219,7 @@ function Kiosk() {
         checkin_number: number,
         visit_type: visitType,
         patient_name: name.trim(),
-        date_of_birth: dob || null,
+        date_of_birth: dobStr || null,
         visit_kind: visitType === "consult" ? visitKind : null,
         return_reason: visitType === "consult" && visitKind === "return" ? returnReason : null,
         // 薬名は言語に関わらずスタッフが読める日本語ラベルで保存する
@@ -325,22 +343,50 @@ function Kiosk() {
                   style={{ color: "#3A2E30" }}
                 />
               </div>
-              <div className="flex items-center gap-3 px-6 py-5 rounded-3xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
-                <CalendarDays size={26} color="#B08A90" className="shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm mb-1" style={{ color: "#B08A90" }}>{t.dobLabel}</div>
-                  <input
-                    type="date"
-                    value={dob}
-                    onChange={(e) => setDob(e.target.value)}
-                    className="w-full bg-transparent text-2xl outline-none min-w-0"
-                    style={{ color: "#3A2E30" }}
-                  />
+              <div className="px-6 py-5 rounded-3xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <CalendarDays size={22} color="#B08A90" className="shrink-0" />
+                  <span className="text-sm" style={{ color: "#B08A90" }}>{t.dobLabel}</span>
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-[2] min-w-0">
+                    <input
+                      value={dobY}
+                      onChange={(e) => setDobY(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      inputMode="numeric"
+                      placeholder={t.dobYearPh}
+                      className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
+                      style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
+                    />
+                    <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{t.dobYear}</div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <input
+                      value={dobM}
+                      onChange={(e) => setDobM(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                      inputMode="numeric"
+                      placeholder="5"
+                      className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
+                      style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
+                    />
+                    <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{t.dobMonth}</div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <input
+                      value={dobD}
+                      onChange={(e) => setDobD(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                      inputMode="numeric"
+                      placeholder="10"
+                      className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
+                      style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
+                    />
+                    <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{t.dobDay}</div>
+                  </div>
                 </div>
               </div>
               <NextButton
                 onClick={() => setStep(step === "pickup-name" ? "pickup-meds" : "consult-kind")}
-                disabled={!name.trim() || !dob}
+                disabled={!name.trim() || !dobValid}
               >
                 {t.next} <ChevronRight size={26} />
               </NextButton>
