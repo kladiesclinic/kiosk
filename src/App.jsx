@@ -8,13 +8,17 @@ import {
   AlertCircle,
   PackageCheck,
   PenLine,
-  Hash,
+  CalendarDays,
   Pill,
   CreditCard,
   Wallet,
   IdCard,
   Languages,
   Smartphone,
+  Sparkle,
+  RotateCcw,
+  FlaskConical,
+  MessageCirclePlus,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabase.js";
@@ -30,6 +34,8 @@ const FONT_IMPORT = `
 // 現在地からの相対解決なので、localhostでも GitHub Pages のサブパス配信でも正しいURLになる。
 // 別ドメインに問診票を置く場合は VITE_INTAKE_URL で差し替えられる。
 const INTAKE_URL = import.meta.env.VITE_INTAKE_URL || new URL("intake.html", window.location.href).toString();
+// 再診（前回の診察の続き）向けの簡易問診票
+const FOLLOWUP_URL = new URL("followup.html", window.location.href).toString();
 
 function todayKey() {
   const d = new Date();
@@ -138,11 +144,15 @@ function Kiosk() {
   const t = TEXT[lang];
 
   // 薬受け取り: home → pickup-name → pickup-meds → insurance → done
-  // 診察:       home → consult-name → insurance → done（問診票QR表示）
+  // 診察:       home → consult-name → consult-kind（初診/再診）
+  //             →（再診なら consult-return: 検査結果/前回の続き/新しい症状）
+  //             → insurance → done（初診・新しい症状=フル問診票QR / 前回の続き=簡易問診票QR / 検査結果=QRなし）
   const [step, setStep] = useState("home");
   const [visitType, setVisitType] = useState(null); // "pickup" | "consult"
   const [name, setName] = useState("");
-  const [chartNumber, setChartNumber] = useState("");
+  const [dob, setDob] = useState("");
+  const [visitKind, setVisitKind] = useState(null); // "first" | "return"
+  const [returnReason, setReturnReason] = useState(null); // "results" | "followup" | "new_symptom"
   const [selectedMeds, setSelectedMeds] = useState([]);
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(false);
@@ -154,7 +164,9 @@ function Kiosk() {
     setStep("home");
     setVisitType(null);
     setName("");
-    setChartNumber("");
+    setDob("");
+    setVisitKind(null);
+    setReturnReason(null);
     setSelectedMeds([]);
     setBusy(false);
     setErrorMsg(false);
@@ -170,7 +182,7 @@ function Kiosk() {
     clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(reset, step === "done" ? 30000 : 120000);
     return () => clearTimeout(idleTimer.current);
-  }, [step, name, chartNumber, selectedMeds]);
+  }, [step, name, dob, visitKind, returnReason, selectedMeds]);
 
   const toggleMed = (id) => {
     setSelectedMeds((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
@@ -189,14 +201,16 @@ function Kiosk() {
         checkin_number: number,
         visit_type: visitType,
         patient_name: name.trim(),
-        chart_number: chartNumber.trim() || null,
+        date_of_birth: dob || null,
+        visit_kind: visitType === "consult" ? visitKind : null,
+        return_reason: visitType === "consult" && visitKind === "return" ? returnReason : null,
         // 薬名は言語に関わらずスタッフが読める日本語ラベルで保存する
         medications: visitType === "pickup" ? selectedMeds.map((id) => TEXT.ja.meds[id]) : null,
         insurance: insuranceChoice,
         status: "waiting",
       });
       if (error) throw error;
-      setDone({ number, visitType, insurance: insuranceChoice, checkinId });
+      setDone({ number, visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason });
       setStep("done");
     } catch (e) {
       console.error("check-in failed:", e);
@@ -212,6 +226,19 @@ function Kiosk() {
     { id: "mynumber", label: t.insMynumber, desc: t.insMynumberDesc, icon: IdCard },
     { id: "self_pay", label: t.insSelfPay, desc: t.insSelfPayDesc, icon: Wallet },
   ];
+
+  // 完了画面で出す問診票QRの飛び先。
+  // 初診・再診(新しい症状)=フル問診票 / 再診(前回の続き)=簡易問診票 / 検査結果・薬受け取り=QRなし
+  const doneQrBase =
+    done && done.visitType === "consult"
+      ? done.visitKind === "return"
+        ? done.returnReason === "followup"
+          ? FOLLOWUP_URL
+          : done.returnReason === "new_symptom"
+            ? INTAKE_URL
+            : null
+        : INTAKE_URL
+      : null;
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: "#FFF8F7", fontFamily: "'Noto Sans JP', sans-serif" }}>
@@ -298,27 +325,93 @@ function Kiosk() {
                   style={{ color: "#3A2E30" }}
                 />
               </div>
-              <div>
-                <div className="flex items-center gap-3 px-6 py-5 rounded-3xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
-                  <Hash size={26} color="#B08A90" className="shrink-0" />
+              <div className="flex items-center gap-3 px-6 py-5 rounded-3xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                <CalendarDays size={26} color="#B08A90" className="shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm mb-1" style={{ color: "#B08A90" }}>{t.dobLabel}</div>
                   <input
-                    value={chartNumber}
-                    onChange={(e) => setChartNumber(e.target.value)}
-                    inputMode="numeric"
-                    placeholder={t.chartPlaceholder}
-                    className="flex-1 bg-transparent text-2xl outline-none min-w-0"
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                    className="w-full bg-transparent text-2xl outline-none min-w-0"
                     style={{ color: "#3A2E30" }}
                   />
                 </div>
-                <p className="text-sm mt-2 px-2" style={{ color: "#B08A90" }}>{t.chartHint}</p>
               </div>
               <NextButton
-                onClick={() => setStep(step === "pickup-name" ? "pickup-meds" : "insurance")}
-                disabled={!name.trim()}
+                onClick={() => setStep(step === "pickup-name" ? "pickup-meds" : "consult-kind")}
+                disabled={!name.trim() || !dob}
               >
                 {t.next} <ChevronRight size={26} />
               </NextButton>
               <BackButton onClick={reset} label={t.back} />
+            </div>
+          )}
+
+          {step === "consult-kind" && (
+            <div className="flex flex-col gap-6">
+              <StepTitle title={t.visitKindTitle} subtitle={t.visitKindSubtitle} />
+              <div className="flex flex-col gap-4">
+                {[
+                  { id: "first", label: t.firstVisit, desc: t.firstVisitDesc, icon: Sparkle },
+                  { id: "return", label: t.returnVisit, desc: t.returnVisitDesc, icon: RotateCcw },
+                ].map((opt) => {
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        setVisitKind(opt.id);
+                        setStep(opt.id === "first" ? "insurance" : "consult-return");
+                      }}
+                      className="w-full p-7 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
+                      style={{ background: "#FFFFFF", border: "2px solid #F2DFE4", color: "#3A2E30" }}
+                    >
+                      <Icon size={38} className="shrink-0" color="#0F8B8D" />
+                      <div className="flex-1">
+                        <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
+                        <div className="text-base" style={{ color: "#8A7378" }}>{opt.desc}</div>
+                      </div>
+                      <ChevronRight size={30} className="shrink-0" color="#0F8B8D" />
+                    </button>
+                  );
+                })}
+              </div>
+              <BackButton onClick={() => setStep("consult-name")} label={t.back} />
+            </div>
+          )}
+
+          {step === "consult-return" && (
+            <div className="flex flex-col gap-6">
+              <StepTitle title={t.returnReasonTitle} subtitle={t.returnReasonSubtitle} />
+              <div className="flex flex-col gap-4">
+                {[
+                  { id: "results", label: t.rrResults, desc: t.rrResultsDesc, icon: FlaskConical },
+                  { id: "followup", label: t.rrFollowup, desc: t.rrFollowupDesc, icon: RotateCcw },
+                  { id: "new_symptom", label: t.rrNew, desc: t.rrNewDesc, icon: MessageCirclePlus },
+                ].map((opt) => {
+                  const Icon = opt.icon;
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        setReturnReason(opt.id);
+                        setStep("insurance");
+                      }}
+                      className="w-full p-7 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
+                      style={{ background: "#FFFFFF", border: "2px solid #F2DFE4", color: "#3A2E30" }}
+                    >
+                      <Icon size={38} className="shrink-0" color="#0F8B8D" />
+                      <div className="flex-1">
+                        <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
+                        <div className="text-base" style={{ color: "#8A7378" }}>{opt.desc}</div>
+                      </div>
+                      <ChevronRight size={30} className="shrink-0" color="#0F8B8D" />
+                    </button>
+                  );
+                })}
+              </div>
+              <BackButton onClick={() => setStep("consult-kind")} label={t.back} />
             </div>
           )}
 
@@ -387,7 +480,11 @@ function Kiosk() {
               {busy && <p className="text-center text-lg" style={{ color: "#8A7378" }}>{t.working}</p>}
               <ErrorBox message={errorMsg ? t.errorGeneric : ""} detail={errorDetail} staffLabel={t.errorForStaff} />
               <BackButton
-                onClick={() => setStep(visitType === "pickup" ? "pickup-meds" : "consult-name")}
+                onClick={() =>
+                  setStep(
+                    visitType === "pickup" ? "pickup-meds" : visitKind === "return" ? "consult-return" : "consult-kind"
+                  )
+                }
                 label={t.back}
               />
             </div>
@@ -415,22 +512,24 @@ function Kiosk() {
                     <div className="text-lg font-bold mb-0.5">{t.mynumberGuideTitle}</div>
                     <div className="text-base">
                       {t.mynumberGuideBody}
-                      {done.visitType === "pickup" && ` ${t.mynumberThenSit}`}
+                      {!doneQrBase && ` ${t.mynumberThenSit}`}
                     </div>
                   </div>
                 </div>
               )}
 
-              {done.visitType === "consult" ? (
+              {doneQrBase ? (
                 <div className="p-6 rounded-3xl flex items-center gap-6 text-left w-full max-w-xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
                   {/* 受付IDをQRに埋め込む — 問診票送信時に一緒に保存され、名前の表記に
                       関係なく受付一覧の行と確実に紐付く。言語も渡して、英語で受付した
                       患者には問診票を英語ファーストで開く */}
-                  <QrImage url={`${INTAKE_URL}${INTAKE_URL.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(done.checkinId)}&lang=${lang}`} />
+                  <QrImage url={`${doneQrBase}${doneQrBase.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(done.checkinId)}&lang=${lang}`} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <Smartphone size={22} color="#0F8B8D" className="shrink-0" />
-                      <span className="text-xl font-bold" style={{ color: "#3A2E30" }}>{t.qrTitle}</span>
+                      <span className="text-xl font-bold" style={{ color: "#3A2E30" }}>
+                        {doneQrBase === FOLLOWUP_URL ? t.qrTitleSimple : t.qrTitle}
+                      </span>
                     </div>
                     <p className="text-base" style={{ color: "#8A7378" }}>
                       {done.insurance === "mynumber" ? t.qrBody : t.qrBodyNoCard}
@@ -439,7 +538,9 @@ function Kiosk() {
                 </div>
               ) : (
                 done.insurance !== "mynumber" && (
-                  <p className="text-xl max-w-xl" style={{ color: "#8A7378" }}>{t.pickupWait}</p>
+                  <p className="text-xl max-w-xl" style={{ color: "#8A7378" }}>
+                    {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
+                  </p>
                 )
               )}
 

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>再診の問診 ／ Follow-up Questionnaire, K Ladies Clinic Shinjuku</title>
+<meta name="robots" content="noindex, follow" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23FF6766'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' font-weight='bold' fill='%23FFFFFF'%3EK%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/sub.css" />
+<style>
+  .ja-sub { display: block; font-family: 'Inter', sans-serif; font-size: 11.5px; color: var(--faint); text-transform: none; letter-spacing: normal; font-weight: 400; margin-top: 2px; line-height: 1.5; }
+  .done-panel {
+    display: none; background: #E8F5EC; border: 1px solid #BFE3CC;
+    border-radius: 16px; padding: 22px; margin-bottom: 28px;
+  }
+  .done-panel.show { display: block; }
+  .done-panel h2 { font-family: 'Noto Sans JP', var(--sans); font-size: 20px; font-weight: 500; color: #1F5B37; }
+  .done-panel p { font-size: 14px; line-height: 1.75; color: #2E5C41; margin-top: 12px; }
+  .form-locked { pointer-events: none; opacity: 0.7; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <img src="assets/logo_en.png" alt="K Ladies Clinic Shinjuku" class="brand-logo" />
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="page-head">
+    <div class="eyebrow">再診の方へ ／ For returning patients</div>
+    <h1 class="display">本日の問診<em> Today's visit.</em></h1>
+    <p class="lede">
+      前回の診察の続きの方向けの簡単な問診です。ご記入後、お掛けになってお待ちください。
+      <span class="ja-sub">A short questionnaire for follow-up visits. Please take a seat once you're done.</span>
+    </p>
+  </div>
+
+  <div class="card">
+    <div class="done-panel" id="fu-done">
+      <h2>送信しました ／ Sent</h2>
+      <p>ありがとうございます。回答は受付に送信され、診察前に医師が確認します。お掛けになってお待ちください。
+      <span class="ja-sub">Thank you — your answers have been sent to the reception desk. Please take a seat.</span></p>
+    </div>
+
+    <form id="fu-form" novalidate>
+      <div class="field">
+        <label for="fu-name">お名前<span class="ja-sub">Full name</span></label>
+        <input id="fu-name" type="text" autocomplete="name" required />
+      </div>
+
+      <div class="field">
+        <label for="fu-symptom">今日はどうなさいましたか<span class="ja-sub">How are you doing today? What brings you in?</span></label>
+        <textarea id="fu-symptom" required placeholder="例）前回のお薬を続けて相談したい／その後の経過について　など"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="fu-change">前回の診察から変わったこと・気になることがあれば（任意）<span class="ja-sub">Anything that has changed since your last visit? (optional)</span></label>
+        <input id="fu-change" type="text" />
+      </div>
+
+      <button type="submit" class="submit-btn" id="fu-submit">
+        送信する ／ Submit
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      <p class="form-status" id="fu-status" role="status"></p>
+    </form>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <span>&copy; 2026 K Ladies Clinic Shinjuku</span>
+  </div>
+</footer>
+
+<script>
+  // 回答は intake_forms テーブルへ（フル問診票 intake.html と同じ仕組み）。
+  // anonキーは公開前提のクライアントキーで、RLS上は送信のみ可・閲覧はスタッフのみ。
+  var SUPABASE_URL = "https://dfkylexozstecjpgvnxg.supabase.co";
+  var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRma3lsZXhvenN0ZWNqcGd2bnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzAxODAsImV4cCI6MjA5ODkwNjE4MH0.7gtNcTLeiISvEJRCxIaHpOwafbLyTAVnYFE2wvqi8Wc";
+  var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
+
+  var form = document.getElementById("fu-form");
+  var statusEl = document.getElementById("fu-status");
+  var submitBtn = document.getElementById("fu-submit");
+
+  function val(id) { return document.getElementById(id).value.trim(); }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    statusEl.className = "form-status";
+    if (!form.reportValidity()) return;
+
+    submitBtn.disabled = true;
+    fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      body: JSON.stringify({
+        id: "fu-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+        patient_name: val("fu-name"),
+        checkin_id: CHECKIN_ID || null,
+        answers: [
+          { label: "種類 ／ Form", value: "再診・前回の続き（簡易問診） ／ Follow-up" },
+          { label: "氏名 ／ Full name", value: val("fu-name") },
+          { label: "本日のご相談内容 ／ Today's concern", value: val("fu-symptom") },
+          { label: "前回から変わったこと ／ Changes since last visit", value: val("fu-change") || "—" },
+        ],
+      }),
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        form.classList.add("form-locked");
+        submitBtn.style.display = "none";
+        var done = document.getElementById("fu-done");
+        done.classList.add("show");
+        done.scrollIntoView({ behavior: "smooth", block: "center" });
+      })
+      .catch(function () {
+        statusEl.textContent = "送信できませんでした。お手数ですがこの画面を受付スタッフにお見せください。 ／ We couldn't send your answers — please show this screen to our staff.";
+        statusEl.className = "form-status err";
+      })
+      .finally(function () { submitBtn.disabled = false; });
+  });
+</script>
+
+</body>
+</html>

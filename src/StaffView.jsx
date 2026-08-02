@@ -41,6 +41,15 @@ function normalizeName(s) {
 }
 
 const INSURANCE_LABEL = { mynumber: "マイナ保険証", self_pay: "自費" };
+const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
+
+// 診察の区分表示（初診 / 再診・○○）
+function visitKindLabel(c) {
+  if (c.visit_type !== "consult") return "—";
+  if (c.visit_kind === "first") return "初診";
+  if (c.visit_kind === "return") return `再診・${RETURN_REASON_LABEL[c.return_reason] || ""}`;
+  return "—";
+}
 
 export default function StaffView() {
   const [checkins, setCheckins] = useState([]);
@@ -153,16 +162,17 @@ export default function StaffView() {
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 760 }}>
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 860 }}>
                     <thead>
                       <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
                         <th className="px-4 py-2.5 font-medium">番号</th>
                         <th className="px-3 py-2.5 font-medium">時刻</th>
                         <th className="px-3 py-2.5 font-medium">お名前</th>
                         <th className="px-3 py-2.5 font-medium">種別</th>
+                        <th className="px-3 py-2.5 font-medium">区分</th>
                         <th className="px-3 py-2.5 font-medium">お薬</th>
                         <th className="px-3 py-2.5 font-medium">保険</th>
-                        <th className="px-3 py-2.5 font-medium">診察番号</th>
+                        <th className="px-3 py-2.5 font-medium">生年月日</th>
                         <th className="px-3 py-2.5 font-medium">問診票</th>
                         <th className="px-3 py-2.5 font-medium">状態</th>
                       </tr>
@@ -191,11 +201,12 @@ export default function StaffView() {
                                 {c.visit_type === "pickup" ? "薬受け取り" : "診察"}
                               </span>
                             </td>
+                            <td className="px-3 py-3 text-xs">{visitKindLabel(c)}</td>
                             <td className="px-3 py-3 text-xs" style={{ color: "#8A7378" }}>
                               {(c.medications || []).join("、") || "—"}
                             </td>
                             <td className="px-3 py-3 text-xs">{INSURANCE_LABEL[c.insurance] || "—"}</td>
-                            <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{c.chart_number || "—"}</td>
+                            <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{c.date_of_birth || "—"}</td>
                             <td className="px-3 py-3">
                               {c.visit_type === "consult" ? (
                                 f ? (
