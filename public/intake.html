@@ -227,8 +227,19 @@
 
       <div class="field-row">
         <div class="field">
-          <label for="if-name">Full name<span class="ja">氏名</span></label>
-          <input id="if-name" type="text" autocomplete="name" required />
+          <label for="if-family-name">Family name<span class="ja">姓</span></label>
+          <input id="if-family-name" type="text" autocomplete="family-name" required />
+        </div>
+        <div class="field">
+          <label for="if-given-name">Given name<span class="ja">名</span></label>
+          <input id="if-given-name" type="text" autocomplete="given-name" required />
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="if-middle-name">Middle name (if any)<span class="ja">ミドルネーム（あれば）</span></label>
+          <input id="if-middle-name" type="text" autocomplete="additional-name" />
         </div>
         <div class="field">
           <label for="if-dob">Date of birth<span class="ja">生年月日</span></label>
@@ -813,7 +824,9 @@
   // [payload key, English label, Japanese label], the email shows both so the
   // doctor and the English speaking staff read the same sheet.
   var FIELDS = [
-    ["name", "Full name", "氏名"],
+    ["family_name", "Family name", "姓"],
+    ["given_name", "Given name", "名"],
+    ["middle_name", "Middle name", "ミドルネーム"],
     ["date_of_birth", "Date of birth", "生年月日"],
     ["email", "Email", "メールアドレス"],
     ["phone", "Phone", "電話番号"],
@@ -938,8 +951,15 @@
     var w = parseFloat(val("if-weight"));
     var bmi = h > 0 && w > 0 ? (w / Math.pow(h / 100, 2)).toFixed(1) : "";
 
+    // 一覧表示・受付との名前照合用に「姓 名 ミドル」の順で結合したものも持つ
+    var fullName = [val("if-family-name"), val("if-given-name"), val("if-middle-name")]
+      .filter(function (s) { return s; }).join(" ");
+
     var data = {
-      name: val("if-name"),
+      name: fullName,
+      family_name: val("if-family-name"),
+      given_name: val("if-given-name"),
+      middle_name: val("if-middle-name"),
       date_of_birth: val("if-dob"),
       email: val("if-email"),
       phone: val("if-phone"),
