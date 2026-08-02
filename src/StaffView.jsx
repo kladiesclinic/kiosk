@@ -27,25 +27,20 @@ async function printElementAsPdf(el) {
   const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#FFFFFF" });
   el.style.display = "none";
 
+  // 必ずA4・1枚に収める: 幅いっぱいで高さが超える場合は縮小してフィットさせる
   const pdf = new jsPDF({ unit: "mm", format: "a4" });
   const pageW = 210;
   const pageH = 297;
-  const margin = 10;
-  const imgW = pageW - margin * 2;
-  const imgH = (canvas.height * imgW) / canvas.width;
+  const margin = 8;
   const img = canvas.toDataURL("image/jpeg", 0.95);
-  const usableH = pageH - margin * 2;
-
-  let heightLeft = imgH;
-  let position = margin;
-  pdf.addImage(img, "JPEG", margin, position, imgW, imgH);
-  heightLeft -= usableH;
-  while (heightLeft > 0) {
-    position -= usableH;
-    pdf.addPage();
-    pdf.addImage(img, "JPEG", margin, position, imgW, imgH);
-    heightLeft -= usableH;
+  let imgW = pageW - margin * 2;
+  let imgH = (canvas.height * imgW) / canvas.width;
+  const maxH = pageH - margin * 2;
+  if (imgH > maxH) {
+    imgH = maxH;
+    imgW = (canvas.width * imgH) / canvas.height;
   }
+  pdf.addImage(img, "JPEG", (pageW - imgW) / 2, margin, imgW, imgH);
 
   const blobUrl = pdf.output("bloburl");
   const iframe = document.createElement("iframe");
@@ -397,7 +392,8 @@ export default function StaffView() {
         )}
       </div>
 
-      {/* PDF化用レイアウト（画面外に隠しておき、印刷時だけ画像化する） */}
+      {/* PDF化用レイアウト（画面外に隠しておき、印刷時だけ画像化する）。
+          A4・1枚に収まるよう回答を左右2段に分けて高さを抑える */}
       {selectedForm && (
         <div
           ref={printAreaRef}
@@ -406,31 +402,38 @@ export default function StaffView() {
             position: "fixed",
             left: "-10000px",
             top: 0,
-            width: 760,
+            width: 1120,
             background: "#FFFFFF",
-            padding: 24,
+            padding: 28,
             color: "#000000",
-            fontSize: 12,
             fontFamily: "'Noto Sans JP', sans-serif",
           }}
         >
-          <div style={{ borderBottom: "2px solid #000000", paddingBottom: 6, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <strong style={{ fontSize: 14 }}>問診票 ／ Questionnaire</strong>
-            <span style={{ fontSize: 10 }}>
+          <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire</strong>
+            <span style={{ fontSize: 14 }}>
               {selectedForm.patient_name}
               {selectedForm.date_of_birth ? `（${selectedForm.date_of_birth}）` : ""}　{selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
             </span>
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
-            <tbody>
-              {(selectedForm.answers || []).map((row, i) => (
-                <tr key={i}>
-                  <td style={{ border: "1px solid #999999", padding: "3px 6px", width: "45%", color: "#333333" }}>{row.label}</td>
-                  <td style={{ border: "1px solid #999999", padding: "3px 6px", fontWeight: 600 }}>{row.value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+            {(() => {
+              const rows = selectedForm.answers || [];
+              const half = Math.ceil(rows.length / 2);
+              return [rows.slice(0, half), rows.slice(half)].map((col, ci) => (
+                <table key={ci} style={{ width: "50%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <tbody>
+                    {col.map((row, i) => (
+                      <tr key={i}>
+                        <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>{row.label}</td>
+                        <td style={{ border: "1px solid #999999", padding: "4px 7px", fontWeight: 600 }}>{row.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ));
+            })()}
+          </div>
         </div>
       )}
     </div>
