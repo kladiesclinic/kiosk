@@ -349,39 +349,31 @@ function Kiosk() {
                   <span className="text-sm" style={{ color: "#B08A90" }}>{t.dobLabel}</span>
                 </div>
                 <div className="flex gap-3">
-                  <div className="flex-[2] min-w-0">
-                    <input
-                      value={dobY}
-                      onChange={(e) => setDobY(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                      inputMode="numeric"
-                      placeholder={t.dobYearPh}
-                      className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
-                      style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
-                    />
-                    <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{t.dobYear}</div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <input
-                      value={dobM}
-                      onChange={(e) => setDobM(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                      inputMode="numeric"
-                      placeholder="5"
-                      className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
-                      style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
-                    />
-                    <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{t.dobMonth}</div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <input
-                      value={dobD}
-                      onChange={(e) => setDobD(e.target.value.replace(/\D/g, "").slice(0, 2))}
-                      inputMode="numeric"
-                      placeholder="10"
-                      className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
-                      style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
-                    />
-                    <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{t.dobDay}</div>
-                  </div>
+                  {/* 日本語=年/月/日、英語=Month/Day/Year（米国式）の順で並べる */}
+                  {(lang === "ja"
+                    ? [
+                        { key: "y", value: dobY, set: setDobY, max: 4, ph: t.dobYearPh, label: t.dobYear, wide: true },
+                        { key: "m", value: dobM, set: setDobM, max: 2, ph: "5", label: t.dobMonth },
+                        { key: "d", value: dobD, set: setDobD, max: 2, ph: "10", label: t.dobDay },
+                      ]
+                    : [
+                        { key: "m", value: dobM, set: setDobM, max: 2, ph: "5", label: t.dobMonth },
+                        { key: "d", value: dobD, set: setDobD, max: 2, ph: "10", label: t.dobDay },
+                        { key: "y", value: dobY, set: setDobY, max: 4, ph: t.dobYearPh, label: t.dobYear, wide: true },
+                      ]
+                  ).map((f) => (
+                    <div key={f.key} className={`${f.wide ? "flex-[2]" : "flex-1"} min-w-0`}>
+                      <input
+                        value={f.value}
+                        onChange={(e) => f.set(e.target.value.replace(/\D/g, "").slice(0, f.max))}
+                        inputMode="numeric"
+                        placeholder={f.ph}
+                        className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
+                        style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
+                      />
+                      <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{f.label}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
               <NextButton
