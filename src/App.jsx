@@ -182,8 +182,9 @@ function Kiosk() {
     setErrorDetail("");
     try {
       const number = await nextCheckinNumber();
+      const checkinId = `c-${Date.now()}`;
       const { error } = await supabase.from("reception_checkins").insert({
-        id: `c-${Date.now()}`,
+        id: checkinId,
         date_key: todayKey(),
         checkin_number: number,
         visit_type: visitType,
@@ -195,7 +196,7 @@ function Kiosk() {
         status: "waiting",
       });
       if (error) throw error;
-      setDone({ number, visitType, insurance: insuranceChoice });
+      setDone({ number, visitType, insurance: insuranceChoice, checkinId });
       setStep("done");
     } catch (e) {
       console.error("check-in failed:", e);
@@ -422,7 +423,9 @@ function Kiosk() {
 
               {done.visitType === "consult" ? (
                 <div className="p-6 rounded-3xl flex items-center gap-6 text-left w-full max-w-xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
-                  <QrImage url={INTAKE_URL} />
+                  {/* 受付IDをQRに埋め込む — 問診票送信時に一緒に保存され、名前の表記に
+                      関係なく受付一覧の行と確実に紐付く */}
+                  <QrImage url={`${INTAKE_URL}${INTAKE_URL.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(done.checkinId)}`} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <Smartphone size={22} color="#0F8B8D" className="shrink-0" />

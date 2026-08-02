@@ -670,6 +670,10 @@
   // The anon key is a public client key; RLS only allows inserting, never reading.
   var SUPABASE_URL = "https://dfkylexozstecjpgvnxg.supabase.co";
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRma3lsZXhvenN0ZWNqcGd2bnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzAxODAsImV4cCI6MjA5ODkwNjE4MH0.7gtNcTLeiISvEJRCxIaHpOwafbLyTAVnYFE2wvqi8Wc";
+
+  // 受付機のQR経由で開くとURLに ?checkin=<受付ID> が付いていて、送信時に一緒に保存される。
+  // これで受付一覧の行と問診票が名前の表記に関係なく確実に紐付く。直接開いた場合は空。
+  var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
   var form = document.getElementById("intake-form");
   var statusEl = document.getElementById("if-status");
   var submitBtn = document.getElementById("if-submit");
@@ -1011,6 +1015,7 @@
         id: "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
         patient_name: data.name,
         date_of_birth: data.date_of_birth,
+        checkin_id: CHECKIN_ID || null,
         answers: rows,
       }),
     })

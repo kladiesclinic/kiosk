@@ -71,9 +71,12 @@ export default function StaffView() {
     return () => clearInterval(t);
   }, []);
 
-  // 受付行に対応する問診票を名前（空白除去の部分一致）で探す
-  const formFor = (name) => {
-    const n = normalizeName(name);
+  // 受付行に対応する問診票を探す。QR経由の送信は受付IDで確実に紐付き、
+  // IDがない（QRを使わず直接開いた等）場合だけ名前（空白除去の部分一致）で照合する。
+  const formFor = (checkin) => {
+    const byId = forms.find((f) => f.checkin_id && f.checkin_id === checkin.id);
+    if (byId) return byId;
+    const n = normalizeName(checkin.patient_name);
     if (!n) return null;
     return (
       forms.find((f) => {
@@ -166,7 +169,7 @@ export default function StaffView() {
                     </thead>
                     <tbody>
                       {checkins.map((c) => {
-                        const f = c.visit_type === "consult" ? formFor(c.patient_name) : null;
+                        const f = c.visit_type === "consult" ? formFor(c) : null;
                         const isDone = c.status === "done";
                         return (
                           <tr key={c.id} style={{ borderTop: "1px solid #FAEEF0", opacity: isDone ? 0.5 : 1 }}>
