@@ -793,8 +793,74 @@ function Kiosk() {
   );
 }
 
-// サーマルプリンタ（Epson TMシリーズ / ePOS-Print）の設定画面。
-// 受付機のiPadで https://…/kiosk/?setup を開いて設定する（設定はその端末のlocalStorageに保存）。
+// 端末設定画面（?setup）: ログイン状態の確認・ログアウトと、サーマルプリンタの設定。
+// 受付機のiPadで https://…/kiosk/?setup を開く（プリンタ設定はその端末のlocalStorageに保存）。
+// 受付画面には導線を出していない（患者が開けてしまうため）。
+function AccountPanel() {
+  const [email, setEmail] = useState(null);
+  const [staffInfo, setStaffInfo] = useState(undefined); // undefined=確認中 / null=未登録 / {name,role}
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (cancelled) return;
+      const user = data.session?.user;
+      setEmail(user?.email || null);
+      if (!user) {
+        setStaffInfo(null);
+        return;
+      }
+      const { data: sp } = await supabase.from("staff_profiles").select("name, role").eq("id", user.id).single();
+      if (!cancelled) setStaffInfo(sp || null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const logout = async () => {
+    setSigningOut(true);
+    await supabase.auth.signOut();
+    // StaffGateがログイン画面に切り替えるので、クエリを外してトップへ
+    window.location.href = window.location.pathname;
+  };
+
+  const ROLE_LABEL = { doctor: "医師", staff: "スタッフ" };
+  return (
+    <div className="p-4 rounded-2xl flex flex-col gap-2" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+      <div className="text-sm font-bold" style={{ color: "#3A2E30" }}>この端末のログイン</div>
+      <div className="text-sm" style={{ color: "#5C4A4E" }}>
+        {email ? (
+          <>
+            <div>アカウント: {email}</div>
+            <div>
+              スタッフ登録:{" "}
+              {staffInfo === undefined
+                ? "確認中…"
+                : staffInfo
+                  ? `登録済み（${staffInfo.name}・${ROLE_LABEL[staffInfo.role] || staffInfo.role}）`
+                  : "未登録 — このままだと受付処理が失敗します。スタッフ登録済みのアカウントでログインし直してください。"}
+            </div>
+          </>
+        ) : (
+          "未ログイン"
+        )}
+      </div>
+      {email && (
+        <button
+          onClick={logout}
+          disabled={signingOut}
+          className="self-start px-5 py-2.5 rounded-xl text-sm font-bold active:opacity-70"
+          style={{ background: "#FFFFFF", border: "2px solid #B03A44", color: "#B03A44", opacity: signingOut ? 0.5 : 1 }}
+        >
+          {signingOut ? "ログアウト中…" : "ログアウトする（別のアカウントで入り直す）"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function PrinterSetup() {
   const saved = getPrinterConfig();
   const [cfg, setCfg] = useState({
@@ -849,10 +915,14 @@ function PrinterSetup() {
         <div className="flex items-center gap-3">
           <Printer size={28} color="#0F8B8D" />
           <h1 className="text-2xl font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-            レシートプリンタ設定
+            端末設定
           </h1>
         </div>
-        <p className="text-sm" style={{ color: "#8A7378" }}>
+
+        <AccountPanel />
+
+        <div className="text-sm font-bold mt-2" style={{ color: "#3A2E30" }}>レシートプリンタ</div>
+        <p className="text-sm -mt-2" style={{ color: "#8A7378" }}>
           Epson TMシリーズ（TM-m10 / TM-m30 など）用の設定です。設定はこの端末（iPad）にのみ保存されます。
         </p>
 
