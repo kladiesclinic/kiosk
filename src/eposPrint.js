@@ -1,11 +1,15 @@
-// Epson TMシリーズ（TM-m30 / TM-T88 など）の ePOS-Print XML でレシートを発券する。
-// プリンタ本体のWebサービス（/cgi-bin/epos/service.cgi）へブラウザから直接POSTするので、
-// PCやアプリのドライバは不要。受付機のiPadとプリンタが同じWi-Fi/LANにいればよい。
+// Epson TMシリーズ（TM-m10 / TM-m30 など）への受付票発券。接続方式は2通り:
 //
-// 注意: GitHub Pages（https）から印刷する場合、http://プリンタIP への通信は
-// ブラウザの mixed content 制限でブロックされる。プリンタ側でSSL証明書を有効にして
-// https で叩くか（TM-m30II/III対応・iPadに証明書インストールが必要）、
-// 受付機をLAN内のhttp配信で動かす必要がある。設定画面（?setup）で切り替えられる。
+// [lan]  プリンタ本体のWebサービス（ePOS-Print, /cgi-bin/epos/service.cgi）へ
+//        ブラウザから直接POSTする。Ethernet/Wi-Fi接続のプリンタ用。ダイアログなし・
+//        アプリ切り替えなしで最も滑らか。GitHub Pages（https）から使う場合は
+//        プリンタ側でSSL証明書を有効にし、iPadに証明書を入れる必要がある。
+//
+// [bt]   Bluetooth接続のプリンタ用。Epson公式アプリ「Epson TM Print Assistant」を
+//        iPadにインストールし、URLスキームで印刷データを渡す。
+//        注意: iOS版は印刷後に自動でブラウザへ戻らない（画面左上の「◀ Safari」で戻る）。
+//
+// 設定は設定画面（?setup）からlocalStorageに端末ごとに保存する。
 
 const STORAGE_KEY = "kiosk-printer";
 
@@ -28,9 +32,10 @@ const esc = (s) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-// 受付票のePOS-Print XMLを組み立てる。
+// 受付票の中身（<epos-print>要素）を組み立てる。58mm幅（TM-m10, フォントA 35桁）でも
+// 収まるよう、区切り線は32桁・英文は35桁以内にしてある。80mm機ではそのまま左寄せ気味に出る。
 // number: 受付番号 / typeJa,typeEn: 種別 / dateStr: 日時 / qrUrl: 問診票URL（なければQRなし）
-export function buildTicketXml({ number, typeJa, typeEn, dateStr, qrUrl, qrNoteLines = [] }) {
+export function buildTicketBody({ number, typeJa, typeEn, dateStr, qrUrl, qrNoteLines = [] }) {
   let b = "";
   b += `<text lang="ja"/><text smooth="true"/><text align="center"/>`;
   b += `<text width="1" height="1">ケイクリ レディースクリニック&#10;</text>`;
@@ -54,20 +59,41 @@ export function buildTicketXml({ number, typeJa, typeEn, dateStr, qrUrl, qrNoteL
   }
   b += `<feed line="2"/>`;
   b += `<cut type="feed"/>`;
+  return `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">${b}</epos-print>`;
+}
+
+// [lan] 用: SOAPエンベロープで包んだリクエストXML
+export function buildTicketXml(ticket) {
   return (
     `<?xml version="1.0" encoding="utf-8"?>` +
     `<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body>` +
-    `<epos-print xmlns="http://www.epson-pos.com/schemas/2011/03/epos-print">${b}</epos-print>` +
+    buildTicketBody(ticket) +
     `</s:Body></s:Envelope>`
   );
 }
 
+// [bt] 用: TM Print Assistant を起動するURLスキーム
+export function buildAssistantUrl(ticket) {
+  const xml = `<?xml version="1.0" encoding="utf-8"?>` + buildTicketBody(ticket);
+  return (
+    "tmprintassistant://tmprintassistant.epson.com/print?ver=1&data-type=eposprintxml&reselect=yes&data=" +
+    encodeURIComponent(xml)
+  );
+}
+
 // プリンタへ送信。設定がない/無効ならスキップ（{skipped:true}）。
-// 失敗は throw する（呼び出し側で画面に案内を出す）。
+// [bt] はアプリに渡した時点で成功扱い（{ok:true, external:true}）— 結果は受け取れない。
+// [lan] の失敗は throw する（呼び出し側で画面に案内を出す）。
 export async function printTicket(ticket) {
   const cfg = getPrinterConfig();
-  if (!cfg || !cfg.enabled || !cfg.ip) return { skipped: true };
+  if (!cfg || !cfg.enabled) return { skipped: true };
 
+  if (cfg.method === "bt") {
+    window.location.href = buildAssistantUrl(ticket);
+    return { ok: true, external: true };
+  }
+
+  if (!cfg.ip) return { skipped: true };
   const scheme = cfg.scheme === "http" ? "http" : "https";
   const devid = cfg.devid || "local_printer";
   const url = `${scheme}://${cfg.ip}/cgi-bin/epos/service.cgi?devid=${encodeURIComponent(devid)}&timeout=10000`;

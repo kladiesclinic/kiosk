@@ -234,6 +234,21 @@ function Kiosk() {
     return () => clearTimeout(idleTimer.current);
   }, [step, name, dobY, dobM, dobD, visitKind, returnReason, selectedMeds]);
 
+  // Bluetooth発券では印刷アプリ（TM Print Assistant）に画面が切り替わる。
+  // 非表示中にタイマーが切れて完了画面（番号・QR）が消えないよう、
+  // 裏に回ったらタイマーを止め、戻ってきたら測り直す
+  useEffect(() => {
+    const onVis = () => {
+      if (step === "home") return;
+      clearTimeout(idleTimer.current);
+      if (document.visibilityState === "visible") {
+        idleTimer.current = setTimeout(reset, step === "done" ? 30000 : 120000);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [step]);
+
   const toggleMed = (id) => {
     setSelectedMeds((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
   };
@@ -270,6 +285,9 @@ function Kiosk() {
     };
     try {
       setPrintDetail("");
+      // Bluetooth（TM Print Assistant）は画面がアプリに切り替わるため、
+      // 完了画面（番号・QR）が一度表示されてからアプリを起動する
+      if (getPrinterConfig()?.method === "bt") await new Promise((r) => setTimeout(r, 800));
       const res = await printTicket(ticket);
       setPrintState(res.skipped ? null : "printed");
     } catch (e) {
@@ -303,7 +321,8 @@ function Kiosk() {
       if (error) throw error;
       const d = { number, visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason };
       setDone(d);
-      setPrintState(getPrinterConfig()?.enabled && getPrinterConfig()?.ip ? "printing" : null);
+      const pc = getPrinterConfig();
+      setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
       setStep("done");
       autoPrintTicket(d, lang);
     } catch (e) {
@@ -706,6 +725,7 @@ function PrinterSetup() {
   const saved = getPrinterConfig();
   const [cfg, setCfg] = useState({
     enabled: saved?.enabled ?? true,
+    method: saved?.method || "bt", // "bt"（TM Print Assistantアプリ経由） | "lan"（直接送信）
     ip: saved?.ip || "",
     scheme: saved?.scheme || "https",
     devid: saved?.devid || "local_printer",
@@ -732,7 +752,13 @@ function PrinterSetup() {
         qrUrl: "https://kladiesclinic.github.io/kiosk/",
         qrNoteLines: ["テスト用QRコード", "Test QR code"],
       });
-      setStatus(res.skipped ? "プリンタが無効またはIP未入力のため送信していません。" : "テスト印刷を送信しました。プリンタから受付票が出れば設定完了です。");
+      setStatus(
+        res.skipped
+          ? "プリンタが無効またはIP未入力のため送信していません。"
+          : res.external
+            ? "TM Print Assistantアプリを起動しました。アプリ側で印刷されれば設定完了です（印刷後は画面左上の「◀ Safari」でこの画面に戻ってください）。"
+            : "テスト印刷を送信しました。プリンタから受付票が出れば設定完了です。"
+      );
     } catch (e) {
       setStatus(`テスト印刷に失敗しました: ${e?.message || e}`);
     } finally {
@@ -752,8 +778,7 @@ function PrinterSetup() {
           </h1>
         </div>
         <p className="text-sm" style={{ color: "#8A7378" }}>
-          Epson TMシリーズ（ePOS-Print対応機）用の設定です。設定はこの端末（iPad）にのみ保存されます。
-          プリンタと受付機は同じWi-Fiに接続してください。
+          Epson TMシリーズ（TM-m10 / TM-m30 など）用の設定です。設定はこの端末（iPad）にのみ保存されます。
         </p>
 
         <label className="flex items-center gap-3 p-4 rounded-2xl" style={field}>
@@ -767,39 +792,70 @@ function PrinterSetup() {
         </label>
 
         <div>
-          <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>プリンタのIPアドレス（例: 192.168.11.70）</div>
-          <input
-            value={cfg.ip}
-            onChange={(e) => setCfg({ ...cfg, ip: e.target.value.trim() })}
-            placeholder="192.168.11.70"
-            inputMode="decimal"
-            className="w-full p-4 rounded-2xl text-lg outline-none"
-            style={field}
-          />
-        </div>
-
-        <div>
-          <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>接続方式</div>
+          <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>プリンタの接続方法</div>
           <select
-            value={cfg.scheme}
-            onChange={(e) => setCfg({ ...cfg, scheme: e.target.value })}
+            value={cfg.method}
+            onChange={(e) => setCfg({ ...cfg, method: e.target.value })}
             className="w-full p-4 rounded-2xl text-lg outline-none"
             style={field}
           >
-            <option value="https">https（GitHub Pages配信ではこちら。プリンタのSSL証明書設定が必要）</option>
-            <option value="http">http（LAN内のhttp配信で動かす場合のみ）</option>
+            <option value="bt">Bluetooth（TM Print Assistantアプリ経由）</option>
+            <option value="lan">有線LAN・Wi-Fi（プリンタへ直接送信）</option>
           </select>
         </div>
 
-        <div>
-          <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>デバイスID（通常は local_printer のまま）</div>
-          <input
-            value={cfg.devid}
-            onChange={(e) => setCfg({ ...cfg, devid: e.target.value.trim() })}
-            className="w-full p-4 rounded-2xl text-lg outline-none"
-            style={field}
-          />
-        </div>
+        {cfg.method === "bt" ? (
+          <div className="p-4 rounded-2xl text-sm flex flex-col gap-2" style={{ background: "#F4EFF0", color: "#5C4A4E" }}>
+            <div className="font-bold">Bluetooth発券の事前準備（最初に1回だけ）</div>
+            <ol className="list-decimal ml-5 flex flex-col gap-1">
+              <li>iPadの「設定 → Bluetooth」でプリンタ（TM-m10）とペアリング</li>
+              <li>App Storeで「Epson TM Print Assistant」をインストール</li>
+              <li>TM Print Assistantを開き、プリンタ（Bluetooth）を選択しておく</li>
+              <li>下の「テスト印刷」で動作確認</li>
+            </ol>
+            <div>
+              発券のたびに一瞬TM Print Assistantに画面が切り替わります。iOSの仕様で自動では戻らないため、
+              画面左上の「◀ Safari」をタップして受付画面に戻ってください（戻るまで完了画面は保持されます）。
+            </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>プリンタのIPアドレス（例: 192.168.11.70）</div>
+              <input
+                value={cfg.ip}
+                onChange={(e) => setCfg({ ...cfg, ip: e.target.value.trim() })}
+                placeholder="192.168.11.70"
+                inputMode="decimal"
+                className="w-full p-4 rounded-2xl text-lg outline-none"
+                style={field}
+              />
+            </div>
+
+            <div>
+              <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>通信方式</div>
+              <select
+                value={cfg.scheme}
+                onChange={(e) => setCfg({ ...cfg, scheme: e.target.value })}
+                className="w-full p-4 rounded-2xl text-lg outline-none"
+                style={field}
+              >
+                <option value="https">https（GitHub Pages配信ではこちら。プリンタのSSL証明書設定が必要）</option>
+                <option value="http">http（LAN内のhttp配信で動かす場合のみ）</option>
+              </select>
+            </div>
+
+            <div>
+              <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>デバイスID（通常は local_printer のまま）</div>
+              <input
+                value={cfg.devid}
+                onChange={(e) => setCfg({ ...cfg, devid: e.target.value.trim() })}
+                className="w-full p-4 rounded-2xl text-lg outline-none"
+                style={field}
+              />
+            </div>
+          </>
+        )}
 
         <div className="flex gap-3">
           <button
