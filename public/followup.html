@@ -94,7 +94,12 @@
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     statusEl.className = "form-status";
-    if (!form.reportValidity()) return;
+    statusEl.textContent = "";
+    if (!form.reportValidity()) {
+      statusEl.textContent = "未入力の項目があります。ご確認ください。 ／ Some required fields are still empty.";
+      statusEl.className = "form-status err";
+      return;
+    }
 
     submitBtn.disabled = true;
     fetch(SUPABASE_URL + "/rest/v1/intake_forms", {

@@ -1231,7 +1231,16 @@
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     statusEl.className = "form-status";
-    if (!form.reportValidity()) return;
+    statusEl.textContent = "";
+    if (!form.reportValidity()) {
+      // 未入力の項目があるとブラウザの小さな吹き出しが出るだけで気づきにくいので、
+      // 送信ボタンの近くにもはっきり表示する
+      statusEl.textContent = PAGE_LANG === "en"
+        ? "Some required fields are still empty — please check the highlighted field above."
+        : "未入力の項目があります。表示された項目をご確認ください（お名前が漢字の場合、カタカナ表記は手で入力してください）。";
+      statusEl.className = "form-status err";
+      return;
+    }
     if (document.getElementById("if-company").value) return; // honeypot
 
     var h = parseFloat(val("if-height"));
