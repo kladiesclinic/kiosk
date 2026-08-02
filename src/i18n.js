@@ -35,7 +35,9 @@ export const TEXT = {
     checkInButton: "受付する",
     working: "受付中...",
     medsTitle: "お受け取りになるお薬",
-    medsSubtitle: "当てはまるものをすべて選んでください（複数選択できます）",
+    medsSubtitle: "当てはまるものを選び、個数を指定してください",
+    medsOtherLabel: "その他の薬（自由記入）",
+    medsOtherPlaceholder: "例）ピルの名前、塗り薬 など",
     insuranceTitle: "保険の確認",
     insuranceSubtitle: "当てはまる方を選んでください",
     insMynumber: "マイナンバーカードを持っている",
@@ -65,7 +67,8 @@ export const TEXT = {
       triquilar: "トリキュラー",
       marvelon: "マーベロン",
       aldactone: "アルダクトン",
-      other: "その他の薬",
+      candida: "カンジダ用の膣錠",
+      herpes: "ヘルペス薬",
       same_as_last: "前回と同じ処方箋",
     },
   },
@@ -104,7 +107,9 @@ export const TEXT = {
     checkInButton: "Check in",
     working: "Checking in...",
     medsTitle: "Medication to pick up",
-    medsSubtitle: "Select everything that applies (multiple choices OK)",
+    medsSubtitle: "Select what you need and set the quantity",
+    medsOtherLabel: "Other medication (free text)",
+    medsOtherPlaceholder: "e.g. name of the pill, ointment, etc.",
     insuranceTitle: "Insurance check",
     insuranceSubtitle: "Please choose one",
     insMynumber: "I have a My Number card",
@@ -134,10 +139,13 @@ export const TEXT = {
       triquilar: "Triquilar",
       marvelon: "Marvelon",
       aldactone: "Aldactone",
-      other: "Other medication",
+      candida: "Vaginal tablet for candida",
+      herpes: "Herpes medication",
       same_as_last: "Same prescription as last time",
     },
   },
 };
 
-export const MED_IDS = ["triquilar", "marvelon", "aldactone", "other", "same_as_last"];
+export const MED_IDS = ["triquilar", "marvelon", "aldactone", "candida", "herpes", "same_as_last"];
+// 個数選択を出さない項目（「前回と同じ処方箋」は枚数の概念がない）
+export const MED_NO_QTY = ["same_as_last"];

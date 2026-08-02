@@ -20,12 +20,14 @@ import {
   FlaskConical,
   MessageCirclePlus,
   Printer,
+  Plus,
+  Minus,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabase.js";
 import StaffGate from "./StaffGate.jsx";
 import StaffView from "./StaffView.jsx";
-import { TEXT, MED_IDS } from "./i18n.js";
+import { TEXT, MED_IDS, MED_NO_QTY } from "./i18n.js";
 import { getPrinterConfig, savePrinterConfig, printTicket } from "./eposPrint.js";
 
 const FONT_IMPORT = `
@@ -196,7 +198,9 @@ function Kiosk() {
   const [dobD, setDobD] = useState("");
   const [visitKind, setVisitKind] = useState(null); // "first" | "return"
   const [returnReason, setReturnReason] = useState(null); // "results" | "followup" | "new_symptom"
-  const [selectedMeds, setSelectedMeds] = useState([]);
+  // 薬受け取り: 選択した薬とその個数 { medId: 個数 }、その他の薬は自由記入
+  const [medQty, setMedQty] = useState({});
+  const [otherMed, setOtherMed] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(false);
   const [errorDetail, setErrorDetail] = useState("");
@@ -215,7 +219,8 @@ function Kiosk() {
     setDobD("");
     setVisitKind(null);
     setReturnReason(null);
-    setSelectedMeds([]);
+    setMedQty({});
+    setOtherMed("");
     setBusy(false);
     setErrorMsg(false);
     setErrorDetail("");
@@ -232,7 +237,7 @@ function Kiosk() {
     clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(reset, step === "done" ? 30000 : 120000);
     return () => clearTimeout(idleTimer.current);
-  }, [step, name, dobY, dobM, dobD, visitKind, returnReason, selectedMeds]);
+  }, [step, name, dobY, dobM, dobD, visitKind, returnReason, medQty, otherMed]);
 
   // Bluetooth発券では印刷アプリ（TM Print Assistant）に画面が切り替わる。
   // 非表示中にタイマーが切れて完了画面（番号・QR）が消えないよう、
@@ -250,8 +255,21 @@ function Kiosk() {
   }, [step]);
 
   const toggleMed = (id) => {
-    setSelectedMeds((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
+    setMedQty((prev) => {
+      if (prev[id]) {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: 1 };
+    });
   };
+
+  const changeMedQty = (id, delta) => {
+    setMedQty((prev) => ({ ...prev, [id]: Math.min(9, Math.max(1, (prev[id] || 1) + delta)) }));
+  };
+
+  const anyMedChosen = Object.keys(medQty).length > 0 || otherMed.trim() !== "";
 
   const dobValid =
     /^\d{4}$/.test(dobY) &&
@@ -313,8 +331,16 @@ function Kiosk() {
         date_of_birth: dobStr || null,
         visit_kind: visitType === "consult" ? visitKind : null,
         return_reason: visitType === "consult" && visitKind === "return" ? returnReason : null,
-        // 薬名は言語に関わらずスタッフが読める日本語ラベルで保存する
-        medications: visitType === "pickup" ? selectedMeds.map((id) => TEXT.ja.meds[id]) : null,
+        // 薬名は言語に関わらずスタッフが読める日本語ラベル+個数で保存する（例: トリキュラー ×2）
+        medications:
+          visitType === "pickup"
+            ? [
+                ...MED_IDS.filter((id) => medQty[id]).map((id) =>
+                  MED_NO_QTY.includes(id) ? TEXT.ja.meds[id] : `${TEXT.ja.meds[id]} ×${medQty[id]}`
+                ),
+                ...(otherMed.trim() ? [`その他: ${otherMed.trim()}`] : []),
+              ]
+            : null,
         insurance: insuranceChoice,
         status: "waiting",
       });
@@ -545,37 +571,73 @@ function Kiosk() {
               <StepTitle title={t.medsTitle} subtitle={t.medsSubtitle} />
               <div className="grid grid-cols-2 gap-3">
                 {MED_IDS.map((id) => {
-                  const sel = selectedMeds.includes(id);
+                  const qty = medQty[id];
+                  const sel = !!qty;
+                  const showQty = sel && !MED_NO_QTY.includes(id);
                   return (
-                    <button
+                    <div
                       key={id}
-                      onClick={() => toggleMed(id)}
-                      className="px-4 py-4 rounded-2xl flex items-center gap-3 text-left active:opacity-80"
+                      className="rounded-2xl flex items-center"
                       style={{
                         background: sel ? "#DFF5F3" : "#FFFFFF",
                         border: sel ? "2px solid #0F8B8D" : "2px solid #F2DFE4",
                         color: sel ? "#0F8B8D" : "#3A2E30",
                       }}
                     >
-                      <span
-                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ background: sel ? "#0F8B8D" : "#FFF8F7", border: sel ? "none" : "2px solid #F2DFE4" }}
+                      <button
+                        onClick={() => toggleMed(id)}
+                        className="flex-1 min-w-0 pl-4 pr-2 py-3.5 flex items-center gap-3 text-left active:opacity-80"
                       >
-                        {sel && <CheckCircle2 size={18} color="#FFFFFF" />}
-                      </span>
-                      <span className="text-lg font-medium leading-snug flex items-center gap-2">
-                        <Pill size={18} color={sel ? "#0F8B8D" : "#B08A90"} className="shrink-0" />
-                        {t.meds[id]}
-                      </span>
-                    </button>
+                        <span
+                          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ background: sel ? "#0F8B8D" : "#FFF8F7", border: sel ? "none" : "2px solid #F2DFE4" }}
+                        >
+                          {sel && <CheckCircle2 size={18} color="#FFFFFF" />}
+                        </span>
+                        <span className="text-base font-medium leading-snug">{t.meds[id]}</span>
+                      </button>
+                      {/* 個数ステッパー（前回と同じ処方箋には出さない） */}
+                      {showQty && (
+                        <div className="flex items-center gap-1 pr-2.5 shrink-0">
+                          <button
+                            onClick={() => changeMedQty(id, -1)}
+                            className="w-9 h-9 rounded-lg flex items-center justify-center active:opacity-70"
+                            style={{ background: "#FFFFFF", border: "1.5px solid #0F8B8D", color: "#0F8B8D" }}
+                          >
+                            <Minus size={18} />
+                          </button>
+                          <span className="w-7 text-center text-xl font-bold" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                            {qty}
+                          </span>
+                          <button
+                            onClick={() => changeMedQty(id, 1)}
+                            className="w-9 h-9 rounded-lg flex items-center justify-center active:opacity-70"
+                            style={{ background: "#0F8B8D", border: "1.5px solid #0F8B8D", color: "#FFFFFF" }}
+                          >
+                            <Plus size={18} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
+              </div>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                <Pill size={20} color="#B08A90" className="shrink-0" />
+                <span className="text-sm shrink-0" style={{ color: "#B08A90" }}>{t.medsOtherLabel}</span>
+                <input
+                  value={otherMed}
+                  onChange={(e) => setOtherMed(e.target.value)}
+                  placeholder={t.medsOtherPlaceholder}
+                  className="flex-1 bg-transparent text-lg outline-none min-w-0"
+                  style={{ color: "#3A2E30" }}
+                />
               </div>
               <NavRow
                 onBack={() => setStep("pickup-name")}
                 backLabel={t.back}
                 onNext={() => setStep("insurance")}
-                nextDisabled={selectedMeds.length === 0}
+                nextDisabled={!anyMedChosen}
                 nextLabel={t.next}
               />
             </div>
