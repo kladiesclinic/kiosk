@@ -81,6 +81,10 @@ export default function StaffGate({ children }) {
 
   if (session && staffOk) return children;
 
+  // ローカル開発時のみ ?nogate でゲートを飛ばせる（UIレイアウト確認用）。
+  // import.meta.env.DEV は本番ビルドで false になるため、公開版では無効
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has("nogate")) return children;
+
   const valid = email.trim() && password.length >= 8;
   return (
     <div className="min-h-screen flex flex-col items-center justify-center py-10 px-4" style={{ background: "#FFF8F7", fontFamily: "'Noto Sans JP', sans-serif" }}>

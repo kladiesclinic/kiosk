@@ -56,6 +56,9 @@ export const TEXT = {
     mynumberThenSit: "お済みになりましたら、お掛けになってお待ちください。",
     backToTop: "トップにもどる",
     autoReturn: "この画面は30秒後に自動でトップに戻ります",
+    ticketPrinting: "受付票を印刷しています…",
+    ticketTake: "受付票をお取りください",
+    ticketFail: "受付票を印刷できませんでした。画面の番号をご利用ください。",
     errorGeneric: "受付処理に失敗しました。お手数ですが受付スタッフにお声がけください。",
     errorForStaff: "スタッフ向け情報",
     meds: {
@@ -122,6 +125,9 @@ export const TEXT = {
     mynumberThenSit: "Once that's done, please take a seat.",
     backToTop: "Back to top",
     autoReturn: "This screen returns to the top automatically in 30 seconds",
+    ticketPrinting: "Printing your ticket…",
+    ticketTake: "Please take your printed ticket",
+    ticketFail: "We couldn't print your ticket — please use the number on screen.",
     errorGeneric: "Sorry, check-in failed. Please speak to our reception staff.",
     errorForStaff: "For staff",
     meds: {

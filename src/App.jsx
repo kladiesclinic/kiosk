@@ -19,12 +19,14 @@ import {
   RotateCcw,
   FlaskConical,
   MessageCirclePlus,
+  Printer,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabase.js";
 import StaffGate from "./StaffGate.jsx";
 import StaffView from "./StaffView.jsx";
 import { TEXT, MED_IDS } from "./i18n.js";
+import { getPrinterConfig, savePrinterConfig, printTicket } from "./eposPrint.js";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -55,6 +57,26 @@ async function nextCheckinNumber() {
   return (data?.[0]?.checkin_number || 0) + 1;
 }
 
+// 完了画面・受付票に載せる問診票QRの飛び先。
+// 初診・再診(新しい症状)=フル問診票 / 再診(前回の続き)=簡易問診票 / 検査結果・薬受け取り=QRなし
+function qrBaseFor(d) {
+  if (!d || d.visitType !== "consult") return null;
+  if (d.visitKind === "return") {
+    if (d.returnReason === "followup") return FOLLOWUP_URL;
+    if (d.returnReason === "new_symptom") return INTAKE_URL;
+    return null;
+  }
+  return INTAKE_URL;
+}
+
+// 受付IDをQRに埋め込む — 問診票送信時に一緒に保存され、名前の表記に関係なく
+// 受付一覧の行と確実に紐付く。言語も渡して、英語で受付した患者には英語ファーストで開く
+function qrUrlFor(d, lang) {
+  const base = qrBaseFor(d);
+  if (!base) return null;
+  return `${base}${base.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(d.checkinId)}&lang=${lang}`;
+}
+
 function Clock({ lang }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => {
@@ -70,74 +92,91 @@ function Clock({ lang }) {
       : `${daysEn[now.getDay()]}, ${monthsEn[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
   return (
     <div className="text-right">
-      <div className="text-sm" style={{ color: "#B08A90" }}>{dateStr}</div>
-      <div className="text-2xl font-semibold" style={{ color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}>
+      <div className="text-xs" style={{ color: "#B08A90" }}>{dateStr}</div>
+      <div className="text-xl font-semibold" style={{ color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}>
         {String(now.getHours()).padStart(2, "0")}:{String(now.getMinutes()).padStart(2, "0")}
       </div>
     </div>
   );
 }
 
-function QrImage({ url }) {
+function QrImage({ url, size = 150 }) {
   const [dataUrl, setDataUrl] = useState(null);
   useEffect(() => {
-    QRCode.toDataURL(url, { width: 220, margin: 1, color: { dark: "#3A2E30", light: "#FFFFFF" } })
+    QRCode.toDataURL(url, { width: size * 2, margin: 1, color: { dark: "#3A2E30", light: "#FFFFFF" } })
       .then(setDataUrl)
       .catch(() => setDataUrl(null));
-  }, [url]);
+  }, [url, size]);
   if (!dataUrl) return null;
-  return <img src={dataUrl} alt="QR" className="w-52 h-52 rounded-xl" style={{ border: "2px solid #F2DFE4" }} />;
+  return (
+    <img
+      src={dataUrl}
+      alt="QR"
+      className="rounded-xl shrink-0"
+      style={{ width: size, height: size, border: "2px solid #F2DFE4" }}
+    />
+  );
 }
 
 function StepTitle({ title, subtitle }) {
   return (
     <div className="text-center">
-      <h2 className="text-3xl font-bold mb-2" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+      <h2 className="text-2xl font-bold mb-1" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
         {title}
       </h2>
-      {subtitle && <p className="text-lg" style={{ color: "#8A7378" }}>{subtitle}</p>}
+      {subtitle && <p className="text-base" style={{ color: "#8A7378" }}>{subtitle}</p>}
     </div>
   );
 }
 
-function BackButton({ onClick, label }) {
+// もどる・次へを1行にまとめて縦の場所を節約する（横置きiPadでスクロールさせないため）
+function NavRow({ onBack, backLabel, onNext, nextDisabled, nextLabel }) {
   return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1.5 px-5 py-3.5 rounded-2xl text-lg font-medium active:opacity-70 self-start"
-      style={{ background: "#FFFFFF", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
-    >
-      <ChevronLeft size={22} />
-      {label}
-    </button>
-  );
-}
-
-function NextButton({ onClick, disabled, children }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="w-full py-6 rounded-3xl text-2xl font-bold flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
-      style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: disabled ? 0.35 : 1 }}
-    >
-      {children}
-    </button>
+    <div className="flex gap-3">
+      <button
+        onClick={onBack}
+        className="flex items-center gap-1.5 px-6 py-3.5 rounded-2xl text-lg font-medium active:opacity-70 shrink-0"
+        style={{ background: "#FFFFFF", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
+      >
+        <ChevronLeft size={22} />
+        {backLabel}
+      </button>
+      {onNext && (
+        <button
+          onClick={onNext}
+          disabled={nextDisabled}
+          className="flex-1 py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-2 active:opacity-80 transition-opacity"
+          style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: nextDisabled ? 0.35 : 1 }}
+        >
+          {nextLabel} <ChevronRight size={24} />
+        </button>
+      )}
+    </div>
   );
 }
 
 function ErrorBox({ message, detail, staffLabel }) {
   if (!message) return null;
   return (
-    <div className="p-6 rounded-3xl flex gap-3" style={{ background: "#FCE9EA", color: "#B03A44" }}>
-      <AlertCircle size={24} className="shrink-0 mt-0.5" />
-      <div className="flex flex-col gap-1.5">
-        <span className="text-lg">{message}</span>
+    <div className="p-4 rounded-2xl flex gap-3" style={{ background: "#FCE9EA", color: "#B03A44" }}>
+      <AlertCircle size={22} className="shrink-0 mt-0.5" />
+      <div className="flex flex-col gap-1">
+        <span className="text-base">{message}</span>
         {detail && <span className="text-xs opacity-70">{staffLabel}: {detail}</span>}
       </div>
     </div>
   );
 }
+
+// ローカル開発時のみ ?demo=done / ?demo=done-pickup で完了画面を直接表示できる
+// （レイアウト確認用。本番ビルドでは import.meta.env.DEV が false のため無効）
+const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("demo") : null;
+const DEMO_DONE =
+  DEMO === "done"
+    ? { number: 12, visitType: "consult", insurance: "mynumber", checkinId: "c-demo", visitKind: "first", returnReason: null }
+    : DEMO === "done-pickup"
+      ? { number: 12, visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null }
+      : null;
 
 function Kiosk() {
   const [lang, setLang] = useState("ja");
@@ -147,7 +186,7 @@ function Kiosk() {
   // 診察:       home → consult-name → consult-kind（初診/再診）
   //             →（再診なら consult-return: 検査結果/前回の続き/新しい症状）
   //             → insurance → done（初診・新しい症状=フル問診票QR / 前回の続き=簡易問診票QR / 検査結果=QRなし）
-  const [step, setStep] = useState("home");
+  const [step, setStep] = useState(DEMO_DONE ? "done" : "home");
   const [visitType, setVisitType] = useState(null); // "pickup" | "consult"
   const [name, setName] = useState("");
   // 生年月日 — <input type="date"> はOSの言語で「年/月/日」表示になってしまい
@@ -161,7 +200,10 @@ function Kiosk() {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(false);
   const [errorDetail, setErrorDetail] = useState("");
-  const [done, setDone] = useState(null); // { number, visitType, insurance }
+  const [done, setDone] = useState(DEMO_DONE); // { number, visitType, insurance, checkinId, visitKind, returnReason }
+  // 受付票（サーマルプリンタ）の発券状況: null=発券しない設定 | printing | printed | failed
+  const [printState, setPrintState] = useState(DEMO_DONE ? "printed" : null);
+  const [printDetail, setPrintDetail] = useState("");
 
   const reset = () => {
     setLang("ja");
@@ -178,6 +220,8 @@ function Kiosk() {
     setErrorMsg(false);
     setErrorDetail("");
     setDone(null);
+    setPrintState(null);
+    setPrintDetail("");
   };
 
   // 一定時間操作がなければトップ画面に戻す（次の患者さんに前の人の情報を見せない）。
@@ -206,6 +250,35 @@ function Kiosk() {
     +dobD <= 31;
   const dobStr = dobValid ? `${dobY}-${String(+dobM).padStart(2, "0")}-${String(+dobD).padStart(2, "0")}` : "";
 
+  // 受付票をサーマルプリンタへ自動発券（プリンタ未設定・無効ならなにもしない）。
+  // 発券に失敗しても受付自体は成立しているので、画面のQR・番号で運用を続けられる。
+  const autoPrintTicket = async (d, langAtCheckin) => {
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const ticket = {
+      number: d.number,
+      typeJa: d.visitType === "pickup" ? "お薬のお受け取り" : "診察",
+      typeEn: d.visitType === "pickup" ? "Medication pick-up" : "Consultation",
+      dateStr,
+      qrUrl: qrUrlFor(d, langAtCheckin),
+      qrNoteLines: [
+        "スマートフォンでQRコードを読み取り",
+        "問診票をご記入ください",
+        "Scan this QR code with your phone",
+        "to fill in the questionnaire",
+      ],
+    };
+    try {
+      setPrintDetail("");
+      const res = await printTicket(ticket);
+      setPrintState(res.skipped ? null : "printed");
+    } catch (e) {
+      console.error("ticket print failed:", e);
+      setPrintState("failed");
+      setPrintDetail(e?.message || String(e));
+    }
+  };
+
   const checkIn = async (insuranceChoice) => {
     setBusy(true);
     setErrorMsg(false);
@@ -228,8 +301,11 @@ function Kiosk() {
         status: "waiting",
       });
       if (error) throw error;
-      setDone({ number, visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason });
+      const d = { number, visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason };
+      setDone(d);
+      setPrintState(getPrinterConfig()?.enabled && getPrinterConfig()?.ip ? "printing" : null);
       setStep("done");
+      autoPrintTicket(d, lang);
     } catch (e) {
       console.error("check-in failed:", e);
       setErrorMsg(true);
@@ -245,95 +321,87 @@ function Kiosk() {
     { id: "self_pay", label: t.insSelfPay, desc: t.insSelfPayDesc, icon: Wallet },
   ];
 
-  // 完了画面で出す問診票QRの飛び先。
-  // 初診・再診(新しい症状)=フル問診票 / 再診(前回の続き)=簡易問診票 / 検査結果・薬受け取り=QRなし
-  const doneQrBase =
-    done && done.visitType === "consult"
-      ? done.visitKind === "return"
-        ? done.returnReason === "followup"
-          ? FOLLOWUP_URL
-          : done.returnReason === "new_symptom"
-            ? INTAKE_URL
-            : null
-        : INTAKE_URL
-      : null;
+  const doneQrUrl = done ? qrUrlFor(done, lang) : null;
+  const doneQrBase = done ? qrBaseFor(done) : null;
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#FFF8F7", fontFamily: "'Noto Sans JP', sans-serif" }}>
+    <div className="flex flex-col overflow-hidden" style={{ height: "100dvh", background: "#FFF8F7", fontFamily: "'Noto Sans JP', sans-serif" }}>
       <style>{FONT_IMPORT}</style>
 
-      <header className="flex items-center justify-between gap-4 px-8 py-5" style={{ borderBottom: "1px solid #F2DFE4", background: "#FFFFFF" }}>
+      <header className="flex items-center justify-between gap-4 px-6 py-2.5 shrink-0" style={{ borderBottom: "1px solid #F2DFE4", background: "#FFFFFF" }}>
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: "#0F8B8D" }}>
-            <HeartPulse size={24} color="#DFF5F3" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "#0F8B8D" }}>
+            <HeartPulse size={20} color="#DFF5F3" />
           </div>
           <div className="min-w-0">
-            <div className="text-lg font-bold truncate" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{t.clinicName}</div>
+            <div className="text-base font-bold truncate" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{t.clinicName}</div>
             <div className="text-xs" style={{ color: "#B08A90" }}>{t.receptionTitle}</div>
           </div>
         </div>
         <div className="flex items-center gap-5 shrink-0">
           <button
             onClick={() => setLang((l) => (l === "ja" ? "en" : "ja"))}
-            className="flex items-center gap-2 px-5 py-3 rounded-2xl text-base font-bold active:opacity-70"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-base font-bold active:opacity-70"
             style={{ background: "#FFF8F7", border: "2px solid #0F8B8D", color: "#0F8B8D" }}
           >
-            <Languages size={20} />
+            <Languages size={18} />
             {lang === "ja" ? "English" : "日本語"}
           </button>
           <Clock lang={lang} />
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col items-center justify-center px-8 py-10">
-        <div className="w-full max-w-2xl">
+      {/* 横置きiPadでスクロールが出ないよう、各ステップは1画面に収まる高さで組む。
+          万一収まらない環境（極端に低い画面など）のためスクロールは残す */}
+      <main className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center px-8 py-4">
+        <div className="w-full max-w-3xl">
 
           {step === "home" && (
-            <div className="flex flex-col gap-8">
+            <div className="flex flex-col gap-5">
               <div className="text-center">
-                <h1 className="text-4xl font-bold mb-3" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                <h1 className="text-3xl font-bold mb-1.5" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
                   {t.welcome}
                 </h1>
-                <p className="text-xl" style={{ color: "#8A7378" }}>{t.choosePurpose}</p>
+                <p className="text-lg" style={{ color: "#8A7378" }}>{t.choosePurpose}</p>
               </div>
               <button
                 onClick={() => {
                   setVisitType("pickup");
                   setStep("pickup-name");
                 }}
-                className="w-full p-8 rounded-3xl flex items-center gap-6 text-left active:opacity-80"
+                className="w-full p-6 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
                 style={{ background: "#FFFFFF", border: "2px solid #0F8B8D", color: "#0F8B8D" }}
               >
-                <PackageCheck size={44} className="shrink-0" />
+                <PackageCheck size={40} className="shrink-0" />
                 <div className="flex-1">
-                  <div className="text-3xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{t.pickupTitle}</div>
+                  <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{t.pickupTitle}</div>
                   <div className="text-base" style={{ color: "#8A7378" }}>{t.pickupDesc}</div>
                 </div>
-                <ChevronRight size={36} className="shrink-0" />
+                <ChevronRight size={32} className="shrink-0" />
               </button>
               <button
                 onClick={() => {
                   setVisitType("consult");
                   setStep("consult-name");
                 }}
-                className="w-full p-8 rounded-3xl flex items-center gap-6 text-left active:opacity-80"
+                className="w-full p-6 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
                 style={{ background: "#0F8B8D", color: "#FFFFFF" }}
               >
-                <Stethoscope size={44} className="shrink-0" />
+                <Stethoscope size={40} className="shrink-0" />
                 <div className="flex-1">
-                  <div className="text-3xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{t.consultTitle}</div>
+                  <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{t.consultTitle}</div>
                   <div className="text-base" style={{ color: "#DFF5F3" }}>{t.consultDesc}</div>
                 </div>
-                <ChevronRight size={36} className="shrink-0" />
+                <ChevronRight size={32} className="shrink-0" />
               </button>
             </div>
           )}
 
           {(step === "pickup-name" || step === "consult-name") && (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
               <StepTitle title={step === "pickup-name" ? t.pickupTitle : t.consultTitle} subtitle={t.enterName} />
-              <div className="flex items-center gap-3 px-6 py-5 rounded-3xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
-                <PenLine size={26} color="#B08A90" className="shrink-0" />
+              <div className="flex items-center gap-3 px-5 py-4 rounded-2xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                <PenLine size={24} color="#B08A90" className="shrink-0" />
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -343,9 +411,9 @@ function Kiosk() {
                   style={{ color: "#3A2E30" }}
                 />
               </div>
-              <div className="px-6 py-5 rounded-3xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <CalendarDays size={22} color="#B08A90" className="shrink-0" />
+              <div className="px-5 py-4 rounded-2xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <CalendarDays size={20} color="#B08A90" className="shrink-0" />
                   <span className="text-sm" style={{ color: "#B08A90" }}>{t.dobLabel}</span>
                 </div>
                 <div className="flex gap-3">
@@ -368,28 +436,28 @@ function Kiosk() {
                         onChange={(e) => f.set(e.target.value.replace(/\D/g, "").slice(0, f.max))}
                         inputMode="numeric"
                         placeholder={f.ph}
-                        className="w-full text-2xl text-center outline-none py-2.5 rounded-xl min-w-0"
+                        className="w-full text-2xl text-center outline-none py-2 rounded-xl min-w-0"
                         style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
                       />
-                      <div className="text-center text-sm mt-1.5" style={{ color: "#B08A90" }}>{f.label}</div>
+                      <div className="text-center text-sm mt-1" style={{ color: "#B08A90" }}>{f.label}</div>
                     </div>
                   ))}
                 </div>
               </div>
-              <NextButton
-                onClick={() => setStep(step === "pickup-name" ? "pickup-meds" : "consult-kind")}
-                disabled={!name.trim() || !dobValid}
-              >
-                {t.next} <ChevronRight size={26} />
-              </NextButton>
-              <BackButton onClick={reset} label={t.back} />
+              <NavRow
+                onBack={reset}
+                backLabel={t.back}
+                onNext={() => setStep(step === "pickup-name" ? "pickup-meds" : "consult-kind")}
+                nextDisabled={!name.trim() || !dobValid}
+                nextLabel={t.next}
+              />
             </div>
           )}
 
           {step === "consult-kind" && (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
               <StepTitle title={t.visitKindTitle} subtitle={t.visitKindSubtitle} />
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
                 {[
                   { id: "first", label: t.firstVisit, desc: t.firstVisitDesc, icon: Sparkle },
                   { id: "return", label: t.returnVisit, desc: t.returnVisitDesc, icon: RotateCcw },
@@ -402,27 +470,27 @@ function Kiosk() {
                         setVisitKind(opt.id);
                         setStep(opt.id === "first" ? "insurance" : "consult-return");
                       }}
-                      className="w-full p-7 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
+                      className="w-full px-6 py-5 rounded-2xl flex items-center gap-5 text-left active:opacity-80"
                       style={{ background: "#FFFFFF", border: "2px solid #F2DFE4", color: "#3A2E30" }}
                     >
-                      <Icon size={38} className="shrink-0" color="#0F8B8D" />
+                      <Icon size={32} className="shrink-0" color="#0F8B8D" />
                       <div className="flex-1">
-                        <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
-                        <div className="text-base" style={{ color: "#8A7378" }}>{opt.desc}</div>
+                        <div className="text-xl font-bold mb-0.5" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
+                        <div className="text-sm" style={{ color: "#8A7378" }}>{opt.desc}</div>
                       </div>
-                      <ChevronRight size={30} className="shrink-0" color="#0F8B8D" />
+                      <ChevronRight size={26} className="shrink-0" color="#0F8B8D" />
                     </button>
                   );
                 })}
               </div>
-              <BackButton onClick={() => setStep("consult-name")} label={t.back} />
+              <NavRow onBack={() => setStep("consult-name")} backLabel={t.back} />
             </div>
           )}
 
           {step === "consult-return" && (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
               <StepTitle title={t.returnReasonTitle} subtitle={t.returnReasonSubtitle} />
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
                 {[
                   { id: "results", label: t.rrResults, desc: t.rrResultsDesc, icon: FlaskConical },
                   { id: "followup", label: t.rrFollowup, desc: t.rrFollowupDesc, icon: RotateCcw },
@@ -436,25 +504,25 @@ function Kiosk() {
                         setReturnReason(opt.id);
                         setStep("insurance");
                       }}
-                      className="w-full p-7 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
+                      className="w-full px-6 py-4 rounded-2xl flex items-center gap-5 text-left active:opacity-80"
                       style={{ background: "#FFFFFF", border: "2px solid #F2DFE4", color: "#3A2E30" }}
                     >
-                      <Icon size={38} className="shrink-0" color="#0F8B8D" />
+                      <Icon size={30} className="shrink-0" color="#0F8B8D" />
                       <div className="flex-1">
-                        <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
-                        <div className="text-base" style={{ color: "#8A7378" }}>{opt.desc}</div>
+                        <div className="text-xl font-bold mb-0.5" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
+                        <div className="text-sm" style={{ color: "#8A7378" }}>{opt.desc}</div>
                       </div>
-                      <ChevronRight size={30} className="shrink-0" color="#0F8B8D" />
+                      <ChevronRight size={26} className="shrink-0" color="#0F8B8D" />
                     </button>
                   );
                 })}
               </div>
-              <BackButton onClick={() => setStep("consult-kind")} label={t.back} />
+              <NavRow onBack={() => setStep("consult-kind")} backLabel={t.back} />
             </div>
           )}
 
           {step === "pickup-meds" && (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
               <StepTitle title={t.medsTitle} subtitle={t.medsSubtitle} />
               <div className="grid grid-cols-2 gap-3">
                 {MED_IDS.map((id) => {
@@ -463,7 +531,7 @@ function Kiosk() {
                     <button
                       key={id}
                       onClick={() => toggleMed(id)}
-                      className="p-5 rounded-2xl flex items-center gap-3 text-left active:opacity-80"
+                      className="px-4 py-4 rounded-2xl flex items-center gap-3 text-left active:opacity-80"
                       style={{
                         background: sel ? "#DFF5F3" : "#FFFFFF",
                         border: sel ? "2px solid #0F8B8D" : "2px solid #F2DFE4",
@@ -484,17 +552,20 @@ function Kiosk() {
                   );
                 })}
               </div>
-              <NextButton onClick={() => setStep("insurance")} disabled={selectedMeds.length === 0}>
-                {t.next} <ChevronRight size={26} />
-              </NextButton>
-              <BackButton onClick={() => setStep("pickup-name")} label={t.back} />
+              <NavRow
+                onBack={() => setStep("pickup-name")}
+                backLabel={t.back}
+                onNext={() => setStep("insurance")}
+                nextDisabled={selectedMeds.length === 0}
+                nextLabel={t.next}
+              />
             </div>
           )}
 
           {step === "insurance" && (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-4">
               <StepTitle title={t.insuranceTitle} subtitle={t.insuranceSubtitle} />
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
                 {insuranceOptions.map((opt) => {
                   const Icon = opt.icon;
                   return (
@@ -502,98 +573,260 @@ function Kiosk() {
                       key={opt.id}
                       onClick={() => !busy && checkIn(opt.id)}
                       disabled={busy}
-                      className="w-full p-7 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
+                      className="w-full px-6 py-5 rounded-2xl flex items-center gap-5 text-left active:opacity-80"
                       style={{ background: "#FFFFFF", border: "2px solid #F2DFE4", color: "#3A2E30", opacity: busy ? 0.5 : 1 }}
                     >
-                      <Icon size={38} className="shrink-0" color="#0F8B8D" />
+                      <Icon size={32} className="shrink-0" color="#0F8B8D" />
                       <div className="flex-1">
-                        <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
-                        <div className="text-base" style={{ color: "#8A7378" }}>{opt.desc}</div>
+                        <div className="text-xl font-bold mb-0.5" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{opt.label}</div>
+                        <div className="text-sm" style={{ color: "#8A7378" }}>{opt.desc}</div>
                       </div>
-                      <ChevronRight size={30} className="shrink-0" color="#0F8B8D" />
+                      <ChevronRight size={26} className="shrink-0" color="#0F8B8D" />
                     </button>
                   );
                 })}
               </div>
-              {busy && <p className="text-center text-lg" style={{ color: "#8A7378" }}>{t.working}</p>}
+              {busy && <p className="text-center text-base" style={{ color: "#8A7378" }}>{t.working}</p>}
               <ErrorBox message={errorMsg ? t.errorGeneric : ""} detail={errorDetail} staffLabel={t.errorForStaff} />
-              <BackButton
-                onClick={() =>
+              <NavRow
+                onBack={() =>
                   setStep(
                     visitType === "pickup" ? "pickup-meds" : visitKind === "return" ? "consult-return" : "consult-kind"
                   )
                 }
-                label={t.back}
+                backLabel={t.back}
               />
             </div>
           )}
 
           {step === "done" && done && (
-            <div className="flex flex-col items-center gap-6 text-center">
-              <CheckCircle2 size={64} color="#0F8B8D" />
-              <h2 className="text-4xl font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-                {t.doneTitle}
-              </h2>
-              <div className="px-14 py-6 rounded-3xl" style={{ background: "#FFFFFF", border: "2px solid #0F8B8D" }}>
-                <div className="text-lg mb-1" style={{ color: "#8A7378" }}>
-                  {done.visitType === "pickup" ? t.numberLabelPickup : t.numberLabelConsult}
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 size={38} color="#0F8B8D" />
+                <h2 className="text-3xl font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                  {t.doneTitle}
+                </h2>
+              </div>
+
+              {/* 横置き: 左=受付番号 / 右=案内（マイナンバー・QR）。縦幅を抑えて1画面に収める */}
+              <div className="w-full flex flex-col md:flex-row gap-4 justify-center md:items-stretch">
+                <div
+                  className="px-10 py-5 rounded-3xl text-center flex flex-col items-center justify-center shrink-0 md:self-auto"
+                  style={{ background: "#FFFFFF", border: "2px solid #0F8B8D" }}
+                >
+                  <div className="text-base mb-1" style={{ color: "#8A7378" }}>
+                    {done.visitType === "pickup" ? t.numberLabelPickup : t.numberLabelConsult}
+                  </div>
+                  <div className="text-6xl font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                    {done.number}
+                  </div>
                 </div>
-                <div className="text-6xl font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
-                  {done.number}
+
+                <div className="flex flex-col gap-3 md:max-w-md flex-1 justify-center">
+                  {done.insurance === "mynumber" && (
+                    <div className="px-4 py-3.5 rounded-2xl flex items-start gap-3 text-left" style={{ background: "#DFF5F3", color: "#0F6B6D" }}>
+                      <CreditCard size={22} className="shrink-0 mt-0.5" />
+                      <div>
+                        <div className="text-base font-bold mb-0.5">{t.mynumberGuideTitle}</div>
+                        <div className="text-sm">
+                          {t.mynumberGuideBody}
+                          {!doneQrUrl && ` ${t.mynumberThenSit}`}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {doneQrUrl ? (
+                    <div className="p-4 rounded-2xl flex items-center gap-4 text-left" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                      <QrImage url={doneQrUrl} size={150} />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <Smartphone size={20} color="#0F8B8D" className="shrink-0" />
+                          <span className="text-lg font-bold leading-snug" style={{ color: "#3A2E30" }}>
+                            {doneQrBase === FOLLOWUP_URL ? t.qrTitleSimple : t.qrTitle}
+                          </span>
+                        </div>
+                        <p className="text-sm" style={{ color: "#8A7378" }}>
+                          {done.insurance === "mynumber" ? t.qrBody : t.qrBodyNoCard}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    done.insurance !== "mynumber" && (
+                      <p className="text-lg text-center md:text-left" style={{ color: "#8A7378" }}>
+                        {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
+                      </p>
+                    )
+                  )}
+
+                  {printState && (
+                    <div
+                      className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm"
+                      style={
+                        printState === "failed"
+                          ? { background: "#FDF3E7", color: "#9A6B2F" }
+                          : { background: "#F4EFF0", color: "#8A7378" }
+                      }
+                    >
+                      <Printer size={18} className="shrink-0" />
+                      <span>
+                        {printState === "printing" && t.ticketPrinting}
+                        {printState === "printed" && t.ticketTake}
+                        {printState === "failed" && t.ticketFail}
+                        {printState === "failed" && printDetail && (
+                          <span className="block text-xs opacity-70">{t.errorForStaff}: {printDetail}</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {done.insurance === "mynumber" && (
-                <div className="p-5 rounded-3xl flex items-start gap-4 text-left w-full max-w-xl" style={{ background: "#DFF5F3", color: "#0F6B6D" }}>
-                  <CreditCard size={26} className="shrink-0 mt-1" />
-                  <div>
-                    <div className="text-lg font-bold mb-0.5">{t.mynumberGuideTitle}</div>
-                    <div className="text-base">
-                      {t.mynumberGuideBody}
-                      {!doneQrBase && ` ${t.mynumberThenSit}`}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {doneQrBase ? (
-                <div className="p-6 rounded-3xl flex items-center gap-6 text-left w-full max-w-xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
-                  {/* 受付IDをQRに埋め込む — 問診票送信時に一緒に保存され、名前の表記に
-                      関係なく受付一覧の行と確実に紐付く。言語も渡して、英語で受付した
-                      患者には問診票を英語ファーストで開く */}
-                  <QrImage url={`${doneQrBase}${doneQrBase.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(done.checkinId)}&lang=${lang}`} />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Smartphone size={22} color="#0F8B8D" className="shrink-0" />
-                      <span className="text-xl font-bold" style={{ color: "#3A2E30" }}>
-                        {doneQrBase === FOLLOWUP_URL ? t.qrTitleSimple : t.qrTitle}
-                      </span>
-                    </div>
-                    <p className="text-base" style={{ color: "#8A7378" }}>
-                      {done.insurance === "mynumber" ? t.qrBody : t.qrBodyNoCard}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                done.insurance !== "mynumber" && (
-                  <p className="text-xl max-w-xl" style={{ color: "#8A7378" }}>
-                    {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
-                  </p>
-                )
-              )}
-
-              <button
-                onClick={reset}
-                className="px-10 py-4 rounded-2xl text-lg font-medium active:opacity-70"
-                style={{ background: "#FFFFFF", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
-              >
-                {t.backToTop}
-              </button>
-              <p className="text-sm" style={{ color: "#C9AEB3" }}>{t.autoReturn}</p>
+              <div className="flex items-center gap-5">
+                <button
+                  onClick={reset}
+                  className="px-8 py-3 rounded-2xl text-lg font-medium active:opacity-70"
+                  style={{ background: "#FFFFFF", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  {t.backToTop}
+                </button>
+                <p className="text-sm" style={{ color: "#C9AEB3" }}>{t.autoReturn}</p>
+              </div>
             </div>
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+// サーマルプリンタ（Epson TMシリーズ / ePOS-Print）の設定画面。
+// 受付機のiPadで https://…/kiosk/?setup を開いて設定する（設定はその端末のlocalStorageに保存）。
+function PrinterSetup() {
+  const saved = getPrinterConfig();
+  const [cfg, setCfg] = useState({
+    enabled: saved?.enabled ?? true,
+    ip: saved?.ip || "",
+    scheme: saved?.scheme || "https",
+    devid: saved?.devid || "local_printer",
+  });
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const save = () => {
+    savePrinterConfig(cfg);
+    setStatus("保存しました。この端末での受付完了時に自動で発券されます。");
+  };
+
+  const testPrint = async () => {
+    savePrinterConfig(cfg);
+    setBusy(true);
+    setStatus("テスト印刷を送信中…");
+    try {
+      const now = new Date();
+      const res = await printTicket({
+        number: 99,
+        typeJa: "テスト印刷",
+        typeEn: "Test print",
+        dateStr: `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+        qrUrl: "https://kladiesclinic.github.io/kiosk/",
+        qrNoteLines: ["テスト用QRコード", "Test QR code"],
+      });
+      setStatus(res.skipped ? "プリンタが無効またはIP未入力のため送信していません。" : "テスト印刷を送信しました。プリンタから受付票が出れば設定完了です。");
+    } catch (e) {
+      setStatus(`テスト印刷に失敗しました: ${e?.message || e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const field = { background: "#FFFFFF", border: "2px solid #F2DFE4", color: "#3A2E30" };
+  return (
+    <div className="min-h-screen p-8 flex justify-center" style={{ background: "#FFF8F7", fontFamily: "'Noto Sans JP', sans-serif" }}>
+      <style>{FONT_IMPORT}</style>
+      <div className="w-full max-w-lg flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <Printer size={28} color="#0F8B8D" />
+          <h1 className="text-2xl font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+            レシートプリンタ設定
+          </h1>
+        </div>
+        <p className="text-sm" style={{ color: "#8A7378" }}>
+          Epson TMシリーズ（ePOS-Print対応機）用の設定です。設定はこの端末（iPad）にのみ保存されます。
+          プリンタと受付機は同じWi-Fiに接続してください。
+        </p>
+
+        <label className="flex items-center gap-3 p-4 rounded-2xl" style={field}>
+          <input
+            type="checkbox"
+            checked={cfg.enabled}
+            onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })}
+            className="w-5 h-5"
+          />
+          <span className="text-base font-medium">受付完了時に自動で受付票を発券する</span>
+        </label>
+
+        <div>
+          <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>プリンタのIPアドレス（例: 192.168.11.70）</div>
+          <input
+            value={cfg.ip}
+            onChange={(e) => setCfg({ ...cfg, ip: e.target.value.trim() })}
+            placeholder="192.168.11.70"
+            inputMode="decimal"
+            className="w-full p-4 rounded-2xl text-lg outline-none"
+            style={field}
+          />
+        </div>
+
+        <div>
+          <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>接続方式</div>
+          <select
+            value={cfg.scheme}
+            onChange={(e) => setCfg({ ...cfg, scheme: e.target.value })}
+            className="w-full p-4 rounded-2xl text-lg outline-none"
+            style={field}
+          >
+            <option value="https">https（GitHub Pages配信ではこちら。プリンタのSSL証明書設定が必要）</option>
+            <option value="http">http（LAN内のhttp配信で動かす場合のみ）</option>
+          </select>
+        </div>
+
+        <div>
+          <div className="text-sm mb-1.5" style={{ color: "#8A7378" }}>デバイスID（通常は local_printer のまま）</div>
+          <input
+            value={cfg.devid}
+            onChange={(e) => setCfg({ ...cfg, devid: e.target.value.trim() })}
+            className="w-full p-4 rounded-2xl text-lg outline-none"
+            style={field}
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={save}
+            className="flex-1 py-4 rounded-2xl text-lg font-bold"
+            style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+          >
+            保存
+          </button>
+          <button
+            onClick={testPrint}
+            disabled={busy}
+            className="flex-1 py-4 rounded-2xl text-lg font-bold"
+            style={{ background: "#FFFFFF", border: "2px solid #0F8B8D", color: "#0F8B8D", opacity: busy ? 0.5 : 1 }}
+          >
+            テスト印刷
+          </button>
+        </div>
+
+        {status && (
+          <p className="text-sm p-4 rounded-2xl" style={{ background: "#F4EFF0", color: "#5C4A4E" }}>{status}</p>
+        )}
+
+        <a href={window.location.pathname} className="text-sm underline" style={{ color: "#0F8B8D" }}>
+          受付画面にもどる
+        </a>
+      </div>
     </div>
   );
 }
@@ -609,5 +842,8 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  return <StaffGate>{hash === "#staff" ? <StaffView /> : <Kiosk />}</StaffGate>;
+  // ?setup でレシートプリンタの設定画面（スタッフがiPadで開く。StaffGateの内側）
+  const isSetup = new URLSearchParams(window.location.search).has("setup");
+
+  return <StaffGate>{isSetup ? <PrinterSetup /> : hash === "#staff" ? <StaffView /> : <Kiosk />}</StaffGate>;
 }
