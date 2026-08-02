@@ -424,8 +424,9 @@ function Kiosk() {
               {done.visitType === "consult" ? (
                 <div className="p-6 rounded-3xl flex items-center gap-6 text-left w-full max-w-xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
                   {/* 受付IDをQRに埋め込む — 問診票送信時に一緒に保存され、名前の表記に
-                      関係なく受付一覧の行と確実に紐付く */}
-                  <QrImage url={`${INTAKE_URL}${INTAKE_URL.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(done.checkinId)}`} />
+                      関係なく受付一覧の行と確実に紐付く。言語も渡して、英語で受付した
+                      患者には問診票を英語ファーストで開く */}
+                  <QrImage url={`${INTAKE_URL}${INTAKE_URL.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(done.checkinId)}&lang=${lang}`} />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
                       <Smartphone size={22} color="#0F8B8D" className="shrink-0" />

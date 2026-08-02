@@ -681,6 +681,82 @@
   // これで受付一覧の行と問診票が名前の表記に関係なく確実に紐付く。直接開いた場合は空。
   var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
 
+  /* ---- 表示言語（日本語ファースト） ----
+     HTMLは「英語が主・日本語(.ja)が従」で書かれているが、既定では日本語を主に
+     入れ替えて表示する。?lang=en のときだけ英語主体のまま。受付機のQRは選択中の
+     言語を付けてくるので、英語で受付した患者には英語ファーストで開く。 */
+  var PAGE_LANG = (new URLSearchParams(window.location.search).get("lang") || "ja").toLowerCase() === "en" ? "en" : "ja";
+
+  (function () {
+    // 言語切り替えリンク（checkin等のパラメータは維持する）
+    var head = document.querySelector(".page-head");
+    if (head) {
+      var sw = document.createElement("a");
+      var p = new URLSearchParams(window.location.search);
+      p.set("lang", PAGE_LANG === "ja" ? "en" : "ja");
+      sw.href = window.location.pathname + "?" + p.toString();
+      sw.textContent = PAGE_LANG === "ja" ? "English version →" : "日本語版はこちら →";
+      sw.style.cssText = "display:inline-block;margin-bottom:14px;font-size:13px;font-weight:600;color:var(--accent);text-decoration:none;";
+      head.insertBefore(sw, head.firstChild);
+    }
+    if (PAGE_LANG === "en") return;
+
+    document.documentElement.lang = "ja";
+    document.title = "問診票 ／ Questionnaire, ケイ・レディースクリニック新宿";
+
+    // 「英語テキスト＋<span class=ja>日本語</span>」の組を汎用的に入れ替える。
+    // input類・「追加処方は記入不要」タグは動かさない。
+    [].forEach.call(document.querySelectorAll(".ja"), function (jaSpan) {
+      var parent = jaSpan.parentNode;
+      if (!parent) return;
+      var engNodes = [].filter.call(parent.childNodes, function (n) {
+        if (n === jaSpan) return false;
+        if (n.nodeType === 1) {
+          var tag = n.tagName.toUpperCase();
+          if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || tag === "SVG") return false;
+          if (n.classList && (n.classList.contains("skip-tag") || n.classList.contains("ja"))) return false;
+        }
+        return true;
+      });
+      var engText = engNodes.map(function (n) { return n.textContent; }).join(" ").replace(/\s+/g, " ").trim();
+      var jaText = jaSpan.textContent.trim();
+      if (!engText || !jaText) return;
+      parent.insertBefore(document.createTextNode(jaText), engNodes[0]);
+      engNodes.forEach(function (n) { parent.removeChild(n); });
+      jaSpan.textContent = engText;
+    });
+
+    // 見出し・ボタンなど個別の差し替え
+    var eyebrow = document.querySelector(".eyebrow");
+    if (eyebrow) eyebrow.textContent = "診察の前に ／ Before your consultation";
+    var display = document.querySelector("h1.display");
+    if (display) display.innerHTML = "問診票<em> Your questionnaire.</em>";
+    function setButtonText(el, text) {
+      if (!el) return;
+      for (var i = 0; i < el.childNodes.length; i++) {
+        var n = el.childNodes[i];
+        if (n.nodeType === 3 && n.textContent.trim()) { n.textContent = text; return; }
+      }
+    }
+    setButtonText(document.getElementById("if-submit"), "問診票を送信する ");
+    setButtonText(document.getElementById("if-print"), " 印刷・PDF保存");
+    [].forEach.call(document.querySelectorAll(".unit-or"), function (el) { el.textContent = "または"; });
+    var note = document.querySelector(".note-box");
+    if (note) {
+      note.innerHTML = "問診項目はOC・LEPガイドライン（日本産科婦人科学会 2020年版）に基づいています。回答は医療情報として厳重に管理されます。緊急の場合はこのフォームではなく<strong>119</strong>番（救急）または最寄りの救急外来をご利用ください。";
+    }
+    var PLACEHOLDERS_JA = {
+      "if-ec-timing": "例）7月28日 23時ごろ",
+      "if-cycle-detail": "例）28日周期 ／ 2〜3ヶ月に1回",
+      "if-refill-name": "例）ヘルペスのお薬",
+      "if-oc-detail": "例）マーベロン28を2年",
+    };
+    [].forEach.call(document.querySelectorAll("input[placeholder], textarea[placeholder]"), function (el) {
+      if (PLACEHOLDERS_JA[el.id]) el.placeholder = PLACEHOLDERS_JA[el.id];
+      else el.placeholder = el.placeholder.replace(/^e\.g\.\s*/, "例）");
+    });
+  })();
+
   /* ---- カタカナ表記の自動推測 ----
      名前欄の入力からカタカナ欄を自動で埋める。よくある各国の名前は辞書で、
      それ以外のラテン文字は英語風の読みの音節変換で近似する。あくまで「推測」で、
