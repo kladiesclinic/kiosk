@@ -355,8 +355,15 @@ function Kiosk() {
     } catch (e) {
       console.error("check-in failed:", e);
       setErrorMsg(true);
-      // スタッフが原因を特定できるよう、技術的なエラー内容も小さく出しておく
-      setErrorDetail(e?.message || String(e));
+      // スタッフが原因を特定できるよう、技術的なエラー内容も小さく出しておく。
+      // RLS違反 = この端末のログインアカウントが staff_profiles に登録されていない
+      // （またはユーザー再作成で紐付けが切れた）ケースがほとんどなので、対処も添える
+      const msg = e?.message || String(e);
+      setErrorDetail(
+        /row-level security/i.test(msg)
+          ? `${msg} ／ この端末のログインがスタッフとして認識されていません。ページを再読み込みしてスタッフアカウントでログインし直すか、このアカウントをスタッフ登録（staff_profiles）してください。`
+          : msg
+      );
     } finally {
       setBusy(false);
     }
