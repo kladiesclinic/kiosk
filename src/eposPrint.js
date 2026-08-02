@@ -34,21 +34,23 @@ const esc = (s) =>
 
 // 受付票の中身（<epos-print>要素）を組み立てる。58mm幅（TM-m10, フォントA 35桁）でも
 // 収まるよう、区切り線は32桁・英文は35桁以内にしてある。80mm機ではそのまま左寄せ気味に出る。
-// number: 受付番号 / typeJa,typeEn: 種別 / dateStr: 日時 / qrUrl: 問診票URL（なければQRなし）
-export function buildTicketBody({ number, typeJa, typeEn, dateStr, qrUrl, qrNoteLines = [] }) {
+// お呼び出しは番号ではなく名前で行う運用のため、名前を大きく印字する
+// （受付番号は照合用に小さく残す）。
+// number: 受付番号 / patientName: 氏名 / typeJa,typeEn: 種別 / dateStr: 日時
+// qrUrl: 問診票URL（なければQRなし）
+export function buildTicketBody({ number, patientName, typeJa, typeEn, dateStr, qrUrl, qrNoteLines = [] }) {
   let b = "";
   b += `<text lang="ja"/><text smooth="true"/><text align="center"/>`;
   b += `<text width="1" height="1">ケイクリ レディースクリニック&#10;</text>`;
   b += `<text>K Ladies Clinic Shinjuku&#10;</text>`;
   b += `<feed line="1"/>`;
-  b += `<text>受付番号 / Ticket No.&#10;</text>`;
+  b += `<text>お名前 / Name&#10;</text>`;
   b += `<feed unit="6"/>`;
-  b += `<text width="5" height="5">${esc(number)}</text>`;
-  b += `<text width="1" height="1">&#10;</text>`;
+  b += `<text width="2" height="2">${esc(patientName)} 様&#10;</text>`;
   b += `<feed line="1"/>`;
   b += `<text>${esc(typeJa)}&#10;</text>`;
   b += `<text>${esc(typeEn)}&#10;</text>`;
-  b += `<text>${esc(dateStr)}&#10;</text>`;
+  b += `<text>受付No.${esc(number)}  ${esc(dateStr)}&#10;</text>`;
   if (qrUrl) {
     b += `<feed line="1"/>`;
     b += `<text>--------------------------------&#10;</text>`;

@@ -175,9 +175,9 @@ function ErrorBox({ message, detail, staffLabel }) {
 const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("demo") : null;
 const DEMO_DONE =
   DEMO === "done"
-    ? { number: 12, visitType: "consult", insurance: "mynumber", checkinId: "c-demo", visitKind: "first", returnReason: null }
+    ? { number: 12, patientName: "山田 花子", visitType: "consult", insurance: "mynumber", checkinId: "c-demo", visitKind: "first", returnReason: null }
     : DEMO === "done-pickup"
-      ? { number: 12, visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null }
+      ? { number: 12, patientName: "山田 花子", visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null }
       : null;
 
 function Kiosk() {
@@ -290,6 +290,7 @@ function Kiosk() {
     const dateStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
     const ticket = {
       number: d.number,
+      patientName: d.patientName,
       typeJa: d.visitType === "pickup" ? "お薬のお受け取り" : "診察",
       typeEn: d.visitType === "pickup" ? "Medication pick-up" : "Consultation",
       dateStr,
@@ -345,7 +346,7 @@ function Kiosk() {
         status: "waiting",
       });
       if (error) throw error;
-      const d = { number, visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason };
+      const d = { number, patientName: name.trim(), visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason };
       setDone(d);
       const pc = getPrinterConfig();
       setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
@@ -691,15 +692,19 @@ function Kiosk() {
 
               {/* 横置き: 左=受付番号 / 右=案内（マイナンバー・QR）。縦幅を抑えて1画面に収める */}
               <div className="w-full flex flex-col md:flex-row gap-4 justify-center md:items-stretch">
+                {/* お呼び出しは番号ではなくお名前で行う運用のため、番号ではなく名前を大きく出す
+                    （受付番号は採番・保存は続け、スタッフ画面の並び順・照合に使う） */}
                 <div
-                  className="px-10 py-5 rounded-3xl text-center flex flex-col items-center justify-center shrink-0 md:self-auto"
+                  className="px-8 py-5 rounded-3xl text-center flex flex-col items-center justify-center shrink-0 md:self-auto md:max-w-xs"
                   style={{ background: "#FFFFFF", border: "2px solid #0F8B8D" }}
                 >
-                  <div className="text-base mb-1" style={{ color: "#8A7378" }}>
-                    {done.visitType === "pickup" ? t.numberLabelPickup : t.numberLabelConsult}
+                  <div className="text-base mb-1" style={{ color: "#8A7378" }}>{t.doneNameLabel}</div>
+                  <div className="text-4xl font-bold break-words max-w-full" style={{ color: "#0F8B8D", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                    {done.patientName}
+                    {t.doneNameSuffix}
                   </div>
-                  <div className="text-6xl font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
-                    {done.number}
+                  <div className="text-sm mt-2" style={{ color: "#8A7378" }}>
+                    {done.visitType === "pickup" ? t.pickupTitle : t.consultTitle}
                   </div>
                 </div>
 
@@ -808,6 +813,7 @@ function PrinterSetup() {
       const now = new Date();
       const res = await printTicket({
         number: 99,
+        patientName: "受付 花子",
         typeJa: "テスト印刷",
         typeEn: "Test print",
         dateStr: `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, "0")}/${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
