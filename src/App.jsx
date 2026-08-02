@@ -10,7 +10,6 @@ import {
   PenLine,
   CalendarDays,
   Pill,
-  CreditCard,
   Wallet,
   IdCard,
   Languages,
@@ -22,6 +21,7 @@ import {
   Printer,
   Plus,
   Minus,
+  MoveLeft,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabase.js";
@@ -32,6 +32,12 @@ import { getPrinterConfig, savePrinterConfig, printTicket } from "./eposPrint.js
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
+/* マイナンバー読み取り画面の「左のリーダーへ」矢印アニメーション */
+@keyframes mnArrow {
+  0%, 100% { transform: translateX(10px); opacity: 0.6; }
+  50% { transform: translateX(-14px); opacity: 1; }
+}
+.mn-arrow { animation: mnArrow 1.6s ease-in-out infinite; }
 `;
 
 // 問診票（このアプリの public/intake.html — 日英併記）のURL。
@@ -170,15 +176,17 @@ function ErrorBox({ message, detail, staffLabel }) {
   );
 }
 
-// ローカル開発時のみ ?demo=done / ?demo=done-pickup で完了画面を直接表示できる
-// （レイアウト確認用。本番ビルドでは import.meta.env.DEV が false のため無効）
+// ローカル開発時のみ ?demo=done / ?demo=done-pickup / ?demo=mn-read / ?demo=mn-complete で
+// 各画面を直接表示できる（レイアウト確認用。本番ビルドでは import.meta.env.DEV が false のため無効）
 const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("demo") : null;
 const DEMO_DONE =
-  DEMO === "done"
+  DEMO === "done" || DEMO === "mn-read" || DEMO === "mn-complete"
     ? { number: 12, patientName: "山田 花子", visitType: "consult", insurance: "mynumber", checkinId: "c-demo", visitKind: "first", returnReason: null }
     : DEMO === "done-pickup"
       ? { number: 12, patientName: "山田 花子", visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null }
       : null;
+const DEMO_STEP =
+  DEMO === "mn-read" ? "mynumber-read" : DEMO === "mn-complete" ? "mynumber-complete" : DEMO_DONE ? "done" : "home";
 
 function Kiosk() {
   const [lang, setLang] = useState("ja");
@@ -188,7 +196,7 @@ function Kiosk() {
   // 診察:       home → consult-name → consult-kind（初診/再診）
   //             →（再診なら consult-return: 検査結果/前回の続き/新しい症状）
   //             → insurance → done（初診・新しい症状=フル問診票QR / 前回の続き=簡易問診票QR / 検査結果=QRなし）
-  const [step, setStep] = useState(DEMO_DONE ? "done" : "home");
+  const [step, setStep] = useState(DEMO_STEP);
   const [visitType, setVisitType] = useState(null); // "pickup" | "consult"
   const [name, setName] = useState("");
   // 生年月日 — <input type="date"> はOSの言語で「年/月/日」表示になってしまい
@@ -252,6 +260,13 @@ function Kiosk() {
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
+  }, [step]);
+
+  // マイナンバー確認完了画面は数秒見せてから自動で受付完了画面へ
+  useEffect(() => {
+    if (step !== "mynumber-complete") return;
+    const t = setTimeout(() => setStep("done"), 2500);
+    return () => clearTimeout(t);
   }, [step]);
 
   const toggleMed = (id) => {
@@ -350,7 +365,8 @@ function Kiosk() {
       setDone(d);
       const pc = getPrinterConfig();
       setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
-      setStep("done");
+      // マイナンバーカードの方は、完了画面の前にカードリーダーでの確認手順を挟む
+      setStep(insuranceChoice === "mynumber" ? "mynumber-read" : "done");
       autoPrintTicket(d, lang);
     } catch (e) {
       console.error("check-in failed:", e);
@@ -688,6 +704,43 @@ function Kiosk() {
             </div>
           )}
 
+          {step === "mynumber-read" && (
+            <div className="flex flex-col gap-4">
+              <StepTitle title={t.mnReadTitle} subtitle={t.mnReadSubtitle} />
+              {/* リーダー（Panasonic製・iPadの左側に設置）を指す左向き矢印 */}
+              <div className="p-6 rounded-3xl flex items-center gap-6" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                <MoveLeft size={96} color="#0F8B8D" className="shrink-0 mn-arrow" />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <IdCard size={40} color="#0F8B8D" className="shrink-0" />
+                    <div className="text-2xl font-bold leading-snug" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                      {t.mnReadInstruction}
+                    </div>
+                  </div>
+                  <div className="text-base" style={{ color: "#8A7378" }}>{t.mnReadHint}</div>
+                  <div className="text-sm" style={{ color: "#B08A90" }}>{t.mnReadTrouble}</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setStep("mynumber-complete")}
+                className="w-full py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-2 active:opacity-80"
+                style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+              >
+                {t.mnReadDoneBtn} <ChevronRight size={24} />
+              </button>
+            </div>
+          )}
+
+          {step === "mynumber-complete" && (
+            <div className="flex flex-col items-center gap-5 text-center">
+              <CheckCircle2 size={80} color="#0F8B8D" />
+              <h2 className="text-3xl font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                {t.mnCompleteTitle}
+              </h2>
+              <p className="text-lg" style={{ color: "#8A7378" }}>{t.mnCompleteBody}</p>
+            </div>
+          )}
+
           {step === "done" && done && (
             <div className="flex flex-col items-center gap-4">
               <div className="flex items-center gap-3">
@@ -715,20 +768,9 @@ function Kiosk() {
                   </div>
                 </div>
 
+                {/* マイナンバー確認は完了画面より前の専用ステップ（mynumber-read）で済ませているので、
+                    ここでは問診票QRまたは待機案内のみを出す */}
                 <div className="flex flex-col gap-3 md:max-w-md flex-1 justify-center">
-                  {done.insurance === "mynumber" && (
-                    <div className="px-4 py-3.5 rounded-2xl flex items-start gap-3 text-left" style={{ background: "#DFF5F3", color: "#0F6B6D" }}>
-                      <CreditCard size={22} className="shrink-0 mt-0.5" />
-                      <div>
-                        <div className="text-base font-bold mb-0.5">{t.mynumberGuideTitle}</div>
-                        <div className="text-sm">
-                          {t.mynumberGuideBody}
-                          {!doneQrUrl && ` ${t.mynumberThenSit}`}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   {doneQrUrl ? (
                     <div className="p-4 rounded-2xl flex items-center gap-4 text-left" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
                       <QrImage url={doneQrUrl} size={150} />
@@ -740,16 +782,14 @@ function Kiosk() {
                           </span>
                         </div>
                         <p className="text-sm" style={{ color: "#8A7378" }}>
-                          {done.insurance === "mynumber" ? t.qrBody : t.qrBodyNoCard}
+                          {t.qrBodyNoCard}
                         </p>
                       </div>
                     </div>
                   ) : (
-                    done.insurance !== "mynumber" && (
-                      <p className="text-lg text-center md:text-left" style={{ color: "#8A7378" }}>
-                        {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
-                      </p>
-                    )
+                    <p className="text-lg text-center md:text-left" style={{ color: "#8A7378" }}>
+                      {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
+                    </p>
                   )}
 
                   {printState && (
