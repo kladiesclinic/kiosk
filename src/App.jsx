@@ -262,10 +262,10 @@ function Kiosk() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [step]);
 
-  // マイナンバー確認完了画面は数秒見せてから自動で受付完了画面へ
+  // マイナンバー確認完了画面はチェックマークを一瞬見せるだけで、すぐ受付完了画面へ
   useEffect(() => {
     if (step !== "mynumber-complete") return;
-    const t = setTimeout(() => setStep("done"), 2500);
+    const t = setTimeout(() => setStep("done"), 1200);
     return () => clearTimeout(t);
   }, [step]);
 
