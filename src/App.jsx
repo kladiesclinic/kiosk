@@ -331,6 +331,14 @@ function Kiosk() {
     setErrorMsg(false);
     setErrorDetail("");
     try {
+      // 長時間つけっぱなしでセッションが切れていると、送信がRLS違反で失敗して
+      // 患者さんに謎のエラーが出る。先にセッションを確かめ（必要なら自動更新）、
+      // 完全に切れていたらログイン画面に戻してスタッフに再設定してもらう
+      const { data: sess } = await supabase.auth.getSession();
+      if (!sess?.session) {
+        await supabase.auth.signOut();
+        return;
+      }
       const number = await nextCheckinNumber();
       const checkinId = `c-${Date.now()}`;
       // 薬名は言語に関わらずスタッフが読める日本語ラベル+個数（例: トリキュラー ×2）。
