@@ -154,8 +154,16 @@ export default function StaffView() {
 
   const toggleStatus = async (row) => {
     const next = row.status === "waiting" ? "done" : "waiting";
+    // 先に画面へ反映して「押した感」をすぐ返す（10秒ごとの自動更新と押下が
+    // 重なっても操作が消えないように）。DB更新に失敗したら元に戻してエラーを出す
+    setCheckins((prev) => prev.map((c) => (c.id === row.id ? { ...c, status: next } : c)));
     const { error } = await supabase.from("reception_checkins").update({ status: next }).eq("id", row.id);
-    if (!error) load();
+    if (error) {
+      setCheckins((prev) => prev.map((c) => (c.id === row.id ? { ...c, status: row.status } : c)));
+      setLoadError(`状態の更新に失敗しました: ${error.message} ／ ページを再読み込みしてスタッフアカウントでログインし直すと直ることがあります。`);
+    } else {
+      setLoadError("");
+    }
   };
 
   const waiting = checkins.filter((c) => c.status === "waiting");

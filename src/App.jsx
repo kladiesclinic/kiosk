@@ -750,47 +750,67 @@ function Kiosk() {
                   </div>
                 </div>
 
-                {/* マイナンバー確認は完了画面より前の専用ステップ（mynumber-read）で済ませているので、
-                    ここでは問診票QRまたは待機案内のみを出す */}
+                {/* マイナンバー確認は完了画面より前の専用ステップ（mynumber-read）で済ませている。
+                    問診票QRは画面には出さず、印刷された受付票のQRへ誘導する（ユーザー方針）。
+                    受付票が出ない状況（プリンタ未設定・印刷失敗）のときだけ、患者さんが
+                    問診票にたどり着けなくなるので画面QRを予備として表示する */}
                 <div className="flex flex-col gap-3 md:max-w-md flex-1 justify-center">
-                  {doneQrUrl ? (
-                    <div className="p-4 rounded-2xl flex items-center gap-4 text-left" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
-                      <QrImage url={doneQrUrl} size={150} />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <Smartphone size={20} color="#0F8B8D" className="shrink-0" />
-                          <span className="text-lg font-bold leading-snug" style={{ color: "#3A2E30" }}>
-                            {doneQrBase === FOLLOWUP_URL ? t.qrTitleSimple : t.qrTitle}
-                          </span>
+                  {(() => {
+                    const ticketCarriesQr = printState === "printing" || printState === "printed";
+                    if (doneQrUrl && ticketCarriesQr) {
+                      return (
+                        <div className="p-5 rounded-2xl flex items-start gap-4 text-left" style={{ background: "#DFF5F3", color: "#0F6B6D" }}>
+                          <Printer size={28} className="shrink-0 mt-0.5" />
+                          <div>
+                            <div className="text-lg font-bold mb-1">{t.ticketQrGuideTitle}</div>
+                            <p className="text-base">{t.ticketQrGuideBody}</p>
+                          </div>
                         </div>
-                        <p className="text-sm" style={{ color: "#8A7378" }}>
-                          {t.qrBodyNoCard}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-lg text-center md:text-left" style={{ color: "#8A7378" }}>
-                      {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
-                    </p>
-                  )}
+                      );
+                    }
+                    if (doneQrUrl) {
+                      return (
+                        <div className="p-4 rounded-2xl flex items-center gap-4 text-left" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                          <QrImage url={doneQrUrl} size={150} />
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <Smartphone size={20} color="#0F8B8D" className="shrink-0" />
+                              <span className="text-lg font-bold leading-snug" style={{ color: "#3A2E30" }}>
+                                {doneQrBase === FOLLOWUP_URL ? t.qrTitleSimple : t.qrTitle}
+                              </span>
+                            </div>
+                            <p className="text-sm" style={{ color: "#8A7378" }}>
+                              {t.qrBodyNoCard}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return (
+                      <p className="text-lg text-center md:text-left" style={{ color: "#8A7378" }}>
+                        {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
+                      </p>
+                    );
+                  })()}
 
-                  {printState && (
-                    <div
-                      className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm"
-                      style={
-                        printState === "failed"
-                          ? { background: "#FDF3E7", color: "#9A6B2F" }
-                          : { background: "#F4EFF0", color: "#8A7378" }
-                      }
-                    >
+                  {printState === "printing" && !doneQrUrl && (
+                    <div className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm" style={{ background: "#F4EFF0", color: "#8A7378" }}>
+                      <Printer size={18} className="shrink-0" />
+                      <span>{t.ticketPrinting}</span>
+                    </div>
+                  )}
+                  {printState === "printed" && !doneQrUrl && (
+                    <div className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm" style={{ background: "#F4EFF0", color: "#8A7378" }}>
+                      <Printer size={18} className="shrink-0" />
+                      <span>{t.ticketTake}</span>
+                    </div>
+                  )}
+                  {printState === "failed" && (
+                    <div className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm" style={{ background: "#FDF3E7", color: "#9A6B2F" }}>
                       <Printer size={18} className="shrink-0" />
                       <span>
-                        {printState === "printing" && t.ticketPrinting}
-                        {printState === "printed" && t.ticketTake}
-                        {printState === "failed" && t.ticketFail}
-                        {printState === "failed" && printDetail && (
-                          <span className="block text-xs opacity-70">{t.errorForStaff}: {printDetail}</span>
-                        )}
+                        {t.ticketFail}
+                        {printDetail && <span className="block text-xs opacity-70">{t.errorForStaff}: {printDetail}</span>}
                       </span>
                     </div>
                   )}
