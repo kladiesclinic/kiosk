@@ -183,7 +183,7 @@ const DEMO_DONE =
   DEMO === "done" || DEMO === "mn-read"
     ? { number: 12, patientName: "山田 花子", visitType: "consult", insurance: "mynumber", checkinId: "c-demo", visitKind: "first", returnReason: null }
     : DEMO === "done-pickup"
-      ? { number: 12, patientName: "山田 花子", visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null }
+      ? { number: 12, patientName: "山田 花子", visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null, medications: ["トリキュラー ×2", "その他: ロキソニン"] }
       : null;
 const DEMO_STEP = DEMO === "mn-read" ? "mynumber-read" : DEMO_DONE ? "done" : "home";
 
@@ -303,6 +303,7 @@ function Kiosk() {
       typeJa: d.visitType === "pickup" ? "お薬のお受け取り" : "診察",
       typeEn: d.visitType === "pickup" ? "Medication pick-up" : "Consultation",
       dateStr,
+      medLines: d.visitType === "pickup" ? d.medications || [] : [],
       qrUrl: qrUrlFor(d, langAtCheckin),
       qrNoteLines: [
         "待合室にお掛けのうえ、QRコードから",
@@ -332,6 +333,17 @@ function Kiosk() {
     try {
       const number = await nextCheckinNumber();
       const checkinId = `c-${Date.now()}`;
+      // 薬名は言語に関わらずスタッフが読める日本語ラベル+個数（例: トリキュラー ×2）。
+      // DB保存と受付票の印字の両方に使う
+      const medsList =
+        visitType === "pickup"
+          ? [
+              ...MED_IDS.filter((id) => medQty[id]).map((id) =>
+                MED_NO_QTY.includes(id) ? TEXT.ja.meds[id] : `${TEXT.ja.meds[id]} ×${medQty[id]}`
+              ),
+              ...(otherMed.trim() ? [`その他: ${otherMed.trim()}`] : []),
+            ]
+          : null;
       const { error } = await supabase.from("reception_checkins").insert({
         id: checkinId,
         date_key: todayKey(),
@@ -341,21 +353,12 @@ function Kiosk() {
         date_of_birth: dobStr || null,
         visit_kind: visitType === "consult" ? visitKind : null,
         return_reason: visitType === "consult" && visitKind === "return" ? returnReason : null,
-        // 薬名は言語に関わらずスタッフが読める日本語ラベル+個数で保存する（例: トリキュラー ×2）
-        medications:
-          visitType === "pickup"
-            ? [
-                ...MED_IDS.filter((id) => medQty[id]).map((id) =>
-                  MED_NO_QTY.includes(id) ? TEXT.ja.meds[id] : `${TEXT.ja.meds[id]} ×${medQty[id]}`
-                ),
-                ...(otherMed.trim() ? [`その他: ${otherMed.trim()}`] : []),
-              ]
-            : null,
+        medications: medsList,
         insurance: insuranceChoice,
         status: "waiting",
       });
       if (error) throw error;
-      const d = { number, patientName: name.trim(), visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason };
+      const d = { number, patientName: name.trim(), visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason, medications: medsList };
       setDone(d);
       if (insuranceChoice === "mynumber") {
         // マイナンバーカードの方は、完了画面の前にカードリーダーでの確認手順を挟む。

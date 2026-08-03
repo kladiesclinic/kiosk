@@ -37,8 +37,9 @@ const esc = (s) =>
 // お呼び出しは番号ではなく名前で行う運用のため、名前を大きく印字する
 // （受付番号は照合用に小さく残す）。
 // number: 受付番号 / patientName: 氏名 / typeJa,typeEn: 種別 / dateStr: 日時
+// medLines: 薬受け取りで選んだ薬（「トリキュラー ×2」等の行の配列。空なら印字しない）
 // qrUrl: 問診票URL（なければQRなし）
-export function buildTicketBody({ number, patientName, typeJa, typeEn, dateStr, qrUrl, qrNoteLines = [] }) {
+export function buildTicketBody({ number, patientName, typeJa, typeEn, dateStr, medLines = [], qrUrl, qrNoteLines = [] }) {
   let b = "";
   b += `<text lang="ja"/><text smooth="true"/><text align="center"/>`;
   b += `<text width="1" height="1">ケイクリ レディースクリニック&#10;</text>`;
@@ -51,6 +52,13 @@ export function buildTicketBody({ number, patientName, typeJa, typeEn, dateStr, 
   b += `<text>${esc(typeJa)}&#10;</text>`;
   b += `<text>${esc(typeEn)}&#10;</text>`;
   b += `<text>受付No.${esc(number)}  ${esc(dateStr)}&#10;</text>`;
+  if (medLines.length) {
+    b += `<feed line="1"/>`;
+    b += `<text>--------------------------------&#10;</text>`;
+    b += `<text>お受け取りのお薬 / Medication&#10;</text>`;
+    b += `<feed unit="4"/>`;
+    for (const m of medLines) b += `<text>${esc(m)}&#10;</text>`;
+  }
   if (qrUrl) {
     b += `<feed line="1"/>`;
     b += `<text>--------------------------------&#10;</text>`;
