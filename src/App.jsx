@@ -774,13 +774,21 @@ function Kiosk() {
                 <div className="flex flex-col gap-3 md:max-w-md flex-1 justify-center">
                   {(() => {
                     const ticketCarriesQr = printState === "printing" || printState === "printed";
-                    if (doneQrUrl && ticketCarriesQr) {
+                    if (ticketCarriesQr) {
+                      // 受付票が出た場合の案内。診察（問診票あり）は票のQRへ誘導し、
+                      // 薬受け取り・問診票なしは「票を取って待合室でお待ちください」だけにする
                       return (
                         <div className="p-5 rounded-2xl flex items-start gap-4 text-left" style={{ background: "#DFF5F3", color: "#0F6B6D" }}>
                           <Printer size={28} className="shrink-0 mt-0.5" />
                           <div>
                             <div className="text-lg font-bold mb-1">{t.ticketQrGuideTitle}</div>
-                            <p className="text-base">{t.ticketQrGuideBody}</p>
+                            <p className="text-base">
+                              {doneQrUrl
+                                ? t.ticketQrGuideBody
+                                : done.visitType === "pickup"
+                                  ? t.ticketSeatBodyPickup
+                                  : t.ticketSeatBodyConsult}
+                            </p>
                           </div>
                         </div>
                       );
@@ -810,18 +818,6 @@ function Kiosk() {
                     );
                   })()}
 
-                  {printState === "printing" && !doneQrUrl && (
-                    <div className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm" style={{ background: "#F4EFF0", color: "#8A7378" }}>
-                      <Printer size={18} className="shrink-0" />
-                      <span>{t.ticketPrinting}</span>
-                    </div>
-                  )}
-                  {printState === "printed" && !doneQrUrl && (
-                    <div className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm" style={{ background: "#F4EFF0", color: "#8A7378" }}>
-                      <Printer size={18} className="shrink-0" />
-                      <span>{t.ticketTake}</span>
-                    </div>
-                  )}
                   {printState === "failed" && (
                     <div className="px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-sm" style={{ background: "#FDF3E7", color: "#9A6B2F" }}>
                       <Printer size={18} className="shrink-0" />
