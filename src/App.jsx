@@ -966,18 +966,18 @@ function PrinterSetup() {
             className="w-full p-4 rounded-2xl text-lg outline-none"
             style={field}
           >
-            <option value="bt">Bluetooth（TM Print Assistantアプリ経由）</option>
-            <option value="lan">有線LAN・Wi-Fi（プリンタへ直接送信）</option>
+            <option value="bt">アプリ経由（TM Print Assistant — Bluetooth/LANどちらでも可・設定が簡単）</option>
+            <option value="lan">LANへ直接送信（アプリ切り替えなしで最速・プリンタのSSL設定が必要）</option>
           </select>
         </div>
 
         {cfg.method === "bt" ? (
           <div className="p-4 rounded-2xl text-sm flex flex-col gap-2" style={{ background: "#F4EFF0", color: "#5C4A4E" }}>
-            <div className="font-bold">Bluetooth発券の事前準備（最初に1回だけ）</div>
+            <div className="font-bold">アプリ経由発券の事前準備（最初に1回だけ）</div>
             <ol className="list-decimal ml-5 flex flex-col gap-1">
-              <li>iPadの「設定 → Bluetooth」でプリンタ（TM-m10）とペアリング</li>
+              <li>プリンタを接続（LANケーブルでルーターへ、またはiPadの「設定 → Bluetooth」でペアリング）</li>
               <li>App Storeで「Epson TM Print Assistant」をインストール</li>
-              <li>TM Print Assistantを開き、プリンタ（Bluetooth）を選択しておく</li>
+              <li>TM Print Assistantを開き、プリンタを検索して選択しておく</li>
               <li>下の「テスト印刷」で動作確認</li>
             </ol>
             <div>
