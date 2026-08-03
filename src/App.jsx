@@ -238,9 +238,9 @@ function Kiosk() {
   };
 
   // 一定時間操作がなければトップ画面に戻す（次の患者さんに前の人の情報を見せない）。
-  // 完了画面: 受付票が発券された場合は案内がすべて紙にあるので約1秒でトップへ。
+  // 完了画面: 受付票が発券された場合は案内がすべて紙にあるので約3秒でトップへ。
   // 発券できなかった場合は画面のQR・案内が頼りなので30秒残す。
-  const doneDelay = printState === "printing" || printState === "printed" ? 1000 : 30000;
+  const doneDelay = printState === "printing" || printState === "printed" ? 3000 : 30000;
   const idleTimer = useRef(null);
   useEffect(() => {
     if (step === "home" || DEMO) return;
