@@ -303,9 +303,9 @@ function Kiosk() {
       dateStr,
       qrUrl: qrUrlFor(d, langAtCheckin),
       qrNoteLines: [
-        "スマートフォンでQRコードを読み取り",
+        "待合室にお掛けのうえ、QRコードから",
         "問診票をご記入ください",
-        "Scan this QR code with your phone",
+        "Scan this QR in the waiting room",
         "to fill in the questionnaire",
       ],
     };
