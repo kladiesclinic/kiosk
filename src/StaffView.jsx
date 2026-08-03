@@ -94,7 +94,16 @@ export default function StaffView() {
   const [selectedForm, setSelectedForm] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [printing, setPrinting] = useState(false);
+  // 対応済み行を隠すか（端末ごとに記憶）
+  const [hideDone, setHideDone] = useState(() => localStorage.getItem("kiosk-staff-hide-done") === "1");
   const printAreaRef = useRef(null);
+
+  const toggleHideDone = () => {
+    setHideDone((v) => {
+      localStorage.setItem("kiosk-staff-hide-done", v ? "0" : "1");
+      return !v;
+    });
+  };
 
   const handlePrint = async () => {
     if (!printAreaRef.current || printing) return;
@@ -150,6 +159,8 @@ export default function StaffView() {
   };
 
   const waiting = checkins.filter((c) => c.status === "waiting");
+  const doneCount = checkins.length - waiting.length;
+  const visibleCheckins = hideDone ? waiting : checkins;
 
   return (
     <div style={{ fontFamily: "'Noto Sans JP', sans-serif" }}>
@@ -172,6 +183,13 @@ export default function StaffView() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <label
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
+            >
+              <input type="checkbox" checked={hideDone} onChange={toggleHideDone} className="w-4 h-4" />
+              対応済みを隠す{doneCount > 0 && `（${doneCount}件）`}
+            </label>
             <a
               href="#"
               onClick={(e) => { e.preventDefault(); window.location.hash = ""; }}
@@ -206,6 +224,10 @@ export default function StaffView() {
             </h2>
             {checkins.length === 0 ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>まだ受付はありません。</p>
+            ) : visibleCheckins.length === 0 ? (
+              <p className="text-sm" style={{ color: "#B08A90" }}>
+                待ちの受付はありません（対応済み{doneCount}件を非表示中）。
+              </p>
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
                 <div className="overflow-x-auto">
@@ -225,7 +247,7 @@ export default function StaffView() {
                       </tr>
                     </thead>
                     <tbody>
-                      {checkins.map((c) => {
+                      {visibleCheckins.map((c) => {
                         const f = c.visit_type === "consult" ? formFor(c) : null;
                         const isDone = c.status === "done";
                         return (
