@@ -478,7 +478,7 @@ function Kiosk() {
                   <span className="text-sm" style={{ color: "#B08A90" }}>{t.dobLabel}</span>
                 </div>
                 <div className="flex gap-3">
-                  {/* 日本語=年/月/日、英語=Month/Day/Year（米国式）の順で並べる */}
+                  {/* 日本語=年/月/日、英語=Day/Month/Year（英国式）の順で並べる */}
                   {(lang === "ja"
                     ? [
                         { key: "y", value: dobY, set: setDobY, max: 4, ph: t.dobYearPh, label: t.dobYear, wide: true },
@@ -486,8 +486,8 @@ function Kiosk() {
                         { key: "d", value: dobD, set: setDobD, max: 2, ph: "10", label: t.dobDay },
                       ]
                     : [
-                        { key: "m", value: dobM, set: setDobM, max: 2, ph: "5", label: t.dobMonth },
                         { key: "d", value: dobD, set: setDobD, max: 2, ph: "10", label: t.dobDay },
+                        { key: "m", value: dobM, set: setDobM, max: 2, ph: "5", label: t.dobMonth },
                         { key: "y", value: dobY, set: setDobY, max: 4, ph: t.dobYearPh, label: t.dobYear, wide: true },
                       ]
                   ).map((f) => (
