@@ -265,7 +265,7 @@ function Kiosk() {
   // マイナンバー確認完了画面はチェックマークを一瞬見せるだけで、すぐ受付完了画面へ
   useEffect(() => {
     if (step !== "mynumber-complete") return;
-    const t = setTimeout(() => setStep("done"), 1200);
+    const t = setTimeout(() => setStep("done"), 500);
     return () => clearTimeout(t);
   }, [step]);
 
