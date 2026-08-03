@@ -237,29 +237,31 @@ function Kiosk() {
   };
 
   // 一定時間操作がなければトップ画面に戻す（次の患者さんに前の人の情報を見せない）。
-  // 完了画面はQR読み取り・問診記入があるので少し長め。
+  // 完了画面: 受付票が発券された場合は案内がすべて紙にあるので約1秒でトップへ。
+  // 発券できなかった場合は画面のQR・案内が頼りなので30秒残す。
+  const doneDelay = printState === "printing" || printState === "printed" ? 1000 : 30000;
   const idleTimer = useRef(null);
   useEffect(() => {
-    if (step === "home") return;
+    if (step === "home" || DEMO) return;
     clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(reset, step === "done" ? 30000 : 120000);
+    idleTimer.current = setTimeout(reset, step === "done" ? doneDelay : 120000);
     return () => clearTimeout(idleTimer.current);
-  }, [step, name, dobY, dobM, dobD, visitKind, returnReason, medQty, otherMed]);
+  }, [step, printState, name, dobY, dobM, dobD, visitKind, returnReason, medQty, otherMed]);
 
   // Bluetooth発券では印刷アプリ（TM Print Assistant）に画面が切り替わる。
   // 非表示中にタイマーが切れて完了画面（番号・QR）が消えないよう、
   // 裏に回ったらタイマーを止め、戻ってきたら測り直す
   useEffect(() => {
     const onVis = () => {
-      if (step === "home") return;
+      if (step === "home" || DEMO) return;
       clearTimeout(idleTimer.current);
       if (document.visibilityState === "visible") {
-        idleTimer.current = setTimeout(reset, step === "done" ? 30000 : 120000);
+        idleTimer.current = setTimeout(reset, step === "done" ? doneDelay : 120000);
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [step]);
+  }, [step, doneDelay]);
 
   const toggleMed = (id) => {
     setMedQty((prev) => {
@@ -355,11 +357,17 @@ function Kiosk() {
       if (error) throw error;
       const d = { number, patientName: name.trim(), visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason };
       setDone(d);
-      const pc = getPrinterConfig();
-      setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
-      // マイナンバーカードの方は、完了画面の前にカードリーダーでの確認手順を挟む
-      setStep(insuranceChoice === "mynumber" ? "mynumber-read" : "done");
-      autoPrintTicket(d, lang);
+      if (insuranceChoice === "mynumber") {
+        // マイナンバーカードの方は、完了画面の前にカードリーダーでの確認手順を挟む。
+        // 受付票の発券は「確認が完了しました」タップ後（finishMynumber）に行う
+        setPrintState(null);
+        setStep("mynumber-read");
+      } else {
+        const pc = getPrinterConfig();
+        setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
+        setStep("done");
+        autoPrintTicket(d, lang);
+      }
     } catch (e) {
       console.error("check-in failed:", e);
       setErrorMsg(true);
@@ -714,7 +722,13 @@ function Kiosk() {
                 </div>
               </div>
               <button
-                onClick={() => setStep("done")}
+                onClick={() => {
+                  // マイナンバー確認が済んでから受付票を発券する（ユーザー指定の順序）
+                  const pc = getPrinterConfig();
+                  setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
+                  setStep("done");
+                  if (done) autoPrintTicket(done, lang);
+                }}
                 className="w-full py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-2 active:opacity-80"
                 style={{ background: "#0F8B8D", color: "#FFFFFF" }}
               >
