@@ -22,6 +22,7 @@ import {
   Plus,
   Minus,
   MoveLeft,
+  CreditCard,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { supabase } from "./supabase.js";
@@ -180,12 +181,12 @@ function ErrorBox({ message, detail, staffLabel }) {
 // 各画面を直接表示できる（レイアウト確認用。本番ビルドでは import.meta.env.DEV が false のため無効）
 const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("demo") : null;
 const DEMO_DONE =
-  DEMO === "done" || DEMO === "mn-read"
+  DEMO === "done" || DEMO === "mn-read" || DEMO === "hk-put"
     ? { number: 12, patientName: "山田 花子", visitType: "consult", insurance: "mynumber", checkinId: "c-demo", visitKind: "first", returnReason: null }
     : DEMO === "done-pickup"
       ? { number: 12, patientName: "山田 花子", visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null, medications: ["トリキュラー ×2", "その他: ロキソニン"] }
       : null;
-const DEMO_STEP = DEMO === "mn-read" ? "mynumber-read" : DEMO_DONE ? "done" : "home";
+const DEMO_STEP = DEMO === "mn-read" ? "mynumber-read" : DEMO === "hk-put" ? "hokensho-put" : DEMO_DONE ? "done" : "home";
 
 function Kiosk() {
   const [lang, setLang] = useState("ja");
@@ -370,14 +371,15 @@ function Kiosk() {
       setDone(d);
       if (insuranceChoice === "mynumber") {
         // マイナンバーカードの方は、完了画面の前にカードリーダーでの確認手順を挟む。
-        // 受付票の発券は「確認が完了しました」タップ後（finishMynumber）に行う
+        // 受付票の発券は「確認が完了しました」タップ後に行う
         setPrintState(null);
         setStep("mynumber-read");
+      } else if (insuranceChoice === "hokensho") {
+        // 保険証の方は「保険証入れに入れてください」の案内を挟み、「入れました」タップで発券
+        setPrintState(null);
+        setStep("hokensho-put");
       } else {
-        const pc = getPrinterConfig();
-        setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
-        setStep("done");
-        autoPrintTicket(d, lang);
+        finishWithTicket(d);
       }
     } catch (e) {
       console.error("check-in failed:", e);
@@ -398,8 +400,17 @@ function Kiosk() {
 
   const insuranceOptions = [
     { id: "mynumber", label: t.insMynumber, desc: t.insMynumberDesc, icon: IdCard },
+    { id: "hokensho", label: t.insHokensho, desc: t.insHokenshoDesc, icon: CreditCard },
     { id: "self_pay", label: t.insSelfPay, desc: t.insSelfPayDesc, icon: Wallet },
   ];
+
+  // 受付票を発券して完了画面へ（マイナンバー確認後・保険証提出後・自費の共通処理）
+  const finishWithTicket = (d) => {
+    const pc = getPrinterConfig();
+    setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
+    setStep("done");
+    if (d) autoPrintTicket(d, lang);
+  };
 
   const doneQrUrl = done ? qrUrlFor(done, lang) : null;
   const doneQrBase = done ? qrBaseFor(done) : null;
@@ -733,17 +744,33 @@ function Kiosk() {
                 </div>
               </div>
               <button
-                onClick={() => {
-                  // マイナンバー確認が済んでから受付票を発券する（ユーザー指定の順序）
-                  const pc = getPrinterConfig();
-                  setPrintState(pc?.enabled && (pc?.method === "bt" || pc?.ip) ? "printing" : null);
-                  setStep("done");
-                  if (done) autoPrintTicket(done, lang);
-                }}
+                onClick={() => finishWithTicket(done)}
                 className="w-full py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-2 active:opacity-80"
                 style={{ background: "#0F8B8D", color: "#FFFFFF" }}
               >
                 {t.mnReadDoneBtn} <ChevronRight size={24} />
+              </button>
+            </div>
+          )}
+
+          {step === "hokensho-put" && (
+            <div className="flex flex-col gap-4">
+              <StepTitle title={t.hkTitle} subtitle={t.hkSubtitle} />
+              <div className="p-6 rounded-3xl flex items-center gap-6" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
+                <CreditCard size={72} color="#0F8B8D" className="shrink-0" />
+                <div className="flex flex-col gap-2">
+                  <div className="text-2xl font-bold leading-snug" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                    {t.hkInstruction}
+                  </div>
+                  <div className="text-base" style={{ color: "#8A7378" }}>{t.hkHint}</div>
+                </div>
+              </div>
+              <button
+                onClick={() => finishWithTicket(done)}
+                className="w-full py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-2 active:opacity-80"
+                style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+              >
+                {t.hkDoneBtn} <ChevronRight size={24} />
               </button>
             </div>
           )}

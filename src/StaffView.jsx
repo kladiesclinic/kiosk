@@ -76,7 +76,7 @@ function normalizeName(s) {
   return (s || "").replace(/[\s　]/g, "");
 }
 
-const INSURANCE_LABEL = { mynumber: "マイナ保険証", self_pay: "自費" };
+const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "保険証", self_pay: "自費" };
 const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
 
 // 診察の区分表示（初診 / 再診・○○）
