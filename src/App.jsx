@@ -176,17 +176,16 @@ function ErrorBox({ message, detail, staffLabel }) {
   );
 }
 
-// ローカル開発時のみ ?demo=done / ?demo=done-pickup / ?demo=mn-read / ?demo=mn-complete で
+// ローカル開発時のみ ?demo=done / ?demo=done-pickup / ?demo=mn-read で
 // 各画面を直接表示できる（レイアウト確認用。本番ビルドでは import.meta.env.DEV が false のため無効）
 const DEMO = import.meta.env.DEV ? new URLSearchParams(window.location.search).get("demo") : null;
 const DEMO_DONE =
-  DEMO === "done" || DEMO === "mn-read" || DEMO === "mn-complete"
+  DEMO === "done" || DEMO === "mn-read"
     ? { number: 12, patientName: "山田 花子", visitType: "consult", insurance: "mynumber", checkinId: "c-demo", visitKind: "first", returnReason: null }
     : DEMO === "done-pickup"
       ? { number: 12, patientName: "山田 花子", visitType: "pickup", insurance: "self_pay", checkinId: "c-demo", visitKind: null, returnReason: null }
       : null;
-const DEMO_STEP =
-  DEMO === "mn-read" ? "mynumber-read" : DEMO === "mn-complete" ? "mynumber-complete" : DEMO_DONE ? "done" : "home";
+const DEMO_STEP = DEMO === "mn-read" ? "mynumber-read" : DEMO_DONE ? "done" : "home";
 
 function Kiosk() {
   const [lang, setLang] = useState("ja");
@@ -260,13 +259,6 @@ function Kiosk() {
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [step]);
-
-  // マイナンバー確認完了画面はチェックマークを一瞬見せるだけで、すぐ受付完了画面へ
-  useEffect(() => {
-    if (step !== "mynumber-complete") return;
-    const t = setTimeout(() => setStep("done"), 500);
-    return () => clearTimeout(t);
   }, [step]);
 
   const toggleMed = (id) => {
@@ -722,22 +714,12 @@ function Kiosk() {
                 </div>
               </div>
               <button
-                onClick={() => setStep("mynumber-complete")}
+                onClick={() => setStep("done")}
                 className="w-full py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-2 active:opacity-80"
                 style={{ background: "#0F8B8D", color: "#FFFFFF" }}
               >
                 {t.mnReadDoneBtn} <ChevronRight size={24} />
               </button>
-            </div>
-          )}
-
-          {step === "mynumber-complete" && (
-            <div className="flex flex-col items-center gap-5 text-center">
-              <CheckCircle2 size={80} color="#0F8B8D" />
-              <h2 className="text-3xl font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-                {t.mnCompleteTitle}
-              </h2>
-              <p className="text-lg" style={{ color: "#8A7378" }}>{t.mnCompleteBody}</p>
             </div>
           )}
 
