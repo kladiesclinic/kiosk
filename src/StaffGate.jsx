@@ -15,6 +15,14 @@ export default function StaffGate({ children }) {
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // #staff（受付一覧＝管理画面）を開こうとしている場合は、受付機用ではなく
+  // スタッフ向けの文言でログイン画面を出す
+  const [isStaffPage, setIsStaffPage] = useState(window.location.hash === "#staff");
+  useEffect(() => {
+    const onHash = () => setIsStaffPage(window.location.hash === "#staff");
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -95,9 +103,11 @@ export default function StaffGate({ children }) {
           </div>
           <div className="text-center">
             <span className="text-xl font-bold tracking-tight block" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-              ケイクリ 受付機
+              {isStaffPage ? "受付一覧（スタッフ用）" : "ケイクリ 受付機"}
             </span>
-            <span className="text-xs" style={{ color: "#B08A90" }}>端末設定（スタッフ用ログイン）</span>
+            <span className="text-xs" style={{ color: "#B08A90" }}>
+              {isStaffPage ? "スタッフアカウントでログインしてください" : "端末設定（スタッフ用ログイン）"}
+            </span>
           </div>
         </div>
 
@@ -136,12 +146,16 @@ export default function StaffGate({ children }) {
             className="w-full py-3.5 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5 transition-opacity"
             style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: !valid || submitting ? 0.45 : 1 }}
           >
-            {submitting ? "ログイン中..." : <>この端末を受付機にする <ChevronRight size={16} /></>}
+            {submitting ? "ログイン中..." : isStaffPage ? <>ログイン <ChevronRight size={16} /></> : <>この端末を受付機にする <ChevronRight size={16} /></>}
           </button>
 
           <div className="p-3 rounded-lg text-xs flex gap-2" style={{ background: "#FFF8F7", color: "#8A7378" }}>
             <ShieldCheck size={14} className="shrink-0 mt-0.5" color="#6FC3C0" />
-            <span>ログインすると、この端末は患者様向けの来院受付画面になります。患者様がこの画面をご覧の場合は、お手数ですが受付スタッフにお声がけください。</span>
+            <span>
+              {isStaffPage
+                ? "本日および過去の受付一覧・問診票を表示します。閲覧できるのはスタッフのみです。"
+                : "ログインすると、この端末は患者様向けの来院受付画面になります。患者様がこの画面をご覧の場合は、お手数ですが受付スタッフにお声がけください。"}
+            </span>
           </div>
         </div>
       </div>

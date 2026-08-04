@@ -12,6 +12,7 @@ import {
   Undo2,
   FileText,
   ExternalLink,
+  CalendarDays,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 
@@ -96,6 +97,9 @@ export default function StaffView() {
   const [printing, setPrinting] = useState(false);
   // 対応済み行を隠すか（端末ごとに記憶）
   const [hideDone, setHideDone] = useState(() => localStorage.getItem("kiosk-staff-hide-done") === "1");
+  // 表示する日付。既定は今日で、過去の日付を選ぶと同じ画面のままその日のデータを表示
+  const [dateKey, setDateKey] = useState(todayKey);
+  const isToday = dateKey === todayKey();
   const printAreaRef = useRef(null);
 
   const toggleHideDone = () => {
@@ -116,10 +120,9 @@ export default function StaffView() {
   };
 
   const load = async () => {
-    const today = todayKey();
     const [cRes, fRes] = await Promise.all([
-      supabase.from("reception_checkins").select("*").eq("date_key", today).order("checkin_number", { ascending: true }),
-      supabase.from("intake_forms").select("*").eq("date_key", today).order("created_at", { ascending: false }),
+      supabase.from("reception_checkins").select("*").eq("date_key", dateKey).order("checkin_number", { ascending: true }),
+      supabase.from("intake_forms").select("*").eq("date_key", dateKey).order("created_at", { ascending: false }),
     ]);
     if (cRes.error || fRes.error) {
       setLoadError((cRes.error || fRes.error).message);
@@ -133,9 +136,11 @@ export default function StaffView() {
 
   useEffect(() => {
     load();
+    // 過去日は増えないので、自動更新は今日を表示しているときだけ
+    if (!isToday) return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
-  }, []);
+  }, [dateKey]);
 
   // 受付行に対応する問診票を探す。QR経由の送信は受付IDで確実に紐付き、
   // IDがない（QRを使わず直接開いた等）場合だけ名前（空白除去の部分一致）で照合する。
@@ -185,12 +190,36 @@ export default function StaffView() {
                 受付一覧（スタッフ用）
               </div>
               <div className="text-xs" style={{ color: "#B08A90" }}>
-                {todayKey()}　待ち {waiting.length}件
-                {lastUpdated && `最終更新 ${hhmm(lastUpdated.toISOString())}（10秒ごとに自動更新）`}
+                {isToday ? `待ち ${waiting.length}件　` : `${dateKey} の記録（過去分）　`}
+                {lastUpdated && `最終更新 ${hhmm(lastUpdated.toISOString())}${isToday ? "（10秒ごとに自動更新）" : ""}`}
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* 表示日の切り替え（過去分も同じ画面で見られる） */}
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm"
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
+            >
+              <CalendarDays size={15} color="#B08A90" />
+              <input
+                type="date"
+                value={dateKey}
+                max={todayKey()}
+                onChange={(e) => { if (e.target.value) setDateKey(e.target.value); }}
+                className="bg-transparent outline-none text-sm"
+                style={{ color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}
+              />
+              {!isToday && (
+                <button
+                  onClick={() => setDateKey(todayKey())}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                >
+                  今日
+                </button>
+              )}
+            </div>
             <label
               className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
               style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
@@ -228,10 +257,12 @@ export default function StaffView() {
           {/* 受付リスト */}
           <section>
             <h2 className="text-lg font-bold mb-3" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-              本日の受付
+              {isToday ? "本日の受付" : `${dateKey} の受付`}
             </h2>
             {checkins.length === 0 ? (
-              <p className="text-sm" style={{ color: "#B08A90" }}>まだ受付はありません。</p>
+              <p className="text-sm" style={{ color: "#B08A90" }}>
+                {isToday ? "まだ受付はありません。" : "この日の受付はありません。"}
+              </p>
             ) : visibleCheckins.length === 0 ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>
                 待ちの受付はありません（対応済み{doneCount}件を非表示中）。
@@ -329,10 +360,12 @@ export default function StaffView() {
           {/* 問診票リスト */}
           <section>
             <h2 className="text-lg font-bold mb-3" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-              本日の問診票
+              {isToday ? "本日の問診票" : `${dateKey} の問診票`}
             </h2>
             {forms.length === 0 ? (
-              <p className="text-sm" style={{ color: "#B08A90" }}>まだ問診票の提出はありません。</p>
+              <p className="text-sm" style={{ color: "#B08A90" }}>
+                {isToday ? "まだ問診票の提出はありません。" : "この日の問診票はありません。"}
+              </p>
             ) : (
               <div className="flex flex-col gap-2">
                 {forms.map((f) => (
