@@ -1371,9 +1371,10 @@
     }
     postIntake(true)
       .then(function (res) {
-        // トークンなし・不一致（旧受付票のQR等）はRLSに403で弾かれるので、
-        // 受付IDなしで送り直す（スタッフ画面では名前で照合され「未確認」表示になる）
-        if (res.status === 403 && CHECKIN_ID) return postIntake(false);
+        // トークンなし・不一致（旧受付票のQR等）はRLSに弾かれる（PostgRESTは
+        // anonキーだと401、認証済みだと403を返す）ので、受付IDなしで送り直す。
+        // スタッフ画面では名前で照合され「未確認」と表示される
+        if ((res.status === 401 || res.status === 403) && CHECKIN_ID) return postIntake(false);
         return res;
       })
       .then(function (res) {

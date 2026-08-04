@@ -154,8 +154,9 @@
     }
     postIntake(true)
       .then(function (res) {
-        // トークンなし・不一致（旧受付票のQR等）は403で弾かれるので受付IDなしで再送信
-        if (res.status === 403 && CHECKIN_ID) return postIntake(false);
+        // トークンなし・不一致（旧受付票のQR等）はRLSに弾かれる（anonキーは401、
+        // 認証済みは403）ので、受付IDなしで再送信する
+        if ((res.status === 401 || res.status === 403) && CHECKIN_ID) return postIntake(false);
         return res;
       })
       .then(function (res) {
