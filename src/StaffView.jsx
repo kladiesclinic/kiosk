@@ -12,6 +12,7 @@ import {
   FileText,
   ExternalLink,
   CalendarDays,
+  CalendarCheck,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 
@@ -78,6 +79,21 @@ function normalizeName(s) {
 
 const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "保険証", self_pay: "自費" };
 const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
+const CHANNEL_LABEL = { liff: "LINE", web: "Web", staff: "スタッフ" };
+const BOOKING_STATUS = {
+  booked: { label: "予約中", bg: "#DFF5F3", fg: "#0F8B8D" },
+  done: { label: "来院済み", bg: "#EEF0F2", fg: "#8A7378" },
+  cancelled: { label: "キャンセル", bg: "#FCE9EA", fg: "#B03A44" },
+};
+
+// 予約の「内容」列: 再診理由 / 初診の相談内容 / 受け取り薬 のうちあるものを表示
+function bookingDetail(b) {
+  const parts = [];
+  if (b.return_reason) parts.push(RETURN_REASON_LABEL[b.return_reason] || b.return_reason);
+  if (Array.isArray(b.concerns) && b.concerns.length) parts.push(b.concerns.join("、"));
+  if (Array.isArray(b.medications) && b.medications.length) parts.push(b.medications.join("、"));
+  return parts.join("　") || "—";
+}
 
 // 診察の区分表示（初診 / 再診・○○）
 function visitKindLabel(c) {
@@ -88,8 +104,13 @@ function visitKindLabel(c) {
 }
 
 export default function StaffView() {
+  // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
+  const [tab, setTab] = useState("checkins");
   const [checkins, setCheckins] = useState([]);
   const [forms, setForms] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  // 予約に紐付く事前記入問診票（提出日が予約日と違うことがあるので booking_id で別途引く）
+  const [bookingForms, setBookingForms] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedForm, setSelectedForm] = useState(null);
   const [loadError, setLoadError] = useState("");
@@ -126,27 +147,38 @@ export default function StaffView() {
   };
 
   const load = async () => {
-    const [cRes, fRes] = await Promise.all([
+    const [cRes, fRes, bRes] = await Promise.all([
       supabase.from("reception_checkins").select("*").eq("date_key", dateKey).order("checkin_number", { ascending: true }),
       supabase.from("intake_forms").select("*").eq("date_key", dateKey).order("created_at", { ascending: false }),
+      supabase.from("visit_bookings").select("*, visit_menus(name, kind)").eq("date", dateKey).order("time"),
     ]);
-    if (cRes.error || fRes.error) {
-      setLoadError((cRes.error || fRes.error).message);
+    if (cRes.error || fRes.error || bRes.error) {
+      setLoadError((cRes.error || fRes.error || bRes.error).message);
       return;
+    }
+    // 予約に紐付く事前記入の問診票は提出日が別日のことがあるので booking_id で引く
+    let bForms = [];
+    const bookingIds = (bRes.data || []).map((b) => b.id);
+    if (bookingIds.length) {
+      const bfRes = await supabase.from("intake_forms").select("*").in("booking_id", bookingIds);
+      if (!bfRes.error) bForms = bfRes.data || [];
     }
     setLoadError("");
     setCheckins(cRes.data || []);
     setForms(fRes.data || []);
+    setBookings(bRes.data || []);
+    setBookingForms(bForms);
     setLastUpdated(new Date());
   };
 
   useEffect(() => {
     load();
-    // 過去日は増えないので、自動更新は今日を表示しているときだけ
-    if (!isToday) return;
+    // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降
+    const canGrow = tab === "bookings" ? dateKey >= todayKey() : isToday;
+    if (!canGrow) return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
-  }, [dateKey]);
+  }, [dateKey, tab]);
 
   // 受付行に対応する問診票を探す。QR経由の送信は受付IDで確実に紐付き、
   // IDがない（QRを使わず直接開いた等）場合だけ名前（空白除去の部分一致）で照合する。
@@ -203,8 +235,12 @@ export default function StaffView() {
                 受付一覧（スタッフ用）
               </div>
               <div className="text-xs" style={{ color: "#B08A90" }}>
-                {isToday ? `待ち ${waiting.length}件　` : `${dateKey} の記録（過去分）　`}
-                {lastUpdated && `最終更新 ${hhmm(lastUpdated.toISOString())}${isToday ? "（10秒ごとに自動更新）" : ""}`}
+                {tab === "bookings"
+                  ? `${dateKey} の予約 ${bookings.filter((b) => b.status !== "cancelled").length}件　`
+                  : isToday
+                    ? `待ち ${waiting.length}件　`
+                    : `${dateKey} の記録（過去分）　`}
+                {lastUpdated && `最終更新 ${hhmm(lastUpdated.toISOString())}`}
               </div>
             </div>
           </div>
@@ -218,7 +254,8 @@ export default function StaffView() {
               <input
                 type="date"
                 value={dateKey}
-                max={todayKey()}
+                // 受付は過去分のみだが、予約は未来の日付も見られる
+                max={tab === "bookings" ? undefined : todayKey()}
                 onChange={(e) => { if (e.target.value) setDateKey(e.target.value); }}
                 className="bg-transparent outline-none text-sm"
                 style={{ color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}
@@ -233,20 +270,24 @@ export default function StaffView() {
                 </button>
               )}
             </div>
-            <label
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
-            >
-              <input type="checkbox" checked={hideChartDone} onChange={toggleHideChartDone} className="w-4 h-4" />
-              カルテ済を隠す{chartDoneCount > 0 && `（${chartDoneCount}件）`}
-            </label>
-            <label
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
-            >
-              <input type="checkbox" checked={hidePaymentDone} onChange={toggleHidePaymentDone} className="w-4 h-4" />
-              会計済を隠す{paymentDoneCount > 0 && `（${paymentDoneCount}件）`}
-            </label>
+            {tab === "checkins" && (
+              <>
+                <label
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
+                  style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  <input type="checkbox" checked={hideChartDone} onChange={toggleHideChartDone} className="w-4 h-4" />
+                  カルテ済を隠す{chartDoneCount > 0 && `（${chartDoneCount}件）`}
+                </label>
+                <label
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
+                  style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  <input type="checkbox" checked={hidePaymentDone} onChange={toggleHidePaymentDone} className="w-4 h-4" />
+                  会計済を隠す{paymentDoneCount > 0 && `（${paymentDoneCount}件）`}
+                </label>
+              </>
+            )}
             <a
               href="#"
               onClick={(e) => { e.preventDefault(); window.location.hash = ""; }}
@@ -267,6 +308,34 @@ export default function StaffView() {
           </div>
         </header>
 
+        {/* タブ切り替え: 受付一覧 / 予約状況 */}
+        <div className="px-6 pt-4 max-w-5xl mx-auto w-full">
+          <div className="inline-flex rounded-xl overflow-hidden" style={{ border: "1.5px solid #F2DFE4", background: "#FFFFFF" }}>
+            {[
+              { id: "checkins", label: "受付一覧", Icon: ClipboardList },
+              { id: "bookings", label: "予約状況", Icon: CalendarCheck },
+            ].map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => {
+                  setTab(id);
+                  // 予約タブで未来日を見ていた場合、受付タブは未来分が無いので今日に戻す
+                  if (id === "checkins" && dateKey > todayKey()) setDateKey(todayKey());
+                }}
+                className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold"
+                style={
+                  tab === id
+                    ? { background: "#0F8B8D", color: "#FFFFFF" }
+                    : { background: "#FFFFFF", color: "#8A7378" }
+                }
+              >
+                <Icon size={15} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <main className="p-6 flex flex-col gap-8 max-w-5xl mx-auto">
           {loadError && (
             <div className="p-4 rounded-xl text-sm" style={{ background: "#FCE9EA", color: "#B03A44" }}>
@@ -274,6 +343,120 @@ export default function StaffView() {
             </div>
           )}
 
+          {tab === "bookings" && (
+          /* 予約リスト（来院予約 booking-app の visit_bookings） */
+          <section>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                {isToday ? "本日の予約" : `${dateKey} の予約`}
+              </h2>
+              <a
+                href="https://keicuri-booking.vercel.app/staff"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium"
+                style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378", textDecoration: "none" }}
+              >
+                <ExternalLink size={13} />
+                予約の編集・代理予約（予約管理画面）
+              </a>
+            </div>
+            {bookings.length === 0 ? (
+              <p className="text-sm" style={{ color: "#B08A90" }}>この日の予約はありません。</p>
+            ) : (
+              <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 920 }}>
+                    <thead>
+                      <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
+                        <th className="px-4 py-2.5 font-medium">時間</th>
+                        <th className="px-3 py-2.5 font-medium">お名前</th>
+                        <th className="px-3 py-2.5 font-medium">メニュー</th>
+                        <th className="px-3 py-2.5 font-medium">内容</th>
+                        <th className="px-3 py-2.5 font-medium">保険</th>
+                        <th className="px-3 py-2.5 font-medium">生年月日</th>
+                        <th className="px-3 py-2.5 font-medium">電話</th>
+                        <th className="px-3 py-2.5 font-medium">経路</th>
+                        <th className="px-3 py-2.5 font-medium">問診票</th>
+                        <th className="px-3 py-2.5 font-medium">状態</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bookings.map((b) => {
+                        const status = BOOKING_STATUS[b.status] || BOOKING_STATUS.booked;
+                        const bf = bookingForms.find((f) => f.booking_id === b.id) || null;
+                        // 受付機でチェックイン済みなら受付番号も添える（同日の受付から booking_id で照合）
+                        const checkin = checkins.find((c) => c.booking_id === b.id) || null;
+                        const isPickup = b.visit_menus?.kind === "pickup";
+                        return (
+                          <tr key={b.id} style={{ borderTop: "1px solid #FAEEF0", opacity: b.status === "cancelled" ? 0.45 : 1 }}>
+                            <td className="px-4 py-3 font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                              {b.time}
+                            </td>
+                            <td className="px-3 py-3 font-medium">
+                              {b.patient_name}
+                              {b.patient_kana && (
+                                <span className="block text-xs font-normal" style={{ color: "#B08A90" }}>{b.patient_kana}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3">
+                              <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+                                style={
+                                  isPickup
+                                    ? { background: "#DFF5F3", color: "#0F8B8D" }
+                                    : { background: "#FCE9EA", color: "#D64550" }
+                                }
+                              >
+                                {isPickup ? <PackageCheck size={12} /> : <Stethoscope size={12} />}
+                                {b.visit_menus?.name || b.menu_id}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-xs" style={{ color: "#8A7378", maxWidth: 220 }}>{bookingDetail(b)}</td>
+                            <td className="px-3 py-3 text-xs">{INSURANCE_LABEL[b.insurance] || "—"}</td>
+                            <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{b.birthdate || "—"}</td>
+                            <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{b.phone || "—"}</td>
+                            <td className="px-3 py-3 text-xs">{CHANNEL_LABEL[b.channel] || b.channel}</td>
+                            <td className="px-3 py-3">
+                              {bf ? (
+                                <button
+                                  onClick={() => setSelectedForm(bf)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                >
+                                  <FileText size={12} />
+                                  表示
+                                </button>
+                              ) : (
+                                <span className="text-xs" style={{ color: "#C9AEB3" }}>{isPickup ? "—" : "未記入"}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3">
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
+                                style={{ background: status.bg, color: status.fg }}
+                              >
+                                {status.label}
+                              </span>
+                              {checkin && (
+                                <span className="block text-xs mt-1" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
+                                  受付 #{checkin.checkin_number}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+          )}
+
+          {tab === "checkins" && (
+          <>
           {/* 受付リスト */}
           <section>
             <h2 className="text-lg font-bold mb-3" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
@@ -432,6 +615,8 @@ export default function StaffView() {
               </div>
             )}
           </section>
+          </>
+          )}
         </main>
 
         {/* 問診票モーダル */}
