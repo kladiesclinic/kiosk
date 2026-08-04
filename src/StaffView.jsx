@@ -9,7 +9,6 @@ import {
   PackageCheck,
   Stethoscope,
   CheckCircle2,
-  Undo2,
   FileText,
   ExternalLink,
   CalendarDays,
@@ -95,16 +94,23 @@ export default function StaffView() {
   const [selectedForm, setSelectedForm] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [printing, setPrinting] = useState(false);
-  // 対応済み行を隠すか（端末ごとに記憶）
-  const [hideDone, setHideDone] = useState(() => localStorage.getItem("kiosk-staff-hide-done") === "1");
+  // カルテ済/会計済の行を隠すか（それぞれ独立・端末ごとに記憶）
+  const [hideChartDone, setHideChartDone] = useState(() => localStorage.getItem("kiosk-staff-hide-chart") === "1");
+  const [hidePaymentDone, setHidePaymentDone] = useState(() => localStorage.getItem("kiosk-staff-hide-paid") === "1");
   // 表示する日付。既定は今日で、過去の日付を選ぶと同じ画面のままその日のデータを表示
   const [dateKey, setDateKey] = useState(todayKey);
   const isToday = dateKey === todayKey();
   const printAreaRef = useRef(null);
 
-  const toggleHideDone = () => {
-    setHideDone((v) => {
-      localStorage.setItem("kiosk-staff-hide-done", v ? "0" : "1");
+  const toggleHideChartDone = () => {
+    setHideChartDone((v) => {
+      localStorage.setItem("kiosk-staff-hide-chart", v ? "0" : "1");
+      return !v;
+    });
+  };
+  const toggleHidePaymentDone = () => {
+    setHidePaymentDone((v) => {
+      localStorage.setItem("kiosk-staff-hide-paid", v ? "0" : "1");
       return !v;
     });
   };
@@ -157,23 +163,30 @@ export default function StaffView() {
     );
   };
 
-  const toggleStatus = async (row) => {
-    const next = row.status === "waiting" ? "done" : "waiting";
+  // カルテ済/会計済のどちらかを反転。両方済んだら旧statusも'done'にしておく
+  // （旧データ・他画面との互換のため）。
+  const toggleFlag = async (row, field) => {
+    const next = !row[field];
+    const merged = { ...row, [field]: next };
+    const status = merged.chart_done && merged.payment_done ? "done" : "waiting";
     // 先に画面へ反映して「押した感」をすぐ返す（10秒ごとの自動更新と押下が
     // 重なっても操作が消えないように）。DB更新に失敗したら元に戻してエラーを出す
-    setCheckins((prev) => prev.map((c) => (c.id === row.id ? { ...c, status: next } : c)));
-    const { error } = await supabase.from("reception_checkins").update({ status: next }).eq("id", row.id);
+    setCheckins((prev) => prev.map((c) => (c.id === row.id ? { ...c, [field]: next, status } : c)));
+    const { error } = await supabase.from("reception_checkins").update({ [field]: next, status }).eq("id", row.id);
     if (error) {
-      setCheckins((prev) => prev.map((c) => (c.id === row.id ? { ...c, status: row.status } : c)));
+      setCheckins((prev) => prev.map((c) => (c.id === row.id ? { ...c, [field]: row[field], status: row.status } : c)));
       setLoadError(`状態の更新に失敗しました: ${error.message} ／ ページを再読み込みしてスタッフアカウントでログインし直すと直ることがあります。`);
     } else {
       setLoadError("");
     }
   };
 
-  const waiting = checkins.filter((c) => c.status === "waiting");
-  const doneCount = checkins.length - waiting.length;
-  const visibleCheckins = hideDone ? waiting : checkins;
+  const waiting = checkins.filter((c) => !(c.chart_done && c.payment_done));
+  const chartDoneCount = checkins.filter((c) => c.chart_done).length;
+  const paymentDoneCount = checkins.filter((c) => c.payment_done).length;
+  const visibleCheckins = checkins.filter(
+    (c) => !(hideChartDone && c.chart_done) && !(hidePaymentDone && c.payment_done)
+  );
 
   return (
     <div style={{ fontFamily: "'Noto Sans JP', sans-serif" }}>
@@ -221,11 +234,18 @@ export default function StaffView() {
               )}
             </div>
             <label
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
               style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
             >
-              <input type="checkbox" checked={hideDone} onChange={toggleHideDone} className="w-4 h-4" />
-              対応済みを隠す{doneCount > 0 && `（${doneCount}件）`}
+              <input type="checkbox" checked={hideChartDone} onChange={toggleHideChartDone} className="w-4 h-4" />
+              カルテ済を隠す{chartDoneCount > 0 && `（${chartDoneCount}件）`}
+            </label>
+            <label
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
+            >
+              <input type="checkbox" checked={hidePaymentDone} onChange={toggleHidePaymentDone} className="w-4 h-4" />
+              会計済を隠す{paymentDoneCount > 0 && `（${paymentDoneCount}件）`}
             </label>
             <a
               href="#"
@@ -265,12 +285,12 @@ export default function StaffView() {
               </p>
             ) : visibleCheckins.length === 0 ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>
-                待ちの受付はありません（対応済み{doneCount}件を非表示中）。
+                表示できる受付はありません（{checkins.length}件をフィルタで非表示中）。
               </p>
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 860 }}>
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 920 }}>
                     <thead>
                       <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
                         <th className="px-4 py-2.5 font-medium">番号</th>
@@ -288,7 +308,7 @@ export default function StaffView() {
                     <tbody>
                       {visibleCheckins.map((c) => {
                         const f = c.visit_type === "consult" ? formFor(c) : null;
-                        const isDone = c.status === "done";
+                        const isDone = c.chart_done && c.payment_done;
                         return (
                           <tr key={c.id} style={{ borderTop: "1px solid #FAEEF0", opacity: isDone ? 0.5 : 1 }}>
                             <td className="px-4 py-3 text-lg font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -334,18 +354,33 @@ export default function StaffView() {
                               )}
                             </td>
                             <td className="px-3 py-3">
-                              <button
-                                onClick={() => toggleStatus(c)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
-                                style={
-                                  isDone
-                                    ? { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
-                                    : { background: "#DFF5F3", color: "#0F8B8D" }
-                                }
-                              >
-                                {isDone ? <Undo2 size={12} /> : <CheckCircle2 size={12} />}
-                                {isDone ? "待ちに戻す" : "対応済みにする"}
-                              </button>
+                              {/* カルテ済/会計済の独立トグル。押すたびに済⇔未でオンオフ */}
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => toggleFlag(c, "chart_done")}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                  style={
+                                    c.chart_done
+                                      ? { background: "#0F8B8D", color: "#FFFFFF" }
+                                      : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
+                                  }
+                                >
+                                  {c.chart_done && <CheckCircle2 size={12} />}
+                                  カルテ済
+                                </button>
+                                <button
+                                  onClick={() => toggleFlag(c, "payment_done")}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                  style={
+                                    c.payment_done
+                                      ? { background: "#0F8B8D", color: "#FFFFFF" }
+                                      : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
+                                  }
+                                >
+                                  {c.payment_done && <CheckCircle2 size={12} />}
+                                  会計済
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
