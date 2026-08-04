@@ -710,6 +710,9 @@
   // 受付機のQR経由で開くとURLに ?checkin=<受付ID> が付いていて、送信時に一緒に保存される。
   // これで受付一覧の行と問診票が名前の表記に関係なく確実に紐付く。直接開いた場合は空。
   var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
+  // 受付票QRに含まれる送信トークン。DB側で受付IDと照合され、合わない送信は
+  // 受付への紐付けを拒否される（なりすまし防止）
+  var SUBMIT_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
   // ネット/LINE予約から事前記入する場合は ?booking=<予約ID> が付く。両方保存して
   // 予約・受付どちらの画面からでも問診票を引けるようにする
   var BOOKING_ID = new URLSearchParams(window.location.search).get("booking") || "";
@@ -1346,23 +1349,33 @@
     });
 
     submitBtn.disabled = true;
-    fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: "Bearer " + SUPABASE_ANON_KEY,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        id: "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
-        patient_name: data.name,
-        date_of_birth: data.date_of_birth,
-        checkin_id: CHECKIN_ID || null,
-        booking_id: BOOKING_ID || null,
-        answers: rows,
-      }),
-    })
+    function postIntake(withCheckin) {
+      return fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          id: "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          patient_name: data.name,
+          date_of_birth: data.date_of_birth,
+          checkin_id: withCheckin ? CHECKIN_ID || null : null,
+          submit_token: withCheckin ? SUBMIT_TOKEN || null : null,
+          booking_id: BOOKING_ID || null,
+          answers: rows,
+        }),
+      });
+    }
+    postIntake(true)
+      .then(function (res) {
+        // トークンなし・不一致（旧受付票のQR等）はRLSに403で弾かれるので、
+        // 受付IDなしで送り直す（スタッフ画面では名前で照合され「未確認」表示になる）
+        if (res.status === 403 && CHECKIN_ID) return postIntake(false);
+        return res;
+      })
       .then(function (res) {
         if (!res.ok) { throw new Error("HTTP " + res.status); }
         // The answers deliberately stay on screen rather than being reset: the

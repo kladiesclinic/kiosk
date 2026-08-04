@@ -521,14 +521,23 @@ export default function StaffView() {
                             <td className="px-3 py-3">
                               {c.visit_type === "consult" ? (
                                 f ? (
-                                  <button
-                                    onClick={() => setSelectedForm(f)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
-                                    style={{ background: "#0F8B8D", color: "#FFFFFF" }}
-                                  >
-                                    <FileText size={12} />
-                                    表示
-                                  </button>
+                                  <div className="flex flex-col items-start gap-0.5">
+                                    <button
+                                      onClick={() => setSelectedForm(f)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                      style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                    >
+                                      <FileText size={12} />
+                                      表示
+                                    </button>
+                                    {/* QR経由（受付IDが一致）でない問診票は名前の一致だけで
+                                        推測表示しているので、本人のものと断定できない */}
+                                    {f.checkin_id !== c.id && (
+                                      <span className="text-[10px] leading-tight" style={{ color: "#C0762C" }}>
+                                        名前一致・未確認
+                                      </span>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span className="text-xs" style={{ color: "#C9AEB3" }}>未提出</span>
                                 )
@@ -596,7 +605,17 @@ export default function StaffView() {
                     <div className="flex items-center gap-3 min-w-0">
                       <FileText size={18} color="#0F8B8D" className="shrink-0" />
                       <div className="min-w-0">
-                        <div className="text-sm font-medium truncate" style={{ color: "#3A2E30" }}>{f.patient_name}</div>
+                        <div className="text-sm font-medium truncate flex items-center gap-2" style={{ color: "#3A2E30" }}>
+                          {f.patient_name}
+                          {!f.checkin_id && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0"
+                              style={{ background: "#FBEEDB", color: "#C0762C" }}
+                            >
+                              QR未経由・未確認
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs" style={{ color: "#B08A90" }}>
                           {hhmm(f.created_at)} 受信{f.date_of_birth ? `　生年月日 ${f.date_of_birth}` : ""}
                         </div>
@@ -638,6 +657,9 @@ export default function StaffView() {
                   </div>
                   <div className="text-xs" style={{ color: "#B08A90" }}>
                     {hhmm(selectedForm.created_at)} 受信{selectedForm.date_of_birth ? `　生年月日 ${selectedForm.date_of_birth}` : ""}
+                    {!selectedForm.checkin_id && (
+                      <span style={{ color: "#C0762C" }}>　※QR未経由の送信（名前照合のみ・未確認）</span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

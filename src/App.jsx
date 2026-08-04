@@ -87,7 +87,10 @@ function qrUrlFor(d, lang) {
   const base = qrBaseFor(d);
   if (!base) return null;
   const bookingParam = d.bookingId ? `&booking=${encodeURIComponent(d.bookingId)}` : "";
-  return `${base}${base.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(d.checkinId)}${bookingParam}&lang=${lang}`;
+  // 受付ごとのランダムなトークン。問診票送信時にDB側で検証され、これが合わない
+  // 送信は受付IDへの紐付けを拒否される（第三者が他人の受付になりすませないように）
+  const tokenParam = d.submitToken ? `&token=${encodeURIComponent(d.submitToken)}` : "";
+  return `${base}${base.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(d.checkinId)}${bookingParam}${tokenParam}&lang=${lang}`;
 }
 
 // 予約照合用: 氏名の空白（全角/半角）を無視して比較する
@@ -408,7 +411,9 @@ function Kiosk() {
         return;
       }
       const number = await nextCheckinNumber();
-      const checkinId = `c-${Date.now()}`;
+      // IDは推測できないランダム値に（タイムスタンプだと第三者に推測されうる）
+      const checkinId = `c-${crypto.randomUUID()}`;
+      const submitToken = crypto.randomUUID();
       // 薬名は言語に関わらずスタッフが読める日本語ラベル+個数（例: トリキュラー ×2）。
       // DB保存と受付票の印字の両方に使う
       const kioskMeds = [
@@ -442,6 +447,7 @@ function Kiosk() {
         insurance: insuranceChoice,
         status: "waiting",
         booking_id: booking?.id || null,
+        submit_token: submitToken,
       });
       if (error) throw error;
       // 予約と紐付いた受付: 予約を来院済みにし、事前記入済み問診票に受付IDを追記して一本化。
@@ -466,6 +472,7 @@ function Kiosk() {
         visitType,
         insurance: insuranceChoice,
         checkinId,
+        submitToken,
         visitKind: effectiveVisitKind,
         returnReason: effectiveReturnReason,
         medications: medsList,

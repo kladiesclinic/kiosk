@@ -108,6 +108,8 @@
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRma3lsZXhvenN0ZWNqcGd2bnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzAxODAsImV4cCI6MjA5ODkwNjE4MH0.7gtNcTLeiISvEJRCxIaHpOwafbLyTAVnYFE2wvqi8Wc";
   var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
   var BOOKING_ID = new URLSearchParams(window.location.search).get("booking") || "";
+  // 受付票QRに含まれる送信トークン（DB側で受付IDと照合・なりすまし防止）
+  var SUBMIT_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
 
   var form = document.getElementById("fu-form");
   var statusEl = document.getElementById("fu-status");
@@ -126,27 +128,36 @@
     }
 
     submitBtn.disabled = true;
-    fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
-      method: "POST",
-      headers: {
-        apikey: SUPABASE_ANON_KEY,
-        Authorization: "Bearer " + SUPABASE_ANON_KEY,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({
-        id: "fu-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
-        patient_name: val("fu-name"),
-        checkin_id: CHECKIN_ID || null,
-        booking_id: BOOKING_ID || null,
-        answers: [
-          { label: "種類 ／ Form", value: "再診・前回の続き（簡易問診） ／ Follow-up" },
-          { label: "氏名 ／ Full name", value: val("fu-name") },
-          { label: "本日のご相談内容 ／ Today's concern", value: val("fu-symptom") },
-          { label: "前回から変わったこと ／ Changes since last visit", value: val("fu-change") || "—" },
-        ],
-      }),
-    })
+    function postIntake(withCheckin) {
+      return fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          id: "fu-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          patient_name: val("fu-name"),
+          checkin_id: withCheckin ? CHECKIN_ID || null : null,
+          submit_token: withCheckin ? SUBMIT_TOKEN || null : null,
+          booking_id: BOOKING_ID || null,
+          answers: [
+            { label: "種類 ／ Form", value: "再診・前回の続き（簡易問診） ／ Follow-up" },
+            { label: "氏名 ／ Full name", value: val("fu-name") },
+            { label: "本日のご相談内容 ／ Today's concern", value: val("fu-symptom") },
+            { label: "前回から変わったこと ／ Changes since last visit", value: val("fu-change") || "—" },
+          ],
+        }),
+      });
+    }
+    postIntake(true)
+      .then(function (res) {
+        // トークンなし・不一致（旧受付票のQR等）は403で弾かれるので受付IDなしで再送信
+        if (res.status === 403 && CHECKIN_ID) return postIntake(false);
+        return res;
+      })
       .then(function (res) {
         if (!res.ok) throw new Error("HTTP " + res.status);
         form.classList.add("form-locked");
