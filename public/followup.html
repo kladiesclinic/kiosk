@@ -84,6 +84,7 @@
   var SUPABASE_URL = "https://dfkylexozstecjpgvnxg.supabase.co";
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRma3lsZXhvenN0ZWNqcGd2bnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzAxODAsImV4cCI6MjA5ODkwNjE4MH0.7gtNcTLeiISvEJRCxIaHpOwafbLyTAVnYFE2wvqi8Wc";
   var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
+  var BOOKING_ID = new URLSearchParams(window.location.search).get("booking") || "";
 
   var form = document.getElementById("fu-form");
   var statusEl = document.getElementById("fu-status");
@@ -114,6 +115,7 @@
         id: "fu-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
         patient_name: val("fu-name"),
         checkin_id: CHECKIN_ID || null,
+        booking_id: BOOKING_ID || null,
         answers: [
           { label: "種類 ／ Form", value: "再診・前回の続き（簡易問診） ／ Follow-up" },
           { label: "氏名 ／ Full name", value: val("fu-name") },

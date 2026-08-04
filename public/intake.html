@@ -680,6 +680,9 @@
   // 受付機のQR経由で開くとURLに ?checkin=<受付ID> が付いていて、送信時に一緒に保存される。
   // これで受付一覧の行と問診票が名前の表記に関係なく確実に紐付く。直接開いた場合は空。
   var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
+  // ネット/LINE予約から事前記入する場合は ?booking=<予約ID> が付く。両方保存して
+  // 予約・受付どちらの画面からでも問診票を引けるようにする
+  var BOOKING_ID = new URLSearchParams(window.location.search).get("booking") || "";
 
   /* ---- 表示言語（日本語ファースト） ----
      HTMLは「英語が主・日本語(.ja)が従」で書かれているが、既定では日本語を主に
@@ -1326,6 +1329,7 @@
         patient_name: data.name,
         date_of_birth: data.date_of_birth,
         checkin_id: CHECKIN_ID || null,
+        booking_id: BOOKING_ID || null,
         answers: rows,
       }),
     })

@@ -9,6 +9,7 @@ import {
   PackageCheck,
   PenLine,
   CalendarDays,
+  CalendarCheck,
   Pill,
   Wallet,
   IdCard,
@@ -68,8 +69,9 @@ async function nextCheckinNumber() {
 
 // 完了画面・受付票に載せる問診票QRの飛び先。
 // 初診・再診(新しい症状)=フル問診票 / 再診(前回の続き)=簡易問診票 / 検査結果・薬受け取り=QRなし
+// 予約時に問診票を事前記入済み（intakeDone）ならQR自体を出さない
 function qrBaseFor(d) {
-  if (!d || d.visitType !== "consult") return null;
+  if (!d || d.visitType !== "consult" || d.intakeDone) return null;
   if (d.visitKind === "return") {
     if (d.returnReason === "followup") return FOLLOWUP_URL;
     if (d.returnReason === "new_symptom") return INTAKE_URL;
@@ -79,11 +81,18 @@ function qrBaseFor(d) {
 }
 
 // 受付IDをQRに埋め込む — 問診票送信時に一緒に保存され、名前の表記に関係なく
-// 受付一覧の行と確実に紐付く。言語も渡して、英語で受付した患者には英語ファーストで開く
+// 受付一覧の行と確実に紐付く。言語も渡して、英語で受付した患者には英語ファーストで開く。
+// 予約と紐付いた受付では予約IDも渡し、問診票が予約にも紐付くようにする
 function qrUrlFor(d, lang) {
   const base = qrBaseFor(d);
   if (!base) return null;
-  return `${base}${base.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(d.checkinId)}&lang=${lang}`;
+  const bookingParam = d.bookingId ? `&booking=${encodeURIComponent(d.bookingId)}` : "";
+  return `${base}${base.includes("?") ? "&" : "?"}checkin=${encodeURIComponent(d.checkinId)}${bookingParam}&lang=${lang}`;
+}
+
+// 予約照合用: 氏名の空白（全角/半角）を無視して比較する
+function normName(s) {
+  return (s || "").replace(/[\s　]/g, "");
 }
 
 function Clock({ lang }) {
@@ -206,6 +215,9 @@ function Kiosk() {
   const [dobD, setDobD] = useState("");
   const [visitKind, setVisitKind] = useState(null); // "first" | "return"
   const [returnReason, setReturnReason] = useState(null); // "results" | "followup" | "new_symptom"
+  // ネット/LINE予約（visit_bookings）との連携: 名前入力後に当日の予約を自動検出する
+  const [booking, setBooking] = useState(null); // マッチした予約行（visit_menus 込み）
+  const [prefilledIntake, setPrefilledIntake] = useState(null); // 事前記入済みの問診票行
   // 薬受け取り: 選択した薬とその個数 { medId: 個数 }、その他の薬は自由記入
   const [medQty, setMedQty] = useState({});
   const [otherMed, setOtherMed] = useState("");
@@ -227,6 +239,8 @@ function Kiosk() {
     setDobD("");
     setVisitKind(null);
     setReturnReason(null);
+    setBooking(null);
+    setPrefilledIntake(null);
     setMedQty({});
     setOtherMed("");
     setBusy(false);
@@ -280,6 +294,59 @@ function Kiosk() {
   };
 
   const anyMedChosen = Object.keys(medQty).length > 0 || otherMed.trim() !== "";
+
+  // 名前・生年月日の入力後、当日のネット/LINE予約（visit_bookings）を探す。
+  //   予約済みの方（reserved-name）: 見つかれば確認画面 / なければ「見つかりません」画面
+  //   通常の診察・薬受け取り: 見つかれば確認画面で質問をスキップ / なければ従来どおり
+  // 検索に失敗しても従来フローで受付できる（連携は常にベストエフォート）。
+  const proceedFromName = async () => {
+    setBusy(true);
+    let matched = null;
+    try {
+      const { data, error } = await supabase
+        .from("visit_bookings")
+        .select("*, visit_menus(kind, name)")
+        .eq("date", todayKey())
+        .eq("status", "booked");
+      if (error) throw error;
+      const candidates = (data || []).filter((b) => {
+        const kind = b.visit_menus?.kind;
+        if (visitType === "pickup") return kind === "pickup";
+        if (visitType === "consult") return kind !== "pickup";
+        return true; // 予約済みの方: 種別を問わず探す
+      });
+      matched =
+        candidates.find((b) => normName(b.patient_name) === normName(name)) ||
+        (dobStr ? candidates.find((b) => b.birthdate && b.birthdate === dobStr) : null) ||
+        null;
+    } catch (e) {
+      console.warn("booking lookup failed (fallback to normal flow):", e);
+    }
+    if (matched) {
+      setBooking(matched);
+      const kind = matched.visit_menus?.kind;
+      setVisitType(kind === "pickup" ? "pickup" : "consult");
+      if (matched.visit_kind) setVisitKind(matched.visit_kind);
+      if (matched.return_reason) setReturnReason(matched.return_reason);
+      // 事前記入済みの問診票（予約IDに紐付くもの）があるか
+      try {
+        const { data: forms } = await supabase
+          .from("intake_forms")
+          .select("id, checkin_id, booking_id")
+          .or(`booking_id.eq.${matched.id},checkin_id.eq.${matched.id}`)
+          .limit(1);
+        setPrefilledIntake(forms?.[0] || null);
+      } catch {
+        setPrefilledIntake(null);
+      }
+      setStep("booking-found");
+    } else if (step === "reserved-name") {
+      setStep("reserved-notfound");
+    } else {
+      setStep(step === "pickup-name" ? "pickup-meds" : "consult-kind");
+    }
+    setBusy(false);
+  };
 
   const dobValid =
     /^\d{4}$/.test(dobY) &&
@@ -344,14 +411,23 @@ function Kiosk() {
       const checkinId = `c-${Date.now()}`;
       // 薬名は言語に関わらずスタッフが読める日本語ラベル+個数（例: トリキュラー ×2）。
       // DB保存と受付票の印字の両方に使う
+      const kioskMeds = [
+        ...MED_IDS.filter((id) => medQty[id]).map((id) =>
+          MED_NO_QTY.includes(id) ? TEXT.ja.meds[id] : `${TEXT.ja.meds[id]} ×${medQty[id]}`
+        ),
+        ...(otherMed.trim() ? [`その他: ${otherMed.trim()}`] : []),
+      ];
+      // 予約から来た薬受け取りは、予約時に選んだ薬をそのまま引き継ぐ
       const medsList =
         visitType === "pickup"
-          ? [
-              ...MED_IDS.filter((id) => medQty[id]).map((id) =>
-                MED_NO_QTY.includes(id) ? TEXT.ja.meds[id] : `${TEXT.ja.meds[id]} ×${medQty[id]}`
-              ),
-              ...(otherMed.trim() ? [`その他: ${otherMed.trim()}`] : []),
-            ]
+          ? booking && Array.isArray(booking.medications) && booking.medications.length
+            ? booking.medications
+            : kioskMeds
+          : null;
+      const effectiveVisitKind = visitType === "consult" ? booking?.visit_kind || visitKind : null;
+      const effectiveReturnReason =
+        visitType === "consult" && effectiveVisitKind === "return"
+          ? booking?.return_reason || returnReason
           : null;
       const { error } = await supabase.from("reception_checkins").insert({
         id: checkinId,
@@ -360,14 +436,42 @@ function Kiosk() {
         visit_type: visitType,
         patient_name: name.trim(),
         date_of_birth: dobStr || null,
-        visit_kind: visitType === "consult" ? visitKind : null,
-        return_reason: visitType === "consult" && visitKind === "return" ? returnReason : null,
+        visit_kind: effectiveVisitKind,
+        return_reason: effectiveReturnReason,
         medications: medsList,
         insurance: insuranceChoice,
         status: "waiting",
+        booking_id: booking?.id || null,
       });
       if (error) throw error;
-      const d = { number, patientName: name.trim(), visitType, insurance: insuranceChoice, checkinId, visitKind, returnReason, medications: medsList };
+      // 予約と紐付いた受付: 予約を来院済みにし、事前記入済み問診票に受付IDを追記して一本化。
+      // どちらも失敗しても受付自体は成立しているのでベストエフォート
+      if (booking) {
+        supabase
+          .from("visit_bookings")
+          .update({ status: "done" })
+          .eq("id", booking.id)
+          .then(({ error: e2 }) => e2 && console.warn("booking status update failed:", e2));
+        if (prefilledIntake && !prefilledIntake.checkin_id) {
+          supabase
+            .from("intake_forms")
+            .update({ checkin_id: checkinId })
+            .eq("id", prefilledIntake.id)
+            .then(({ error: e3 }) => e3 && console.warn("intake link failed:", e3));
+        }
+      }
+      const d = {
+        number,
+        patientName: name.trim(),
+        visitType,
+        insurance: insuranceChoice,
+        checkinId,
+        visitKind: effectiveVisitKind,
+        returnReason: effectiveReturnReason,
+        medications: medsList,
+        bookingId: booking?.id || null,
+        intakeDone: !!prefilledIntake,
+      };
       setDone(d);
       if (insuranceChoice === "mynumber") {
         // マイナンバーカードの方は、完了画面の前にカードリーダーでの確認手順を挟む。
@@ -457,6 +561,21 @@ function Kiosk() {
               </div>
               <button
                 onClick={() => {
+                  setVisitType(null);
+                  setStep("reserved-name");
+                }}
+                className="w-full p-6 rounded-3xl flex items-center gap-5 text-left active:opacity-80"
+                style={{ background: "#DFF5F3", border: "2px solid #0F8B8D", color: "#0F6B6D" }}
+              >
+                <CalendarCheck size={40} className="shrink-0" />
+                <div className="flex-1">
+                  <div className="text-2xl font-bold mb-1" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>{t.reservedTitle}</div>
+                  <div className="text-base" style={{ color: "#4B8286" }}>{t.reservedDesc}</div>
+                </div>
+                <ChevronRight size={32} className="shrink-0" />
+              </button>
+              <button
+                onClick={() => {
                   setVisitType("pickup");
                   setStep("pickup-name");
                 }}
@@ -488,9 +607,12 @@ function Kiosk() {
             </div>
           )}
 
-          {(step === "pickup-name" || step === "consult-name") && (
+          {(step === "pickup-name" || step === "consult-name" || step === "reserved-name") && (
             <div className="flex flex-col gap-4">
-              <StepTitle title={step === "pickup-name" ? t.pickupTitle : t.consultTitle} subtitle={t.enterName} />
+              <StepTitle
+                title={step === "pickup-name" ? t.pickupTitle : step === "reserved-name" ? t.reservedTitle : t.consultTitle}
+                subtitle={t.enterName}
+              />
               <div className="flex items-center gap-3 px-5 py-4 rounded-2xl" style={{ background: "#FFFFFF", border: "2px solid #F2DFE4" }}>
                 <PenLine size={24} color="#B08A90" className="shrink-0" />
                 <input
@@ -538,10 +660,100 @@ function Kiosk() {
               <NavRow
                 onBack={reset}
                 backLabel={t.back}
-                onNext={() => setStep(step === "pickup-name" ? "pickup-meds" : "consult-kind")}
-                nextDisabled={!name.trim() || !dobValid}
+                onNext={proceedFromName}
+                nextDisabled={!name.trim() || !dobValid || busy}
                 nextLabel={t.next}
               />
+              {busy && <p className="text-center text-base" style={{ color: "#8A7378" }}>{t.working}</p>}
+            </div>
+          )}
+
+          {/* ネット/LINE予約が見つかったときの確認画面。質問はスキップして保険確認へ */}
+          {step === "booking-found" && booking && (
+            <div className="flex flex-col gap-4">
+              <StepTitle title={t.bookingFoundTitle} subtitle={t.bookingFoundSubtitle} />
+              <div className="p-6 rounded-3xl flex items-center gap-5" style={{ background: "#FFFFFF", border: "2px solid #0F8B8D" }}>
+                <CalendarCheck size={44} color="#0F8B8D" className="shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-2xl font-bold break-words" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                    {booking.patient_name}
+                    {lang === "ja" ? " 様" : ""}
+                  </div>
+                  <div className="text-xl font-bold mt-1" style={{ color: "#0F8B8D" }}>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{booking.time}〜</span>
+                    <span className="text-base font-medium ml-3" style={{ color: "#8A7378" }}>
+                      {booking.visit_menus?.name || ""}
+                      {booking.return_reason
+                        ? `（${{ results: t.rrResults, followup: t.rrFollowup, new_symptom: t.rrNew }[booking.return_reason] || ""}）`
+                        : ""}
+                    </span>
+                  </div>
+                  {Array.isArray(booking.medications) && booking.medications.length > 0 && (
+                    <div className="text-sm mt-1" style={{ color: "#8A7378" }}>{booking.medications.join("、")}</div>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() =>
+                  setStep(
+                    visitType === "pickup" && !(Array.isArray(booking.medications) && booking.medications.length)
+                      ? "pickup-meds"
+                      : "insurance"
+                  )
+                }
+                className="w-full py-4 rounded-2xl text-xl font-bold flex items-center justify-center gap-2 active:opacity-80"
+                style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+              >
+                {t.bookingFoundNext} <ChevronRight size={24} />
+              </button>
+              <button
+                onClick={() => {
+                  setBooking(null);
+                  setPrefilledIntake(null);
+                  setStep(visitType === "pickup" ? "pickup-meds" : "consult-kind");
+                }}
+                className="text-base underline self-center active:opacity-70"
+                style={{ color: "#8A7378" }}
+              >
+                {t.bookingFoundOther}
+              </button>
+            </div>
+          )}
+
+          {/* 予約済みの方: 当日の予約が見つからなかった */}
+          {step === "reserved-notfound" && (
+            <div className="flex flex-col gap-4">
+              <StepTitle title={t.bookingNotFoundTitle} subtitle={t.bookingNotFoundSubtitle} />
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setStep("reserved-name")}
+                  className="w-full px-6 py-4 rounded-2xl text-xl font-bold active:opacity-80"
+                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                >
+                  {t.bookingNotFoundRetry}
+                </button>
+                <button
+                  onClick={() => {
+                    setVisitType("consult");
+                    setStep("consult-kind");
+                  }}
+                  className="w-full px-6 py-4 rounded-2xl text-xl font-bold active:opacity-80"
+                  style={{ background: "#FFFFFF", border: "2px solid #0F8B8D", color: "#0F8B8D" }}
+                >
+                  {t.bookingNotFoundConsult}
+                </button>
+                <button
+                  onClick={() => {
+                    setVisitType("pickup");
+                    setStep("pickup-meds");
+                  }}
+                  className="w-full px-6 py-4 rounded-2xl text-xl font-bold active:opacity-80"
+                  style={{ background: "#FFFFFF", border: "2px solid #0F8B8D", color: "#0F8B8D" }}
+                >
+                  {t.bookingNotFoundPickup}
+                </button>
+              </div>
+              <NavRow onBack={reset} backLabel={t.back} />
             </div>
           )}
 
@@ -718,7 +930,9 @@ function Kiosk() {
               <NavRow
                 onBack={() =>
                   setStep(
-                    visitType === "pickup" ? "pickup-meds" : visitKind === "return" ? "consult-return" : "consult-kind"
+                    booking
+                      ? "booking-found"
+                      : visitType === "pickup" ? "pickup-meds" : visitKind === "return" ? "consult-return" : "consult-kind"
                   )
                 }
                 backLabel={t.back}
@@ -820,9 +1034,11 @@ function Kiosk() {
                             <p className="text-base">
                               {doneQrUrl
                                 ? t.ticketQrGuideBody
-                                : done.visitType === "pickup"
-                                  ? t.ticketSeatBodyPickup
-                                  : t.ticketSeatBodyConsult}
+                                : done.intakeDone && done.visitType === "consult"
+                                  ? t.intakeAlreadyDone
+                                  : done.visitType === "pickup"
+                                    ? t.ticketSeatBodyPickup
+                                    : t.ticketSeatBodyConsult}
                             </p>
                           </div>
                         </div>
@@ -848,7 +1064,11 @@ function Kiosk() {
                     }
                     return (
                       <p className="text-lg text-center md:text-left" style={{ color: "#8A7378" }}>
-                        {done.visitType === "pickup" ? t.pickupWait : t.consultWait}
+                        {done.intakeDone && done.visitType === "consult"
+                          ? t.intakeAlreadyDone
+                          : done.visitType === "pickup"
+                            ? t.pickupWait
+                            : t.consultWait}
                       </p>
                     );
                   })()}
