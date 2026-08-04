@@ -361,11 +361,12 @@ export default function StaffView() {
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
                                   style={
                                     c.chart_done
-                                      ? { background: "#0F8B8D", color: "#FFFFFF" }
+                                      ? { background: "#0F8B8D", border: "1px solid #0F8B8D", color: "#FFFFFF" }
                                       : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
                                   }
                                 >
-                                  {c.chart_done && <CheckCircle2 size={12} />}
+                                  {/* オフのときも透明のまま描画して、チェックの分だけ幅がズレるのを防ぐ */}
+                                  <CheckCircle2 size={12} style={{ visibility: c.chart_done ? "visible" : "hidden" }} />
                                   カルテ済
                                 </button>
                                 <button
@@ -373,11 +374,11 @@ export default function StaffView() {
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
                                   style={
                                     c.payment_done
-                                      ? { background: "#0F8B8D", color: "#FFFFFF" }
+                                      ? { background: "#0F8B8D", border: "1px solid #0F8B8D", color: "#FFFFFF" }
                                       : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
                                   }
                                 >
-                                  {c.payment_done && <CheckCircle2 size={12} />}
+                                  <CheckCircle2 size={12} style={{ visibility: c.payment_done ? "visible" : "hidden" }} />
                                   会計済
                                 </button>
                               </div>
