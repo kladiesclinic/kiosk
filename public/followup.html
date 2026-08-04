@@ -20,6 +20,29 @@
   .done-panel h2 { font-family: 'Noto Sans JP', var(--sans); font-size: 20px; font-weight: 500; color: #1F5B37; }
   .done-panel p { font-size: 14px; line-height: 1.75; color: #2E5C41; margin-top: 12px; }
   .form-locked { pointer-events: none; opacity: 0.7; }
+
+  /* ---- 1問ずつ表示（ウィザード形式・intake.htmlと同じ見た目） ---- */
+  .wz-hide { display: none !important; }
+  .wz-progress { margin-bottom: 20px; }
+  .wz-progress .wz-count {
+    font-family: 'Noto Sans JP', var(--sans); font-size: 12.5px; font-weight: 500;
+    color: var(--faint); margin-bottom: 7px;
+  }
+  .wz-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .wz-bar span {
+    display: block; height: 100%; width: 0; background: var(--accent);
+    border-radius: 999px; transition: width 0.25s ease;
+  }
+  .wz-nav { display: flex; gap: 10px; margin-top: 26px; }
+  .wz-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 15px; font-weight: 600; padding: 14px 18px; border-radius: 999px;
+    cursor: pointer; font-family: var(--sans);
+  }
+  .wz-next { flex: 1; background: var(--accent); color: #FFFFFF; border: none; }
+  .wz-back { flex: 0 0 auto; min-width: 108px; background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .wz-back:disabled { opacity: 0.35; cursor: default; }
+  #wz-final { font-size: 14.5px; line-height: 1.75; color: var(--soft); }
 </style>
 </head>
 <body>
@@ -138,6 +161,91 @@
       })
       .finally(function () { submitBtn.disabled = false; });
   });
+
+  /* ---- 1問ずつ表示するウィザード形式（intake.htmlと同じ動き） ---- */
+  (function () {
+    var steps = [].filter.call(form.children, function (n) {
+      return n.classList && n.classList.contains("field");
+    });
+    if (!steps.length) return;
+
+    var progress = document.createElement("div");
+    progress.className = "wz-progress";
+    progress.innerHTML = '<div class="wz-count"></div><div class="wz-bar"><span></span></div>';
+    form.insertBefore(progress, form.firstChild);
+    var countEl = progress.querySelector(".wz-count");
+    var barEl = progress.querySelector(".wz-bar span");
+
+    var finalMsg = document.createElement("div");
+    finalMsg.id = "wz-final";
+    finalMsg.textContent = "以上で質問は終わりです。下のボタンから送信してください。 ／ That's everything — please send your answers below.";
+    form.insertBefore(finalMsg, submitBtn);
+
+    var nav = document.createElement("div");
+    nav.className = "wz-nav";
+    var backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "wz-btn wz-back";
+    backBtn.textContent = "もどる ／ Back";
+    var nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "wz-btn wz-next";
+    nextBtn.textContent = "次へ ／ Next";
+    nav.appendChild(backBtn);
+    nav.appendChild(nextBtn);
+    form.appendChild(nav);
+
+    var pos = 0; // steps.length なら送信ステップ
+    var rendered = false;
+
+    function render() {
+      var onFinal = pos >= steps.length;
+      steps.forEach(function (s) { s.classList.add("wz-hide"); });
+      [finalMsg, submitBtn, statusEl].forEach(function (el) { el.classList.add("wz-hide"); });
+      if (onFinal) {
+        [finalMsg, submitBtn, statusEl].forEach(function (el) { el.classList.remove("wz-hide"); });
+        countEl.textContent = "送信の確認 ／ Ready to send";
+        barEl.style.width = "100%";
+      } else {
+        steps[pos].classList.remove("wz-hide");
+        countEl.textContent = "質問 " + (pos + 1) + " / " + steps.length;
+        barEl.style.width = Math.round((pos / steps.length) * 100) + "%";
+      }
+      backBtn.disabled = pos === 0;
+      nextBtn.style.display = onFinal ? "none" : "";
+      if (rendered) progress.scrollIntoView({ behavior: "smooth", block: "start" });
+      rendered = true;
+    }
+
+    backBtn.addEventListener("click", function () {
+      if (pos > 0) { pos--; render(); }
+    });
+    nextBtn.addEventListener("click", function () {
+      var inputs = steps[pos].querySelectorAll("input, select, textarea");
+      for (var i = 0; i < inputs.length; i++) {
+        if (!inputs[i].checkValidity()) { inputs[i].reportValidity(); return; }
+      }
+      pos++;
+      render();
+    });
+    form.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      if ((e.target.tagName || "").toUpperCase() === "TEXTAREA") return;
+      if (pos < steps.length) { e.preventDefault(); nextBtn.click(); }
+    });
+
+    // 送信成功（done-panel表示）でウィザードUIを片付ける
+    var doneEl = document.getElementById("fu-done");
+    new MutationObserver(function () {
+      if (!doneEl.classList.contains("show")) return;
+      [].forEach.call(form.querySelectorAll(".wz-hide"), function (el) { el.classList.remove("wz-hide"); });
+      progress.style.display = "none";
+      nav.style.display = "none";
+      finalMsg.style.display = "none";
+    }).observe(doneEl, { attributes: true, attributeFilter: ["class"] });
+
+    render();
+  })();
 </script>
 
 </body>

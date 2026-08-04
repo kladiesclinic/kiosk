@@ -122,6 +122,32 @@
   }
   .print-header { display: none; }
 
+  /* ---- 1問ずつ表示（ウィザード形式） ----
+     画面では現在の質問だけを表示し、次へ/もどるで進む。送信・印刷時は
+     従来どおり全問が並ぶ（印刷CSSで .wz-hide を解除する）。 */
+  .wz-hide { display: none !important; }
+  .wz-progress { margin-bottom: 20px; }
+  .wz-progress .wz-count {
+    font-family: 'Noto Sans JP', var(--sans); font-size: 12.5px; font-weight: 500;
+    color: var(--faint); margin-bottom: 7px;
+  }
+  .wz-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .wz-bar span {
+    display: block; height: 100%; width: 0; background: var(--accent);
+    border-radius: 999px; transition: width 0.25s ease;
+  }
+  .wz-nav { display: flex; gap: 10px; margin-top: 26px; }
+  .wz-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 15px; font-weight: 600; padding: 14px 18px; border-radius: 999px;
+    cursor: pointer; font-family: var(--sans);
+  }
+  .wz-next { flex: 1; background: var(--accent); color: #FFFFFF; border: none; }
+  .wz-back { flex: 0 0 auto; min-width: 108px; background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .wz-back:disabled { opacity: 0.35; cursor: default; }
+  #wz-final { font-size: 14.5px; line-height: 1.75; color: var(--soft); }
+  #wz-final .ja { display: block; font-size: 12.5px; color: var(--faint); margin-top: 4px; }
+
   @media print {
     @page { size: A4; margin: 12mm 10mm; }
     body { background: #FFFFFF; color: #000000; font-size: 10px; }
@@ -173,6 +199,10 @@
     .reason-sub { max-height: none; opacity: 1; }
     .reason-sub > div { padding: 2px 0 3px 14px; }
     .reason-sub label { margin-bottom: 1px; }
+    /* ウィザードで隠している質問も、紙の上では全問並べる */
+    .wz-progress, .wz-nav, #wz-final { display: none !important; }
+    form .field.wz-hide, .q-block.wz-hide, .section-label.wz-hide { display: block !important; }
+    form .field-row.wz-hide { display: grid !important; }
   }
 </style>
 </head>
@@ -1350,6 +1380,160 @@
       })
       .finally(function () { submitBtn.disabled = false; });
   });
+</script>
+
+<script>
+  /* ---- 1問ずつ表示するウィザード形式 ----
+     既存のフォームDOMはそのまま使い、表示だけを1問ずつに切り替える。
+     ・各 .field / .field-row（q-block内は個々の .field）を1ステップとする
+     ・「追加処方のみ」のときは記入不要セクションのステップを飛ばす
+     ・最後に送信ステップ。送信成功後は全問を再表示（PDF保存のため） */
+  (function () {
+    var isEn = PAGE_LANG === "en";
+    var printBtn = document.getElementById("if-print");
+    var refillBox = document.querySelector(
+      'input[name="reason"][value="Refill of a medication prescribed here before"]');
+    var reasonBoxes = document.querySelectorAll('input[name="reason"]');
+
+    // ステップ収集: form直下の .field / .field-row、q-block内の .field。
+    // それぞれに属するセクション見出しと（q-blockの場合）親要素も控えておく
+    var steps = [];
+    var curSection = null;
+    [].forEach.call(form.children, function (node) {
+      if (!node.classList) return;
+      if (node.classList.contains("section-label")) { curSection = node; return; }
+      if (node.classList.contains("q-block")) {
+        [].forEach.call(node.children, function (f) {
+          if (f.classList && f.classList.contains("field")) {
+            steps.push({ el: f, section: curSection, wrap: node });
+          }
+        });
+        return;
+      }
+      if (node.classList.contains("field") || node.classList.contains("field-row")) {
+        steps.push({ el: node, section: curSection, wrap: null });
+      }
+    });
+    if (!steps.length) return;
+
+    // 進行UI（進捗バー＋次へ/もどる）と送信ステップの案内文
+    var progress = document.createElement("div");
+    progress.className = "wz-progress";
+    progress.innerHTML = '<div class="wz-count"></div><div class="wz-bar"><span></span></div>';
+    form.insertBefore(progress, form.firstChild);
+    var countEl = progress.querySelector(".wz-count");
+    var barEl = progress.querySelector(".wz-bar span");
+
+    var finalMsg = document.createElement("div");
+    finalMsg.id = "wz-final";
+    finalMsg.innerHTML = isEn
+      ? "That's every question — thank you. Please send your answers with the button below. You can go back to change anything.<span class='ja'>以上で質問は終わりです。下のボタンから送信してください。</span>"
+      : "以上で質問は終わりです。下のボタンから送信してください。修正したい場合は「もどる」で戻れます。<span class='ja'>That's every question — please send your answers with the button below.</span>";
+    form.insertBefore(finalMsg, submitBtn);
+
+    var nav = document.createElement("div");
+    nav.className = "wz-nav";
+    var backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "wz-btn wz-back";
+    backBtn.textContent = isEn ? "Back" : "もどる";
+    var nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "wz-btn wz-next";
+    nextBtn.textContent = isEn ? "Next" : "次へ";
+    nav.appendChild(backBtn);
+    nav.appendChild(nextBtn);
+    form.appendChild(nav);
+
+    // 「追加処方のみ」選択中は、記入不要セクション（data-skippable）の質問を飛ばす
+    function skipActive() {
+      var ticked = [].filter.call(reasonBoxes, function (b) { return b.checked; });
+      return !!refillBox && ticked.length === 1 && ticked[0] === refillBox;
+    }
+    function visibleIndexes() {
+      var skip = skipActive();
+      var out = [];
+      steps.forEach(function (s, i) {
+        if (skip && s.section && s.section.hasAttribute("data-skippable")) return;
+        out.push(i);
+      });
+      return out;
+    }
+
+    var pos = 0; // visibleIndexes() 上の位置。== length なら送信ステップ
+
+    function render() {
+      var vis = visibleIndexes();
+      if (pos > vis.length) pos = vis.length;
+      var onFinal = pos >= vis.length;
+
+      steps.forEach(function (s) {
+        s.el.classList.add("wz-hide");
+        if (s.wrap) s.wrap.classList.add("wz-hide");
+      });
+      [].forEach.call(form.querySelectorAll(".section-label"), function (l) { l.classList.add("wz-hide"); });
+      [finalMsg, submitBtn, printBtn, statusEl].forEach(function (el) { el.classList.add("wz-hide"); });
+
+      if (onFinal) {
+        [finalMsg, submitBtn, printBtn, statusEl].forEach(function (el) { el.classList.remove("wz-hide"); });
+        countEl.textContent = isEn ? "Ready to send" : "送信の確認";
+        barEl.style.width = "100%";
+      } else {
+        var s = steps[vis[pos]];
+        s.el.classList.remove("wz-hide");
+        if (s.wrap) s.wrap.classList.remove("wz-hide");
+        if (s.section) s.section.classList.remove("wz-hide");
+        countEl.textContent = (isEn ? "Question " : "質問 ") + (pos + 1) + " / " + vis.length;
+        barEl.style.width = Math.round((pos / vis.length) * 100) + "%";
+      }
+      backBtn.disabled = pos === 0;
+      nextBtn.style.display = onFinal ? "none" : "";
+      // 質問が変わったらページ先頭（進捗バー）へ戻す（初回表示では動かさない）
+      if (rendered) progress.scrollIntoView({ behavior: "smooth", block: "start" });
+      rendered = true;
+    }
+    var rendered = false;
+
+    function validateCurrent() {
+      var vis = visibleIndexes();
+      if (pos >= vis.length) return true;
+      var inputs = steps[vis[pos]].el.querySelectorAll("input, select, textarea");
+      for (var i = 0; i < inputs.length; i++) {
+        if (!inputs[i].checkValidity()) { inputs[i].reportValidity(); return false; }
+      }
+      return true;
+    }
+
+    backBtn.addEventListener("click", function () {
+      if (pos > 0) { pos--; render(); }
+    });
+    nextBtn.addEventListener("click", function () {
+      if (!validateCurrent()) return;
+      pos++;
+      render();
+    });
+
+    // テキスト欄でEnterを押したら（送信ではなく）次の質問へ
+    form.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      var tag = (e.target.tagName || "").toUpperCase();
+      if (tag === "TEXTAREA") return;
+      var vis = visibleIndexes();
+      if (pos < vis.length) { e.preventDefault(); nextBtn.click(); }
+    });
+
+    // 送信成功（done-panel表示）でウィザードを解除して全問を表示（PDF保存用）
+    var doneEl = document.getElementById("if-done");
+    new MutationObserver(function () {
+      if (!doneEl.classList.contains("show")) return;
+      [].forEach.call(form.querySelectorAll(".wz-hide"), function (el) { el.classList.remove("wz-hide"); });
+      progress.style.display = "none";
+      nav.style.display = "none";
+      finalMsg.style.display = "none";
+    }).observe(doneEl, { attributes: true, attributeFilter: ["class"] });
+
+    render();
+  })();
 </script>
 
 </body>
