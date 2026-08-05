@@ -90,6 +90,25 @@
   .unit-or { font-size: 12.5px; color: var(--faint); flex: 0 0 auto; }
   form .hint .ja { display: block; margin-top: 2px; }
 
+  /* 住所: 郵便番号で検索 → 都道府県・市区町村・町名を自動で入れ、番地と建物名は手入力。
+     全体で1つの .field にしてあるので、ウィザードでは1問として出る。 */
+  .postal-row { display: flex; gap: 8px; align-items: stretch; }
+  .postal-row input { flex: 0 1 200px; min-width: 0; }
+  .postal-btn {
+    flex: 0 0 auto; padding: 0 16px; border: 1px solid var(--accent); border-radius: 10px;
+    background: #FFFFFF; color: var(--accent); font-family: inherit; font-size: 13px;
+    font-weight: 600; line-height: 1.25; cursor: pointer;
+  }
+  .postal-btn:active { opacity: 0.7; }
+  .postal-btn .ja { display: block; font-size: 10.5px; font-weight: 400; }
+  .postal-msg { font-size: 12px; line-height: 1.5; margin-top: 6px; color: var(--faint); min-height: 1.2em; }
+  .postal-msg.err { color: #C0392B; }
+  .postal-msg.ok { color: #1E7A4A; }
+  .addr-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+  @media (min-width: 560px) { .addr-grid { grid-template-columns: 1fr 1fr; } }
+  .addr-cell.full { grid-column: 1 / -1; }
+  .addr-cell label { display: block; }
+
   /* Replaces the one-line green status once the form is in. The answers stay on
      screen so the PDF button still has something to save. */
   .done-panel {
@@ -181,6 +200,10 @@
     .field-row { grid-template-columns: 1fr 1fr; gap: 5px 8px; }
     .field-row + .field, .field-row + .field-row { margin-top: 6px; }
     .unit-row { gap: 4px; flex-wrap: nowrap; }
+    /* 紙の上では検索ボタンは意味がないので消し、住所欄は2段組で詰める */
+    .postal-btn, .postal-msg { display: none !important; }
+    .postal-row input { flex: 0 1 120px; }
+    .addr-grid { grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-top: 5px; }
     .unit-cell input[type="text"] { padding-right: 22px; }
     .unit-cell .unit { right: 5px; font-size: 8px; color: #444444; }
     .unit-or { font-size: 8px; color: #444444; }
@@ -290,9 +313,32 @@
       </div>
 
       <div class="field">
-        <label for="if-address">Address in Japan<span class="ja">日本国内の住所</span></label>
-        <input id="if-address" type="text" autocomplete="street-address" required />
-        <div class="hint">Home, hotel or wherever you're staying.<span class="ja">ホテル等の滞在先でも構いません。</span></div>
+        <label for="if-postal">Address in Japan<span class="ja">日本国内の住所</span></label>
+        <div class="hint">Home, hotel or wherever you're staying. Enter your postal code and we'll fill in the rest.<span class="ja">ホテル等の滞在先でも構いません。郵便番号を入れると、都道府県・市区町村・町名が自動で入ります。</span></div>
+        <div class="postal-row">
+          <input id="if-postal" type="text" inputmode="numeric" autocomplete="postal-code"
+                 placeholder="160-0023" maxlength="8" aria-label="Postal code / 郵便番号" />
+          <button type="button" class="postal-btn" id="if-postal-btn">Find address<span class="ja">住所を検索</span></button>
+        </div>
+        <div class="postal-msg" id="if-postal-msg" role="status" aria-live="polite"></div>
+        <div class="addr-grid">
+          <div class="addr-cell">
+            <label for="if-pref">Prefecture<span class="ja">都道府県</span></label>
+            <input id="if-pref" type="text" autocomplete="address-level1" required />
+          </div>
+          <div class="addr-cell">
+            <label for="if-city">City / ward<span class="ja">市区町村</span></label>
+            <input id="if-city" type="text" autocomplete="address-level2" required />
+          </div>
+          <div class="addr-cell full">
+            <label for="if-town">Town and street number<span class="ja">町名・番地</span></label>
+            <input id="if-town" type="text" autocomplete="address-line1" required />
+          </div>
+          <div class="addr-cell full">
+            <label for="if-building">Building and room number<span class="ja">建物名・部屋番号（任意）</span></label>
+            <input id="if-building" type="text" autocomplete="address-line2" />
+          </div>
+        </div>
       </div>
 
       <div class="field-row">
@@ -1073,6 +1119,72 @@
   }
   function val(id) { return document.getElementById(id).value.trim(); }
 
+  /* 郵便番号から住所を引く（zipcloud の公開API。CORS対応・キー不要）。
+     引けなかった場合も下の欄に直接書けるので、検索は「入れば楽になる」補助に留める。
+     町名は自動で入れるが、患者が触った後は上書きしない（番地まで書いた分が消えないように）。 */
+  (function () {
+    var pc = document.getElementById("if-postal");
+    if (!pc) return;
+    var btn = document.getElementById("if-postal-btn");
+    var msg = document.getElementById("if-postal-msg");
+    var town = document.getElementById("if-town");
+    var isEn = PAGE_LANG === "en";
+    var lastLooked = "";
+
+    function say(text, cls) {
+      msg.textContent = text;
+      msg.className = "postal-msg" + (cls ? " " + cls : "");
+    }
+    function lookup() {
+      var z = (pc.value || "").replace(/[^0-9]/g, "");
+      if (z.length !== 7) {
+        say(isEn ? "Please enter the 7 digits of your postal code." : "郵便番号は7桁の数字でご入力ください。", "err");
+        return;
+      }
+      lastLooked = z;
+      say(isEn ? "Looking up…" : "検索しています…");
+      fetch("https://zipcloud.ibsnet.co.jp/api/search?zipcode=" + z)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var r = d && d.results && d.results[0];
+          if (!r) {
+            say(isEn ? "We couldn't find that postal code. Please type your address in the boxes below."
+                     : "その郵便番号は見つかりませんでした。下の欄に直接ご記入ください。", "err");
+            return;
+          }
+          document.getElementById("if-pref").value = r.address1 || "";
+          document.getElementById("if-city").value = r.address2 || "";
+          if (!town.value.trim() || town.dataset.auto === "1") {
+            town.value = r.address3 || "";
+            town.dataset.auto = "1";
+          }
+          say(isEn ? "Address filled in — please add your street number."
+                   : "住所が入りました。続けて番地・建物名をご記入ください。", "ok");
+          town.focus();
+        })
+        .catch(function () {
+          say(isEn ? "We couldn't look that up just now. Please type your address in the boxes below."
+                   : "住所を検索できませんでした。下の欄に直接ご記入ください。", "err");
+        });
+    }
+
+    btn.addEventListener("click", lookup);
+    // 7桁そろった時点で自動検索（同じ番号は繰り返し引かない）
+    pc.addEventListener("input", function () {
+      var z = (pc.value || "").replace(/[^0-9]/g, "");
+      if (z.length === 7 && z !== lastLooked) lookup();
+    });
+    // 郵便番号欄のEnterは「次の質問へ」ではなく住所検索にする
+    pc.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      e.stopPropagation();
+      lookup();
+    });
+    // 患者が町名を書き換えたら、以後は自動で上書きしない
+    town.addEventListener("input", function () { town.dataset.auto = ""; });
+  })();
+
   // Height and weight can be filled in either system. Typing in one side fills
   // the other, so the doctor always gets metric and the patient always sees the
   // units she thinks in. `syncing` stops the two sides updating each other
@@ -1154,6 +1266,7 @@
     ["email", "Email", "メールアドレス"],
     ["phone", "Phone", "電話番号"],
     ["nationality", "Nationality", "国籍"],
+    ["postal_code", "Postal code", "郵便番号"],
     ["address", "Address in Japan", "日本国内の住所"],
     ["height_cm", "Height", "身長"],
     ["weight_kg", "Weight", "体重"],
@@ -1290,7 +1403,10 @@
       email: val("if-email"),
       phone: val("if-phone"),
       nationality: val("if-nationality"),
-      address: val("if-address"),
+      postal_code: val("if-postal"),
+      // 分割入力した住所は、スタッフ画面・PDFでこれまでどおり1行で読めるようつなげて保存する
+      address: [val("if-pref"), val("if-city"), val("if-town"), val("if-building")]
+        .filter(function (s) { return s; }).join(" "),
       height_cm: heightForEmail(),
       weight_kg: weightForEmail(),
       bmi: bmi,
