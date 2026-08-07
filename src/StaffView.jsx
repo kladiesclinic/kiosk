@@ -80,6 +80,26 @@ function normalizeName(s) {
   return (s || "").replace(/[\s　]/g, "");
 }
 
+// 生年月日（YYYY-MM-DD）から本日時点の満年齢。判定できなければ null。
+function ageFrom(dob) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(dob || "").trim());
+  if (!m) return null;
+  const [y, mo, d] = [+m[1], +m[2], +m[3]];
+  const now = new Date();
+  let age = now.getFullYear() - y;
+  if (now.getMonth() + 1 < mo || (now.getMonth() + 1 === mo && now.getDate() < d)) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
+}
+
+// 生年月日は列に入っているのが基本だが、列が空の問診票（LPからの記入など）も
+// あるので、回答の中の生年月日欄も見にいく
+function formBirthdate(form) {
+  if (!form) return null;
+  if (form.date_of_birth) return form.date_of_birth;
+  const row = (form.answers || []).find((r) => /生年月日|date of birth/i.test(r?.label || ""));
+  return row?.value || null;
+}
+
 const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "保険証", self_pay: "自費" };
 const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
 const CHANNEL_LABEL = { liff: "LINE", web: "Web", staff: "スタッフ" };
@@ -1002,10 +1022,18 @@ export default function StaffView() {
         >
           <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire</strong>
-            <span style={{ fontSize: 14 }}>
-              {selectedForm.patient_name}
-              {selectedForm.date_of_birth ? `（${selectedForm.date_of_birth}）` : ""}　{selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
-            </span>
+            {(() => {
+              // 紙を見た医師がすぐ年齢を掴めるように、生年月日のとなりに満年齢を出す
+              const dob = formBirthdate(selectedForm);
+              const age = ageFrom(dob);
+              const paren = dob ? `（${dob}${age === null ? "" : `・${age}歳`}）` : "";
+              return (
+                <span style={{ fontSize: 14 }}>
+                  {selectedForm.patient_name}
+                  {paren}　{selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
+                </span>
+              );
+            })()}
           </div>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
             {(() => {
