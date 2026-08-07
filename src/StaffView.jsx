@@ -16,6 +16,7 @@ import {
   CalendarCheck,
   UserPlus,
   QrCode,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 
@@ -203,6 +204,8 @@ export default function StaffView() {
   const [proxy, setProxy] = useState(null); // null=閉 / 開いているときは入力中の内容
   const [proxyBusy, setProxyBusy] = useState(false);
   const [proxyError, setProxyError] = useState("");
+  // 取り消し中の受付ID（連打よけ）
+  const [cancelling, setCancelling] = useState(null);
   // 問診票のQRを見せる対象の受付行
   const [qrFor, setQrFor] = useState(null);
 
@@ -294,6 +297,22 @@ export default function StaffView() {
     } else {
       setLoadError("");
     }
+  };
+
+  // 受付の取り消し。押し間違い・別人の受付・動作確認の後始末に使う。
+  // 予約は「予約中」に戻り、事前記入の問診票は残したまま紐付けだけ外れる。
+  const cancelCheckin = async (row) => {
+    const label = `${row.checkin_number}番 ${row.patient_name} さんの受付を取り消します。よろしいですか？`;
+    if (!window.confirm(label)) return;
+    setCancelling(row.id);
+    const { error } = await supabase.rpc("staff_cancel_checkin", { p_id: row.id });
+    setCancelling(null);
+    if (error) {
+      setLoadError(`受付の取り消しに失敗しました: ${error.message}`);
+      return;
+    }
+    setLoadError("");
+    setCheckins((prev) => prev.filter((c) => c.id !== row.id));
   };
 
   const emptyProxy = {
@@ -717,6 +736,17 @@ export default function StaffView() {
                                 >
                                   <CheckCircle2 size={12} style={{ visibility: c.payment_done ? "visible" : "hidden" }} />
                                   会計済
+                                </button>
+                                {/* 押し間違い・別人の受付・動作確認の後始末。
+                                    予約は「予約中」に戻り、問診票は残る */}
+                                <button
+                                  onClick={() => cancelCheckin(c)}
+                                  disabled={cancelling === c.id}
+                                  title="この受付を取り消す"
+                                  className="inline-flex items-center justify-center p-1 rounded-lg active:opacity-70"
+                                  style={{ color: "#C9AEB3", opacity: cancelling === c.id ? 0.4 : 1 }}
+                                >
+                                  <Trash2 size={13} />
                                 </button>
                               </div>
                             </td>
