@@ -1660,6 +1660,20 @@
         submitBtn.style.display = "none";
         statusEl.className = "form-status";
         var done = document.getElementById("if-done");
+        // 予約から事前に記入した人（受付とはまだ紐付いていない）は、これで
+        // 手続きが終わったと思い込みやすい。実際に受付されないまま帰りかけた
+        // 例が出たので、来院時にQRで受付が要ることをここで強く出しておく。
+        if (!CHECKIN_ID) {
+          var isEn = PAGE_LANG === "en";
+          var warn = document.createElement("p");
+          warn.style.cssText =
+            "margin-top:14px;padding:12px 14px;border-radius:10px;background:#FFF4E5;" +
+            "border:1px solid #F0D2A0;color:#8A5A11;font-weight:600;";
+          warn.innerHTML = isEn
+            ? "This is not a check-in. When you arrive, please scan the check-in QR code at the reception counter."
+            : "これで受付は完了していません。ご来院時に、受付カウンターのQRコードを読み取って受付をお願いします。";
+          done.appendChild(warn);
+        }
         done.classList.add("show");
         done.scrollIntoView({ behavior: "smooth", block: "center" });
       })
