@@ -301,6 +301,20 @@
         </div>
       </div>
 
+      <!-- 来院受付をこの問診票で兼ねるとき（?selfcheckin=1）だけ表示する質問。
+           ここまで（氏名・カナ・生年月日・保険）に答えた時点で受付が成立する。
+           受付を経由しない記入（LP・予約からの事前記入）では下のスクリプトが
+           この要素ごと削除するので、ウィザードのステップにも現れない。 -->
+      <div class="field" id="if-checkin-block">
+        <label>Insurance<span class="ja">保険証について</span></label>
+        <div class="hint">Please choose what applies to your visit today.<span class="ja">本日のご来院について、当てはまるものをお選びください。</span></div>
+        <div class="cond-grid">
+          <label class="choice"><input type="radio" name="checkin_insurance" value="mynumber" required /> I used the My Number card reader at reception<span class="ja">受付のリーダーでマイナ保険証の手続きをした</span></label>
+          <label class="choice"><input type="radio" name="checkin_insurance" value="hokensho" /> I have my insurance card with me<span class="ja">保険証を持っている（受付の保険証入れにお入れください）</span></label>
+          <label class="choice"><input type="radio" name="checkin_insurance" value="self_pay" /> No insurance card (self-pay)<span class="ja">保険証なし（自費）</span></label>
+        </div>
+      </div>
+
       <div class="field-row">
         <div class="field">
           <label for="if-phone">Phone number<span class="ja">電話番号</span></label>
@@ -762,6 +776,125 @@
   // ネット/LINE予約から事前記入する場合は ?booking=<予約ID> が付く。両方保存して
   // 予約・受付どちらの画面からでも問診票を引けるようにする
   var BOOKING_ID = new URLSearchParams(window.location.search).get("booking") || "";
+
+  /* ---- 来院受付を兼ねるモード（?selfcheckin=1） ----
+     受付機を置かず患者さんのスマホで受付する運用（booking-app の /checkin から来る）。
+     受付側では氏名・生年月日を聞かず、この問診票の冒頭
+     （氏名・カナ・生年月日・保険）を答えた時点で受付を1件作る。
+     残りの設問は待合室で記入してもらえばよく、途中でやめても受付は成立している。 */
+  var SELF_CHECKIN = new URLSearchParams(window.location.search).get("selfcheckin") === "1";
+  var SELF_VISIT = new URLSearchParams(window.location.search).get("visit") === "pickup" ? "pickup" : "consult";
+  var SELF_KIND = new URLSearchParams(window.location.search).get("kind") || "";
+  var SELF_REASON = new URLSearchParams(window.location.search).get("reason") || "";
+  var SELF_LINE = new URLSearchParams(window.location.search).get("line") || "";
+  var CHECKIN_STORE = "keicuri-intake-checkin";
+
+  // 受付を経由しない記入（LP・予約からの事前記入）では保険の質問を出さない
+  if (!SELF_CHECKIN) {
+    (function () {
+      var block = document.getElementById("if-checkin-block");
+      if (block && block.parentNode) block.parentNode.removeChild(block);
+    })();
+  } else {
+    // 同じ端末で今日すでに受付していれば、それを引き継ぐ（読み込み直し・戻る対策）
+    try {
+      var savedRaw = localStorage.getItem(CHECKIN_STORE);
+      var saved = savedRaw ? JSON.parse(savedRaw) : null;
+      var d = new Date();
+      var today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      if (saved && saved.dateKey === today && saved.id) {
+        CHECKIN_ID = saved.id;
+        SUBMIT_TOKEN = saved.submitToken || "";
+        // 読み込み直しても「受付は済んでいる」ことが分かるように出し直す
+        document.addEventListener("DOMContentLoaded", function () {
+          showCheckinBanner(saved.number, null);
+        });
+      }
+    } catch (e) { /* プライベートブラウズ等。受付し直しになるだけで害はない */ }
+  }
+
+  // 冒頭の設問がそろったら受付を1件作る。何度呼んでも受付は1件（DB側でも
+  // 同じ日・同じ氏名の未対応の受付があればそれを返すようになっている）。
+  var checkinPending = false;
+  function ensureSelfCheckin() {
+    if (!SELF_CHECKIN || CHECKIN_ID || checkinPending) return Promise.resolve(false);
+    var nameEl = document.getElementById("if-name");
+    var dobEl = document.getElementById("if-dob");
+    var ins = document.querySelector('input[name="checkin_insurance"]:checked');
+    var name = nameEl ? nameEl.value.trim() : "";
+    if (!name || !dobEl || !dobEl.value || !ins) return Promise.resolve(false);
+
+    checkinPending = true;
+    return fetch(SUPABASE_URL + "/rest/v1/rpc/create_self_checkin", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        p_visit_type: SELF_VISIT,
+        p_patient_name: name,
+        p_date_of_birth: dobEl.value,
+        p_insurance: ins.value,
+        p_visit_kind: SELF_KIND || null,
+        p_return_reason: SELF_REASON || null,
+        p_line_user_id: SELF_LINE || null,
+        p_source: "phone",
+      }),
+    })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        checkinPending = false;
+        if (!data || !data.id) return false;
+        CHECKIN_ID = data.id;
+        SUBMIT_TOKEN = data.submitToken || "";
+        try {
+          var d = new Date();
+          localStorage.setItem(CHECKIN_STORE, JSON.stringify({
+            id: data.id,
+            submitToken: data.submitToken,
+            number: data.number,
+            dateKey: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"),
+          }));
+        } catch (e) { /* no-op */ }
+        showCheckinBanner(data.number, ins.value);
+        return true;
+      })
+      .catch(function (e) {
+        // 受付に失敗しても問診票の記入は続けられる。スタッフが画面で拾える
+        checkinPending = false;
+        console.warn("self check-in failed", e);
+        return false;
+      });
+  }
+
+  // 受付が済んだことを問診票の上に出しておく（紙の受付票を出さない運用のため、
+  // 患者さんが「受付できたのか」を確かめられる唯一の表示になる）
+  function showCheckinBanner(number, insurance) {
+    if (document.getElementById("if-checkin-banner")) return;
+    var isEn = PAGE_LANG === "en";
+    var box = document.createElement("div");
+    box.id = "if-checkin-banner";
+    box.style.cssText =
+      "margin:0 0 22px;padding:14px 16px;border-radius:12px;background:#EAF7EF;" +
+      "border:1px solid #BFE3CD;color:#1F5B37;font-size:14px;line-height:1.7;";
+    box.innerHTML =
+      "<strong>" + (isEn ? "You are checked in." : "受付が完了しました。") + "</strong>" +
+      (number != null ? " " + (isEn ? "Reception number " : "受付番号 ") + number : "") +
+      "<br>" +
+      (isEn
+        ? "Please take a seat and finish the questionnaire. We will call you by name."
+        : "このまま問診票のご記入をお続けください。お名前でお呼びします。") +
+      (insurance === "hokensho"
+        ? "<br>" + (isEn
+            ? "Please put your insurance card in the box at reception."
+            : "保険証は受付の保険証入れにお入れください。")
+        : "");
+    var form = document.getElementById("intake-form");
+    if (form && form.parentNode) form.parentNode.insertBefore(box, form);
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   /* ---- 表示言語（日本語ファースト） ----
      HTMLは「英語が主・日本語(.ja)が従」で書かれているが、既定では日本語を主に
@@ -1485,7 +1618,10 @@
         }),
       });
     }
-    postIntake(true)
+    // 受付を兼ねるモードで、ウィザードを使わず一気に書いた場合の保険。
+    // まだ受付が作られていなければここで作ってから送る
+    ensureSelfCheckin()
+      .then(function () { return postIntake(true); })
       .then(function (res) {
         // トークンなし・不一致（旧受付票のQR等）はRLSに弾かれる（PostgRESTは
         // anonキーだと401、認証済みだと403を返す）ので、受付IDなしで送り直す。
@@ -1641,6 +1777,9 @@
       if (!validateCurrent()) return;
       pos++;
       render();
+      // 受付を兼ねるモードでは、冒頭（氏名・カナ・生年月日・保険）を
+      // 答え終えた時点で受付を成立させる。残りは待合室で記入してもらう
+      ensureSelfCheckin();
     });
 
     // テキスト欄でEnterを押したら（送信ではなく）次の質問へ

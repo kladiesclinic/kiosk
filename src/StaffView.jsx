@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import QRCode from "qrcode";
 import {
   ClipboardList,
   RefreshCw,
@@ -13,6 +14,8 @@ import {
   ExternalLink,
   CalendarDays,
   CalendarCheck,
+  UserPlus,
+  QrCode,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 
@@ -103,6 +106,32 @@ function visitKindLabel(c) {
   return "—";
 }
 
+// 受付行から問診票のURLを組み立てる（受付機の qrUrlFor と同じ出し分け）。
+// 紙の受付票を出さない運用なので、患者さんが画面を閉じて問診票のリンクを
+// 見失ったときは、スタッフがこのQRを見せて読み直してもらう。
+const INTAKE_BASE = new URL("./", window.location.href).toString();
+function intakeUrlForCheckin(c) {
+  if (c.visit_type !== "consult") return null;
+  const q = `?checkin=${encodeURIComponent(c.id)}&token=${encodeURIComponent(c.submit_token || "")}&lang=ja`;
+  if (c.visit_kind === "first") return `${INTAKE_BASE}intake.html${q}`;
+  if (c.visit_kind === "return" && c.return_reason === "new_symptom") return `${INTAKE_BASE}intake.html${q}`;
+  if (c.visit_kind === "return" && c.return_reason === "followup") return `${INTAKE_BASE}followup.html${q}`;
+  return null;
+}
+
+function QrImage({ url, size = 220 }) {
+  const [dataUrl, setDataUrl] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    QRCode.toDataURL(url, { width: size * 2, margin: 1, color: { dark: "#3A2E30", light: "#FFFFFF" } })
+      .then((d) => alive && setDataUrl(d))
+      .catch(() => alive && setDataUrl(null));
+    return () => { alive = false; };
+  }, [url, size]);
+  if (!dataUrl) return <div style={{ width: size, height: size, background: "#FFF8F7", borderRadius: 12 }} />;
+  return <img src={dataUrl} alt="問診票のQRコード" width={size} height={size} style={{ borderRadius: 12 }} />;
+}
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
@@ -122,6 +151,12 @@ export default function StaffView() {
   const [dateKey, setDateKey] = useState(todayKey);
   const isToday = dateKey === todayKey();
   const printAreaRef = useRef(null);
+  // スマホを持っていない・使えない患者さんの代理受付
+  const [proxy, setProxy] = useState(null); // null=閉 / 開いているときは入力中の内容
+  const [proxyBusy, setProxyBusy] = useState(false);
+  const [proxyError, setProxyError] = useState("");
+  // 問診票のQRを見せる対象の受付行
+  const [qrFor, setQrFor] = useState(null);
 
   const toggleHideChartDone = () => {
     setHideChartDone((v) => {
@@ -213,6 +248,41 @@ export default function StaffView() {
     }
   };
 
+  const emptyProxy = {
+    name: "", dob: "", visitType: "consult", visitKind: "first", returnReason: "followup", insurance: "",
+  };
+
+  // 代理受付。患者さんのスマホと同じ RPC を使う（受付番号のサーバ採番・当日予約との
+  // 照合・二重受付の防止がそのまま効く）。source だけ 'staff' にして区別する。
+  const submitProxy = async () => {
+    if (!proxy || proxyBusy) return;
+    const name = proxy.name.trim();
+    if (!name) return;
+    setProxyBusy(true);
+    setProxyError("");
+    const { error } = await supabase.rpc("create_self_checkin", {
+      p_visit_type: proxy.visitType,
+      p_patient_name: name,
+      p_date_of_birth: proxy.dob || null,
+      p_insurance: proxy.insurance || null,
+      p_visit_kind: proxy.visitType === "consult" ? proxy.visitKind : null,
+      p_return_reason:
+        proxy.visitType === "consult" && proxy.visitKind === "return" ? proxy.returnReason : null,
+      p_medications: null,
+      p_line_user_id: null,
+      p_source: "staff",
+    });
+    setProxyBusy(false);
+    if (error) {
+      setProxyError(error.message);
+      return;
+    }
+    setProxy(null);
+    // 過去日を見ていると新しい受付が出てこないので今日に戻す
+    if (!isToday) setDateKey(todayKey());
+    load();
+  };
+
   const waiting = checkins.filter((c) => !(c.chart_done && c.payment_done));
   const chartDoneCount = checkins.filter((c) => c.chart_done).length;
   const paymentDoneCount = checkins.filter((c) => c.payment_done).length;
@@ -287,6 +357,16 @@ export default function StaffView() {
                   会計済を隠す{paymentDoneCount > 0 && `（${paymentDoneCount}件）`}
                 </label>
               </>
+            )}
+            {tab === "checkins" && (
+              <button
+                onClick={() => { setProxyError(""); setProxy(emptyProxy); }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                style={{ background: "#FFFFFF", border: "1.5px solid #0F8B8D", color: "#0F8B8D" }}
+              >
+                <UserPlus size={15} />
+                代理で受付
+              </button>
             )}
             <a
               href="#"
@@ -538,6 +618,17 @@ export default function StaffView() {
                                       </span>
                                     )}
                                   </div>
+                                ) : intakeUrlForCheckin(c) ? (
+                                  // 紙の受付票が無いので、リンクを見失った患者さんには
+                                  // このQRを見せて読み直してもらう
+                                  <button
+                                    onClick={() => setQrFor(c)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                                  >
+                                    <QrCode size={12} />
+                                    未提出・QR
+                                  </button>
                                 ) : (
                                   <span className="text-xs" style={{ color: "#C9AEB3" }}>未提出</span>
                                 )
@@ -637,6 +728,200 @@ export default function StaffView() {
           </>
           )}
         </main>
+
+        {/* 代理受付モーダル（スマホをお持ちでない患者さんの分をスタッフが入れる） */}
+        {proxy && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(58,46,48,0.5)" }}
+            onClick={() => !proxyBusy && setProxy(null)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl overflow-hidden"
+              style={{ background: "#FFFFFF" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F2DFE4" }}>
+                <div className="text-base font-bold" style={{ color: "#3A2E30" }}>代理で受付</div>
+                <button
+                  onClick={() => setProxy(null)}
+                  className="p-2 rounded-xl active:opacity-70"
+                  style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-5 flex flex-col gap-4">
+                <label className="block">
+                  <span className="block text-xs font-medium mb-1" style={{ color: "#8A7378" }}>お名前 *</span>
+                  <input
+                    type="text"
+                    autoFocus
+                    value={proxy.name}
+                    onChange={(e) => setProxy({ ...proxy, name: e.target.value })}
+                    className="w-full p-2.5 rounded-lg text-sm outline-none"
+                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30" }}
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-medium mb-1" style={{ color: "#8A7378" }}>生年月日</span>
+                  <input
+                    type="date"
+                    value={proxy.dob}
+                    onChange={(e) => setProxy({ ...proxy, dob: e.target.value })}
+                    className="w-full p-2.5 rounded-lg text-sm outline-none"
+                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30" }}
+                  />
+                </label>
+
+                <div>
+                  <div className="text-xs font-medium mb-1.5" style={{ color: "#8A7378" }}>ご用件</div>
+                  <div className="flex gap-2">
+                    {[["consult", "診察"], ["pickup", "薬受け取り"]].map(([id, label]) => (
+                      <button
+                        key={id}
+                        onClick={() => setProxy({ ...proxy, visitType: id })}
+                        className="flex-1 px-3 py-2 rounded-lg text-sm font-medium"
+                        style={
+                          proxy.visitType === id
+                            ? { background: "#0F8B8D", color: "#FFFFFF" }
+                            : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {proxy.visitType === "consult" && (
+                  <>
+                    <div>
+                      <div className="text-xs font-medium mb-1.5" style={{ color: "#8A7378" }}>区分</div>
+                      <div className="flex gap-2">
+                        {[["first", "初診"], ["return", "再診"]].map(([id, label]) => (
+                          <button
+                            key={id}
+                            onClick={() => setProxy({ ...proxy, visitKind: id })}
+                            className="flex-1 px-3 py-2 rounded-lg text-sm font-medium"
+                            style={
+                              proxy.visitKind === id
+                                ? { background: "#0F8B8D", color: "#FFFFFF" }
+                                : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
+                            }
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {proxy.visitKind === "return" && (
+                      <div>
+                        <div className="text-xs font-medium mb-1.5" style={{ color: "#8A7378" }}>再診の内容</div>
+                        <div className="flex gap-2">
+                          {Object.entries(RETURN_REASON_LABEL).map(([id, label]) => (
+                            <button
+                              key={id}
+                              onClick={() => setProxy({ ...proxy, returnReason: id })}
+                              className="flex-1 px-2 py-2 rounded-lg text-xs font-medium"
+                              style={
+                                proxy.returnReason === id
+                                  ? { background: "#0F8B8D", color: "#FFFFFF" }
+                                  : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
+                              }
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                <div>
+                  <div className="text-xs font-medium mb-1.5" style={{ color: "#8A7378" }}>保険（任意）</div>
+                  <div className="flex gap-2">
+                    {Object.entries(INSURANCE_LABEL).map(([id, label]) => (
+                      <button
+                        key={id}
+                        onClick={() => setProxy({ ...proxy, insurance: proxy.insurance === id ? "" : id })}
+                        className="flex-1 px-2 py-2 rounded-lg text-xs font-medium"
+                        style={
+                          proxy.insurance === id
+                            ? { background: "#0F8B8D", color: "#FFFFFF" }
+                            : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }
+                        }
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {proxyError && (
+                  <div className="p-3 rounded-lg text-xs" style={{ background: "#FCE9EA", color: "#B03A44" }}>
+                    受付できませんでした: {proxyError}
+                  </div>
+                )}
+
+                <button
+                  onClick={submitProxy}
+                  disabled={!proxy.name.trim() || proxyBusy}
+                  className="w-full px-4 py-3 rounded-xl text-sm font-bold active:opacity-70"
+                  style={{
+                    background: "#0F8B8D",
+                    color: "#FFFFFF",
+                    opacity: !proxy.name.trim() || proxyBusy ? 0.4 : 1,
+                  }}
+                >
+                  {proxyBusy ? "受付しています..." : "この内容で受付する"}
+                </button>
+                <p className="text-[11px] leading-relaxed" style={{ color: "#B08A90" }}>
+                  当日のネット・LINE予約があれば自動で紐付きます。受付番号はサーバー側で採番されます。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 問診票QRモーダル（患者さんにこの画面を見せて読み取ってもらう） */}
+        {qrFor && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(58,46,48,0.5)" }}
+            onClick={() => setQrFor(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl overflow-hidden text-center"
+              style={{ background: "#FFFFFF" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F2DFE4" }}>
+                <div className="text-left">
+                  <div className="text-base font-bold" style={{ color: "#3A2E30" }}>問診票のQR</div>
+                  <div className="text-xs" style={{ color: "#B08A90" }}>
+                    {qrFor.checkin_number}　{qrFor.patient_name}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setQrFor(null)}
+                  className="p-2 rounded-xl active:opacity-70"
+                  style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-6 flex flex-col items-center gap-4">
+                <QrImage url={intakeUrlForCheckin(qrFor)} />
+                <p className="text-xs leading-relaxed" style={{ color: "#8A7378" }}>
+                  患者さんのスマホでこのQRを読み取っていただくと、この受付に紐付いた問診票が開きます。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 問診票モーダル */}
         {selectedForm && (
