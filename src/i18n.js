@@ -198,6 +198,6 @@ export const TEXT = {
   },
 };
 
-export const MED_IDS = ["triquilar", "marvelon", "aldactone", "slinda", "herpes", "same_as_last"];
+export const MED_IDS = ["triquilar", "marvelon", "aldactone", "slinda", "same_as_last"];
 // 個数選択を出さない項目（「前回と同じ処方箋」は枚数の概念がない）
 export const MED_NO_QTY = ["same_as_last"];

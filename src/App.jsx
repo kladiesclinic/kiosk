@@ -293,7 +293,7 @@ function Kiosk() {
   };
 
   const changeMedQty = (id, delta) => {
-    setMedQty((prev) => ({ ...prev, [id]: Math.min(9, Math.max(1, (prev[id] || 1) + delta)) }));
+    setMedQty((prev) => ({ ...prev, [id]: Math.max(1, (prev[id] || 1) + delta) }));
   };
 
   const anyMedChosen = Object.keys(medQty).length > 0 || otherMed.trim() !== "";
