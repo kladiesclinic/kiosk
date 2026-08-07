@@ -19,6 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
+import { guessKana } from "./kana.js";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -81,13 +82,18 @@ function normalizeName(s) {
   return (s || "").replace(/[\s　]/g, "");
 }
 
-// 受付行のカタカナ表記。受付そのものは氏名しか持たないので、紐付いた予約や
-// 問診票（カタカナ表記の欄がある）から拾う。どこにも無ければ null。
+// 受付行のカタカナ表記。本人が書いたものを最優先し、無ければ氏名から推測する。
+//   1. 問診票の「カタカナ表記」欄  ← 本人が確認して書いたもの
+//   2. 予約のフリガナ（受付時に受付行へ写したものを含む）
+//   3. 氏名からの自動推測（漢字は推測できないので出ない）
+// 戻り値の guessed は「推測なので確定ではない」ことを画面で示すため。
 function kanaFor(checkin, form, booking) {
-  if (checkin.patient_kana) return checkin.patient_kana;
-  if (booking?.patient_kana) return booking.patient_kana;
   const row = (form?.answers || []).find((r) => /カタカナ|katakana/i.test(r?.label || ""));
-  return row?.value || null;
+  if (row?.value?.trim()) return { text: row.value.trim(), guessed: false };
+  if (checkin.patient_kana?.trim()) return { text: checkin.patient_kana.trim(), guessed: false };
+  if (booking?.patient_kana?.trim()) return { text: booking.patient_kana.trim(), guessed: false };
+  const guess = guessKana(checkin.patient_name);
+  return guess ? { text: guess, guessed: true } : null;
 }
 
 // 生年月日（YYYY-MM-DD）から本日時点の満年齢。判定できなければ null。
@@ -668,7 +674,13 @@ export default function StaffView() {
                             <td className="px-3 py-3">
                               <div className="font-medium">{c.patient_name}</div>
                               {kana && (
-                                <div className="text-[11px] leading-tight" style={{ color: "#8A7378" }}>{kana}</div>
+                                <div
+                                  className="text-[11px] leading-tight"
+                                  style={{ color: kana.guessed ? "#C9AEB3" : "#8A7378" }}
+                                  title={kana.guessed ? "氏名からの自動推測です（問診票が届くと本人の記入に切り替わります）" : undefined}
+                                >
+                                  {kana.text}
+                                </div>
                               )}
                             </td>
                             <td className="px-3 py-3">
