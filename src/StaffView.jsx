@@ -81,6 +81,15 @@ function normalizeName(s) {
   return (s || "").replace(/[\s　]/g, "");
 }
 
+// 受付行のカタカナ表記。受付そのものは氏名しか持たないので、紐付いた予約や
+// 問診票（カタカナ表記の欄がある）から拾う。どこにも無ければ null。
+function kanaFor(checkin, form, booking) {
+  if (checkin.patient_kana) return checkin.patient_kana;
+  if (booking?.patient_kana) return booking.patient_kana;
+  const row = (form?.answers || []).find((r) => /カタカナ|katakana/i.test(r?.label || ""));
+  return row?.value || null;
+}
+
 // 生年月日（YYYY-MM-DD）から本日時点の満年齢。判定できなければ null。
 function ageFrom(dob) {
   const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(dob || "").trim());
@@ -353,6 +362,9 @@ export default function StaffView() {
   const waiting = checkins.filter((c) => !(c.chart_done && c.payment_done));
   const chartDoneCount = checkins.filter((c) => c.chart_done).length;
   const paymentDoneCount = checkins.filter((c) => c.payment_done).length;
+  // 受付行からカタカナ・予約情報を引くための索引
+  const bookingById = new Map(bookings.map((b) => [b.id, b]));
+
   const visibleCheckins = checkins.filter(
     (c) => !(hideChartDone && c.chart_done) && !(hidePaymentDone && c.payment_done)
   );
@@ -637,7 +649,15 @@ export default function StaffView() {
                     </thead>
                     <tbody>
                       {visibleCheckins.map((c) => {
-                        const f = c.visit_type === "consult" ? formFor(c) : null;
+                        // カタカナは問診票からも拾いたいので、薬受け取りでも問診票を探す
+                        // （問診票欄の表示は従来どおり診察のときだけ）。事前記入の
+                        // 問診票は提出日が別日なので booking_id 側からも見る
+                        const anyForm =
+                          formFor(c) ||
+                          (c.booking_id ? bookingForms.find((bf) => bf.booking_id === c.booking_id) : null) ||
+                          null;
+                        const f = c.visit_type === "consult" ? anyForm : null;
+                        const kana = kanaFor(c, anyForm, bookingById.get(c.booking_id));
                         const isDone = c.chart_done && c.payment_done;
                         return (
                           <tr key={c.id} style={{ borderTop: "1px solid #FAEEF0", opacity: isDone ? 0.5 : 1 }}>
@@ -645,7 +665,12 @@ export default function StaffView() {
                               {c.checkin_number}
                             </td>
                             <td className="px-3 py-3" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{hhmm(c.created_at)}</td>
-                            <td className="px-3 py-3 font-medium">{c.patient_name}</td>
+                            <td className="px-3 py-3">
+                              <div className="font-medium">{c.patient_name}</div>
+                              {kana && (
+                                <div className="text-[11px] leading-tight" style={{ color: "#8A7378" }}>{kana}</div>
+                              )}
+                            </td>
                             <td className="px-3 py-3">
                               <span
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
