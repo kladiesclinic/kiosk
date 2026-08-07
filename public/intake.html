@@ -789,7 +789,7 @@
   var SELF_LINE = new URLSearchParams(window.location.search).get("line") || "";
   // 受付画面で先に選んでもらった保険。渡ってきていれば問診票では聞き直さない
   var SELF_INS = new URLSearchParams(window.location.search).get("ins") || "";
-  if (["mynumber", "hokensho", "self_pay"].indexOf(SELF_INS) < 0) SELF_INS = "";
+  if (["mynumber", "hokensho", "self_pay", "forgot"].indexOf(SELF_INS) < 0) SELF_INS = "";
   var CHECKIN_STORE = "keicuri-intake-checkin";
 
   // 受付を経由しない記入（LP・予約からの事前記入）と、受付画面で保険を
@@ -919,6 +919,11 @@
         ? "<br>" + (isEn
             ? "Please put your insurance card in the box at reception."
             : "保険証は受付の保険証入れにお入れください。")
+        : "") +
+      (insurance === "forgot"
+        ? "<br>" + (isEn
+            ? "Today's visit is paid without insurance. Bring your card and today's receipt back within this month for a refund of the difference."
+            : "本日は自費でのお会計になります。今月中に保険証と本日の領収書をお持ちいただければ差額を返金します。")
         : "");
     var form = document.getElementById("intake-form");
     if (form && form.parentNode) form.parentNode.insertBefore(box, form);
