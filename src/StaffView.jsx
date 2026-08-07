@@ -144,7 +144,7 @@ function IntakeProgress({ checkin }) {
   );
 }
 
-const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "保険証", self_pay: "自費" };
+const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "資格確認書", self_pay: "自費" };
 const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
 const CHANNEL_LABEL = { liff: "LINE", web: "Web", staff: "スタッフ" };
 const BOOKING_STATUS = {
