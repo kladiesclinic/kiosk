@@ -100,6 +100,34 @@ function formBirthdate(form) {
   return row?.value || null;
 }
 
+// 問診票の記入状況。問診票の本体は最後の送信まで届かないので、それまでは
+// 「何問目を開いているか」だけが手がかりになる（intake.html が質問を進める
+// たびに書き込む）。5分以上動いていなければ、止まっている可能性を色で示す。
+function IntakeProgress({ checkin }) {
+  const step = checkin.intake_step;
+  const total = checkin.intake_total;
+  if (step == null || !total) {
+    return <span className="text-[10px] leading-tight" style={{ color: "#C9AEB3" }}>未開始</span>;
+  }
+  const done = step >= total;
+  const mins = checkin.intake_step_at
+    ? Math.floor((Date.now() - new Date(checkin.intake_step_at).getTime()) / 60000)
+    : null;
+  const stalled = mins != null && mins >= 5;
+  const color = done ? "#0F8B8D" : stalled ? "#C0762C" : "#8A7378";
+  return (
+    <div className="flex flex-col items-start gap-0.5" style={{ width: 92 }}>
+      <span className="text-[10px] leading-tight" style={{ color }}>
+        {done ? "送信待ち" : `記入中 ${step}/${total}`}
+        {stalled ? `・${mins}分` : ""}
+      </span>
+      <div style={{ width: "100%", height: 3, borderRadius: 2, background: "#F2DFE4", overflow: "hidden" }}>
+        <div style={{ width: `${Math.round((step / total) * 100)}%`, height: "100%", background: color }} />
+      </div>
+    </div>
+  );
+}
+
 const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "保険証", self_pay: "自費" };
 const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
 const CHANNEL_LABEL = { liff: "LINE", web: "Web", staff: "スタッフ" };
@@ -640,15 +668,21 @@ export default function StaffView() {
                                   </div>
                                 ) : intakeUrlForCheckin(c) ? (
                                   // 紙の受付票が無いので、リンクを見失った患者さんには
-                                  // このQRを見せて読み直してもらう
-                                  <button
-                                    onClick={() => setQrFor(c)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
-                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
-                                  >
-                                    <QrCode size={12} />
-                                    未提出・QR
-                                  </button>
+                                  // このQRを見せて読み直してもらう。
+                                  // 問診票は最後の送信まで届かないので、何問目まで
+                                  // 進んでいるかをここに出して「書いている / 止まっている」
+                                  // を見分けられるようにする
+                                  <div className="flex flex-col items-start gap-0.5">
+                                    <button
+                                      onClick={() => setQrFor(c)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                      style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                                    >
+                                      <QrCode size={12} />
+                                      未提出・QR
+                                    </button>
+                                    <IntakeProgress checkin={c} />
+                                  </div>
                                 ) : (
                                   <span className="text-xs" style={{ color: "#C9AEB3" }}>未提出</span>
                                 )

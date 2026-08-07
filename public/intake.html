@@ -869,6 +869,29 @@
       });
   }
 
+  // 何問目まで進んだかを受付行に書いておく。スタッフ画面が「記入中 18/31」と
+  // 出せるようにするためで、回答そのものは一切送らない。
+  // 連打しても負荷にならないよう間引き、最後の1問だけは必ず送る。
+  var progressTimer = null;
+  var lastProgressSent = "";
+  function reportProgress(step, total, immediate) {
+    if (!CHECKIN_ID || !SUBMIT_TOKEN) return;
+    var key = step + "/" + total;
+    if (key === lastProgressSent) return;
+    if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
+    var send = function () {
+      lastProgressSent = key;
+      fetch(SUPABASE_URL + "/rest/v1/rpc/set_intake_progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
+        body: JSON.stringify({ p_id: CHECKIN_ID, p_token: SUBMIT_TOKEN, p_step: step, p_total: total }),
+        keepalive: true,
+      }).catch(function () { /* 進捗表示のためだけなので、失敗しても何もしない */ });
+    };
+    if (immediate) send();
+    else progressTimer = setTimeout(send, 1200);
+  }
+
   // 受付が済んだことを問診票の上に出しておく（紙の受付票を出さない運用のため、
   // 患者さんが「受付できたのか」を確かめられる唯一の表示になる）
   function showCheckinBanner(number, insurance) {
@@ -1744,6 +1767,8 @@
         [finalMsg, submitBtn, printBtn, statusEl].forEach(function (el) { el.classList.remove("wz-hide"); });
         countEl.textContent = isEn ? "Ready to send" : "送信の確認";
         barEl.style.width = "100%";
+        // 最後まで到達したことは待たせずに知らせる（あと一歩なのが分かる）
+        reportProgress(vis.length, vis.length, true);
       } else {
         var s = steps[vis[pos]];
         s.el.classList.remove("wz-hide");
@@ -1751,6 +1776,7 @@
         if (s.section) s.section.classList.remove("wz-hide");
         countEl.textContent = (isEn ? "Question " : "質問 ") + (pos + 1) + " / " + vis.length;
         barEl.style.width = Math.round((pos / vis.length) * 100) + "%";
+        reportProgress(pos + 1, vis.length, false);
       }
       backBtn.disabled = pos === 0;
       nextBtn.style.display = onFinal ? "none" : "";
