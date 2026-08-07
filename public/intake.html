@@ -787,10 +787,14 @@
   var SELF_KIND = new URLSearchParams(window.location.search).get("kind") || "";
   var SELF_REASON = new URLSearchParams(window.location.search).get("reason") || "";
   var SELF_LINE = new URLSearchParams(window.location.search).get("line") || "";
+  // 受付画面で先に選んでもらった保険。渡ってきていれば問診票では聞き直さない
+  var SELF_INS = new URLSearchParams(window.location.search).get("ins") || "";
+  if (["mynumber", "hokensho", "self_pay"].indexOf(SELF_INS) < 0) SELF_INS = "";
   var CHECKIN_STORE = "keicuri-intake-checkin";
 
-  // 受付を経由しない記入（LP・予約からの事前記入）では保険の質問を出さない
-  if (!SELF_CHECKIN) {
+  // 受付を経由しない記入（LP・予約からの事前記入）と、受付画面で保険を
+  // 選び終えている場合は、保険の質問を出さない
+  if (!SELF_CHECKIN || SELF_INS) {
     (function () {
       var block = document.getElementById("if-checkin-block");
       if (block && block.parentNode) block.parentNode.removeChild(block);
@@ -821,8 +825,9 @@
     var nameEl = document.getElementById("if-name");
     var dobEl = document.getElementById("if-dob");
     var ins = document.querySelector('input[name="checkin_insurance"]:checked');
+    var insValue = SELF_INS || (ins && ins.value) || "";
     var name = nameEl ? nameEl.value.trim() : "";
-    if (!name || !dobEl || !dobEl.value || !ins) return Promise.resolve(false);
+    if (!name || !dobEl || !dobEl.value || !insValue) return Promise.resolve(false);
 
     checkinPending = true;
     return fetch(SUPABASE_URL + "/rest/v1/rpc/create_self_checkin", {
@@ -835,8 +840,9 @@
       body: JSON.stringify({
         p_visit_type: SELF_VISIT,
         p_patient_name: name,
+        p_patient_kana: (document.getElementById("if-kana") || {}).value || null,
         p_date_of_birth: dobEl.value,
-        p_insurance: ins.value,
+        p_insurance: insValue,
         p_visit_kind: SELF_KIND || null,
         p_return_reason: SELF_REASON || null,
         p_line_user_id: SELF_LINE || null,
@@ -858,7 +864,7 @@
             dateKey: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"),
           }));
         } catch (e) { /* no-op */ }
-        showCheckinBanner(data.number, ins.value);
+        showCheckinBanner(data.number, insValue);
         return true;
       })
       .catch(function (e) {
