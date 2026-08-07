@@ -8,18 +8,18 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: 'Noto Sans JP', sans-serif; color: #3A2E30; background: #F4F1F2; }
   .sheet {
-    width: 210mm; height: 297mm; margin: 0 auto; background: #FFFFFF;
-    padding: 22mm 18mm; display: flex; flex-direction: column; align-items: center;
+    width: 210mm; height: 296mm; margin: 0 auto; background: #FFFFFF;
+    padding: 14mm 18mm; display: flex; flex-direction: column; align-items: center;
   }
   .clinic { font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 13pt; font-weight: 700; color: #0F8B8D; letter-spacing: .04em; }
-  h1 { font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 34pt; font-weight: 900; margin-top: 6mm; letter-spacing: .02em; }
-  .sub { font-size: 13pt; color: #8A7378; margin-top: 3mm; text-align: center; line-height: 1.7; }
+  h1 { font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 30pt; font-weight: 900; margin-top: 4mm; letter-spacing: .02em; }
+  .sub { font-size: 12pt; color: #8A7378; margin-top: 3mm; text-align: center; line-height: 1.65; }
   .sub b { color: #3A2E30; }
-  .qr-wrap { margin-top: 9mm; padding: 7mm; border: 2.5mm solid #DFF5F3; border-radius: 6mm; }
-  .qr-wrap img { display: block; width: 82mm; height: 82mm; }
-  .qr-cap { text-align: center; font-size: 11pt; font-weight: 700; margin-top: 4mm; color: #0F8B8D; }
-  .steps { margin-top: 10mm; width: 100%; }
-  .step { display: flex; gap: 5mm; align-items: flex-start; padding: 4.5mm 0; border-top: .4mm solid #F2DFE4; }
+  .qr-wrap { margin-top: 6mm; padding: 5mm; border: 2mm solid #DFF5F3; border-radius: 5mm; }
+  .qr-wrap img { display: block; width: 62mm; height: 62mm; }
+  .qr-cap { text-align: center; font-size: 10.5pt; font-weight: 700; margin-top: 3mm; color: #0F8B8D; }
+  .steps { margin-top: 6mm; width: 100%; }
+  .step { display: flex; gap: 5mm; align-items: flex-start; padding: 3.5mm 0; border-top: .4mm solid #F2DFE4; }
   .step:last-child { border-bottom: .4mm solid #F2DFE4; }
   .num {
     flex: 0 0 9mm; height: 9mm; border-radius: 50%; background: #0F8B8D; color: #FFFFFF;
@@ -29,14 +29,17 @@
   .step-body { padding-top: .8mm; }
   .step-title { font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 14pt; font-weight: 700; }
   .step-note { font-size: 10.5pt; color: #8A7378; margin-top: 1mm; line-height: 1.6; }
-  .en-row { margin-top: auto; display: flex; align-items: center; gap: 6mm; padding: 5mm 6mm; background: #FFF8F7; border-radius: 4mm; width: 100%; }
-  .en-row img { width: 26mm; height: 26mm; display: block; }
-  .en-text { font-size: 10.5pt; line-height: 1.65; color: #3A2E30; }
-  .en-text b { font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 12pt; display: block; margin-bottom: 1mm; }
-  .help { margin-top: 5mm; text-align: center; font-size: 10.5pt; color: #8A7378; line-height: 1.7; }
+  .en-row { margin-top: auto; display: flex; align-items: center; gap: 5mm; padding: 4mm 6mm; background: #FFF8F7; border-radius: 4mm; width: 100%; }
+  .en-row img { width: 24mm; height: 24mm; display: block; }
+  .en-text { font-size: 10pt; line-height: 1.6; color: #3A2E30; }
+  .en-text b { font-family: 'Zen Kaku Gothic New', sans-serif; font-size: 11.5pt; display: block; margin-bottom: 1mm; }
+  .help { margin-top: 4mm; text-align: center; font-size: 10pt; color: #8A7378; line-height: 1.7; }
   .help b { color: #D64550; }
   @page { size: A4; margin: 0; }
-  @media print { body { background: #FFFFFF; } .sheet { box-shadow: none; } }
+  @media print {
+    html, body { background: #FFFFFF; height: auto; }
+    .sheet { box-shadow: none; page-break-after: avoid; }
+  }
   @media screen { .sheet { box-shadow: 0 4px 24px rgba(58,46,48,.14); margin-top: 20px; margin-bottom: 20px; } }
 </style>
 </head>
