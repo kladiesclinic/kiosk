@@ -145,6 +145,10 @@
      画面では現在の質問だけを表示し、次へ/もどるで進む。送信・印刷時は
      従来どおり全問が並ぶ（印刷CSSで .wz-hide を解除する）。 */
   .wz-hide { display: none !important; }
+  /* ピル（OC/LEP）の禁忌スクリーニングにしか使わない質問。受診理由にピル系が
+     1つもないときは外す。.wz-hide と違い、印刷でも出さない — 聞いていない質問が
+     空欄で並ぶと、答えなかったのか聞かなかったのか区別がつかなくなる */
+  .oc-hide { display: none !important; }
   .wz-progress { margin-bottom: 20px; }
   .wz-progress .wz-count {
     font-family: 'Noto Sans JP', var(--sans); font-size: 12.5px; font-weight: 500;
@@ -226,6 +230,9 @@
     .wz-progress, .wz-nav, #wz-final { display: none !important; }
     form .field.wz-hide, .q-block.wz-hide, .section-label.wz-hide { display: block !important; }
     form .field-row.wz-hide { display: grid !important; }
+    /* ただしピル問診を外した回では、その質問は紙にも出さない */
+    form .field.oc-hide, form .field-row.oc-hide,
+    .q-block.oc-hide, .section-label.oc-hide { display: none !important; }
   }
 </style>
 </head>
@@ -534,7 +541,7 @@
         </div>
       </div>
 
-      <div class="section-label" data-skippable>Lifestyle &amp; symptoms<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">生活習慣・症状</span></div>
+      <div class="section-label" data-skippable data-oclep>Lifestyle &amp; symptoms<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">生活習慣・症状</span></div>
 
       <div class="field">
         <label>Do you smoke?<span class="ja">喫煙しますか</span></label>
@@ -597,7 +604,9 @@
         </div>
       </div>
 
-      <div class="field">
+      <!-- 既往歴のうち、ここから下の3問はピルの禁忌スクリーニング。上の
+           「治療中の疾患」「手術・入院歴」はどの受診理由でも要るので残す -->
+      <div class="field" data-oclep>
         <label>Have you ever been told you have any of the following? (check all that apply)<span class="ja">以下の病気といわれたことがありますか（複数選択可）</span></label>
         <div class="cond-grid">
           <label class="choice"><input type="checkbox" name="cond" value="Deep vein thrombosis" /> Deep vein thrombosis<span class="ja">深部静脈血栓</span></label>
@@ -627,7 +636,7 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" data-oclep>
         <label>Have you had repeated miscarriages or stillbirths?<span class="ja">流産・死産を繰り返したことがありますか</span></label>
         <div class="yn-row">
           <label class="choice"><input type="radio" name="miscarriage" value="Yes" required /> Yes<span class="ja">はい</span></label>
@@ -635,7 +644,7 @@
         </div>
       </div>
 
-      <div class="field">
+      <div class="field" data-oclep>
         <label>During a pregnancy, were you ever told you had pre-eclampsia (toxemia)?<span class="ja">妊娠高血圧症候群（妊娠中毒症）といわれたことがありますか</span></label>
         <div class="yn-row">
           <label class="choice"><input type="radio" name="preeclampsia" value="Yes" required /> Yes<span class="ja">はい</span></label>
@@ -681,7 +690,7 @@
         </div>
       </div>
 
-      <div class="section-label" data-skippable>Surgery &amp; family history<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">手術予定・家族歴</span></div>
+      <div class="section-label" data-skippable data-oclep>Surgery &amp; family history<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">手術予定・家族歴</span></div>
 
       <div class="field">
         <label>Have you had surgery in the past 2 weeks, or is surgery planned within 4 weeks?<span class="ja">過去2週間以内の手術、または4週間以内の手術予定がありますか</span></label>
@@ -1240,40 +1249,101 @@
     });
   });
 
+  // 受診理由によって質問を減らす。判定は独立した2つ。
+  //
+  //   ① 追加処方のみ … data-skippable のセクションを任意にする（表示は残す）
+  //   ② ピル系の受診理由が1つもない … data-oclep の質問を画面から外す
+  //
   // The sections tagged data-skippable exist to screen for OC/LEP contraindications.
   // A patient topping up a medication we have already prescribed has been through
   // that screening, and their answers are on file, so those sections become optional.
   // Only when the refill is the *sole* reason, though: ticking anything else means
   // there is something new to prescribe, which has to be screened.
+  //
+  // ②で外すのは、そのスクリーニングにしか使わない質問（喫煙本数・片頭痛の前兆・
+  // 24疾患のチェックリスト・家族の血栓症など）。膀胱炎や性感染症検査だけで
+  // 来られた方には要らない。最終月経・妊娠の可能性・服薬とアレルギー・治療中の
+  // 疾患は誰にでも要るので残す。更年期はHRTの禁忌がピルとほぼ同じなので
+  // 「ピル系」に入れている。
+  var OC_REASONS = [
+    "Birth control pills",
+    "Mini-pill (progestogen-only)",
+    "Morning-after pill / Plan B",
+    "Menstrual pain",
+    "Irregular period",
+    "Acne / skin",
+    "PMS / mood",
+    "Menopause",
+  ];
+  // 送信データの組み立てとウィザードから見る（下のIIFEで中身が入る）
+  var ocSkipped = function () { return false; };
+
   (function () {
     var boxes = document.querySelectorAll('input[name="reason"]');
     var refill = document.querySelector(
       'input[name="reason"][value="Refill of a medication prescribed here before"]');
     var labels = document.querySelectorAll(".section-label[data-skippable]");
     var note = document.getElementById("refill-skip-note");
-    if (!refill || !labels.length) return;
+    if (!boxes.length) return;
 
-    // Collected before anything is toggled, while every field still carries
-    // `required`: walk each tagged heading's siblings up to the next heading.
-    var fields = [];
+    // required は切り替えのたびに付け外しするので、まだ何も触っていないこの時点で
+    // 「元から必須だった項目」を控えておく
+    function requiredUnder(el) {
+      var out = [];
+      if (el.hasAttribute && el.hasAttribute("required")) out.push(el);
+      [].forEach.call(el.querySelectorAll("[required]"), function (f) { out.push(f); });
+      return out;
+    }
+    // 見出しから次の見出しまでが、そのセクションの中身
+    function sectionBody(label) {
+      var out = [], n = label.nextElementSibling;
+      while (n && !n.classList.contains("section-label")) { out.push(n); n = n.nextElementSibling; }
+      return out;
+    }
+
+    var skippableFields = [];
     [].forEach.call(labels, function (lab) {
-      var n = lab.nextElementSibling;
-      while (n && !n.classList.contains("section-label")) {
-        [].forEach.call(n.querySelectorAll("[required]"), function (f) { fields.push(f); });
-        n = n.nextElementSibling;
-      }
+      sectionBody(lab).forEach(function (n) {
+        requiredUnder(n).forEach(function (f) { skippableFields.push(f); });
+      });
     });
 
+    // ピル専用の質問。セクションごと外すもの（見出しに data-oclep）と、
+    // セクションの一部だけ外すもの（質問に data-oclep）の両方がある
+    var ocEls = [];
+    [].forEach.call(document.querySelectorAll("[data-oclep]"), function (el) {
+      ocEls.push(el);
+      if (el.classList.contains("section-label")) {
+        sectionBody(el).forEach(function (n) { ocEls.push(n); });
+      }
+    });
+    var ocFields = [];
+    ocEls.forEach(function (el) { requiredUnder(el).forEach(function (f) { ocFields.push(f); }); });
+
+    function ticked() { return [].filter.call(boxes, function (b) { return b.checked; }); }
+
+    ocSkipped = function () {
+      var t = ticked();
+      // まだ何も選んでいないうちは全問出す（白紙で印刷したときに質問が欠けないように）
+      if (!t.length) return false;
+      return !t.some(function (b) { return OC_REASONS.indexOf(b.value) !== -1; });
+    };
+
     function apply() {
-      var ticked = [].filter.call(boxes, function (b) { return b.checked; });
-      var skip = ticked.length === 1 && ticked[0] === refill;
-      fields.forEach(function (f) {
-        if (skip) { f.removeAttribute("required"); } else { f.setAttribute("required", ""); }
+      var t = ticked();
+      var refillSkip = !!refill && t.length === 1 && t[0] === refill;
+      var ocSkip = ocSkipped();
+      ocEls.forEach(function (el) { el.classList.toggle("oc-hide", ocSkip); });
+      // 順番が大事。先に①で戻してから②で外す（②の質問は①のセクションの中にある）
+      skippableFields.forEach(function (f) {
+        if (refillSkip) { f.removeAttribute("required"); } else { f.setAttribute("required", ""); }
       });
-      [].forEach.call(labels, function (l) { l.classList.toggle("skippable", skip); });
-      note.classList.toggle("show", skip);
+      if (ocSkip) ocFields.forEach(function (f) { f.removeAttribute("required"); });
+      [].forEach.call(labels, function (l) { l.classList.toggle("skippable", refillSkip); });
+      if (note) note.classList.toggle("show", refillSkip);
     }
     [].forEach.call(boxes, function (b) { b.addEventListener("change", apply); });
+    apply();
   })();
 
   function radioVal(name) {
@@ -1620,9 +1690,26 @@
       notes: val("if-notes"),
     };
 
+    // ピル問診を外した回は、その項目を空欄のまま送らない。空欄だと「答えなかった」
+    // のか「聞かなかった」のか、あとから見て区別がつかない
+    var OC_ONLY_KEYS = [
+      "smoking", "cigarettes_per_day", "smoking_years",
+      "migraine_or_blurred_vision", "current_acute_symptoms",
+      "diagnosed_conditions", "repeated_miscarriage_stillbirth",
+      "hypertensive_disorder_of_pregnancy",
+      "recent_or_planned_surgery", "family_history_thrombosis", "family_history_breast_cancer",
+    ];
+    var ocWasSkipped = ocSkipped();
+
     // Bilingual answer rows, in questionnaire order:
     // { label: "English label ／ 日本語ラベル", value: "English answer ／ 日本語" }
     var rows = FIELDS.map(function (f) {
+      if (ocWasSkipped && OC_ONLY_KEYS.indexOf(f[0]) !== -1) {
+        return {
+          label: f[1] + " ／ " + f[2],
+          value: "Not asked (no pill-related reason) ／ 未質問（ピル関連の受診理由なし）",
+        };
+      }
       var raw = String(data[f[0]] || "");
       var ja = toJa(raw);
       return {
@@ -1769,6 +1856,9 @@
       var out = [];
       steps.forEach(function (s, i) {
         if (skip && s.section && s.section.hasAttribute("data-skippable")) return;
+        // ピル問診を外した回は、その質問をウィザードにも出さない
+        if (s.el.classList.contains("oc-hide")) return;
+        if (s.section && s.section.classList.contains("oc-hide")) return;
         out.push(i);
       });
       return out;
