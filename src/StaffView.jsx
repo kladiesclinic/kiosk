@@ -144,7 +144,7 @@ function IntakeProgress({ checkin }) {
   );
 }
 
-const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "資格確認書", self_pay: "自費", forgot: "保険証忘れ" };
+const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "資格確認書", self_pay: "自費", forgot: "保険証忘れ", overseas: "海外保険" };
 const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
 const CHANNEL_LABEL = { liff: "LINE", web: "Web", staff: "スタッフ" };
 const BOOKING_STATUS = {
@@ -723,14 +723,20 @@ export default function StaffView() {
                               {(c.medications || []).join("、") || "—"}
                             </td>
                             {/* 保険証忘れは会計での扱いが違う（当日は10割、同月中の
-                                持参で差額返金）ので、一覧でも目立たせる */}
+                                持参で差額返金）ので、一覧でも目立たせる。
+                                海外保険も10割だが返金はご本人と保険会社のやりとりで、
+                                領収書をお渡しする必要があるので同じく目立たせる */}
                             <td className="px-3 py-3 text-xs">
-                              {c.insurance === "forgot" ? (
+                              {c.insurance === "forgot" || c.insurance === "overseas" ? (
                                 <span
-                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
-                                  style={{ background: "#FCE9EA", color: "#B03A44" }}
+                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
+                                  style={
+                                    c.insurance === "forgot"
+                                      ? { background: "#FCE9EA", color: "#B03A44" }
+                                      : { background: "#FBF0DC", color: "#8A6317" }
+                                  }
                                 >
-                                  {INSURANCE_LABEL.forgot}
+                                  {INSURANCE_LABEL[c.insurance]}
                                 </span>
                               ) : (
                                 INSURANCE_LABEL[c.insurance] || "—"
