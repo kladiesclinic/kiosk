@@ -144,7 +144,32 @@ function IntakeProgress({ checkin }) {
   );
 }
 
-const INSURANCE_LABEL = { mynumber: "マイナ保険証", hokensho: "資格確認書", self_pay: "自費", forgot: "保険証忘れ", overseas: "自費（海外保険）" };
+// 会計で扱いが変わる境目を色で出す。寒色＝保険が使える方、暖色＝本日は10割の方。
+// 暖色の3つは同じ10割でも領収書の説明が違う（自費＝説明なし／海外保険＝領収書を
+// 保険会社へ／保険証忘れ＝今月中の持参で差額返金）ので、色を分けている。
+const INSURANCE_BADGE = {
+  mynumber: { label: "マイナ保険証", bg: "#E6EFF9", fg: "#2F6DA8" },
+  hokensho: { label: "資格確認書", bg: "#E4F1E7", fg: "#3D7A52" },
+  self_pay: { label: "自費", bg: "#FBF0DC", fg: "#8A6317" },
+  overseas: { label: "自費（海外保険）", bg: "#FBE6D5", fg: "#A85A22" },
+  forgot: { label: "保険証忘れ", bg: "#FCE9EA", fg: "#B03A44" },
+};
+const INSURANCE_LABEL = Object.fromEntries(
+  Object.entries(INSURANCE_BADGE).map(([id, b]) => [id, b.label])
+);
+
+function InsuranceTag({ id }) {
+  const badge = INSURANCE_BADGE[id];
+  if (!badge) return <span style={{ color: "#C9AEB3" }}>—</span>;
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
+      style={{ background: badge.bg, color: badge.fg }}
+    >
+      {badge.label}
+    </span>
+  );
+}
 const RETURN_REASON_LABEL = { results: "検査結果", followup: "前回の続き", new_symptom: "新しい症状" };
 const CHANNEL_LABEL = { liff: "LINE", web: "Web", staff: "スタッフ" };
 const BOOKING_STATUS = {
@@ -578,7 +603,7 @@ export default function StaffView() {
                               </span>
                             </td>
                             <td className="px-3 py-3 text-xs" style={{ color: "#8A7378", maxWidth: 220 }}>{bookingDetail(b)}</td>
-                            <td className="px-3 py-3 text-xs">{INSURANCE_LABEL[b.insurance] || "—"}</td>
+                            <td className="px-3 py-3 text-xs"><InsuranceTag id={b.insurance} /></td>
                             <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{b.birthdate || "—"}</td>
                             <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{b.phone || "—"}</td>
                             <td className="px-3 py-3 text-xs">{CHANNEL_LABEL[b.channel] || b.channel}</td>
@@ -722,25 +747,8 @@ export default function StaffView() {
                             <td className="px-3 py-3 text-xs" style={{ color: "#8A7378" }}>
                               {(c.medications || []).join("、") || "—"}
                             </td>
-                            {/* 保険証忘れは会計での扱いが違う（当日は10割、同月中の
-                                持参で差額返金）ので、一覧でも目立たせる。
-                                海外保険も10割だが返金はご本人と保険会社のやりとりで、
-                                領収書をお渡しする必要があるので同じく目立たせる */}
                             <td className="px-3 py-3 text-xs">
-                              {c.insurance === "forgot" || c.insurance === "overseas" ? (
-                                <span
-                                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
-                                  style={
-                                    c.insurance === "forgot"
-                                      ? { background: "#FCE9EA", color: "#B03A44" }
-                                      : { background: "#FBF0DC", color: "#8A6317" }
-                                  }
-                                >
-                                  {INSURANCE_LABEL[c.insurance]}
-                                </span>
-                              ) : (
-                                INSURANCE_LABEL[c.insurance] || "—"
-                              )}
+                              <InsuranceTag id={c.insurance} />
                             </td>
                             <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{c.date_of_birth || "—"}</td>
                             <td className="px-3 py-3">
@@ -1004,12 +1012,13 @@ export default function StaffView() {
 
                 <div>
                   <div className="text-xs font-medium mb-1.5" style={{ color: "#8A7378" }}>保険（任意）</div>
-                  <div className="flex gap-2">
+                  {/* 5択になって「自費（海外保険）」が入らないので折り返す */}
+                  <div className="flex flex-wrap gap-2">
                     {Object.entries(INSURANCE_LABEL).map(([id, label]) => (
                       <button
                         key={id}
                         onClick={() => setProxy({ ...proxy, insurance: proxy.insurance === id ? "" : id })}
-                        className="flex-1 px-2 py-2 rounded-lg text-xs font-medium"
+                        className="px-3 py-2 rounded-lg text-xs font-medium"
                         style={
                           proxy.insurance === id
                             ? { background: "#0F8B8D", color: "#FFFFFF" }
