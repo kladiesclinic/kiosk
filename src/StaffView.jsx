@@ -638,12 +638,13 @@ export default function StaffView() {
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 1020 }}>
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 920 }}>
                     <thead>
                       <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
                         <th className="px-4 py-2.5 font-medium">番号</th>
-                        <th className="px-3 py-2.5 font-medium">受付</th>
-                        <th className="px-3 py-2.5 font-medium">予約</th>
+                        {/* 受付時刻と予約時間は同じ列に縦に積む。列を増やすと表が
+                            横に伸びて、受付のノートPCで横スクロールが要る */}
+                        <th className="px-3 py-2.5 font-medium">時刻</th>
                         <th className="px-3 py-2.5 font-medium">お名前</th>
                         <th className="px-3 py-2.5 font-medium">種別</th>
                         <th className="px-3 py-2.5 font-medium">区分</th>
@@ -676,20 +677,20 @@ export default function StaffView() {
                             <td className="px-4 py-3 text-lg font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
                               {c.checkin_number}
                             </td>
-                            <td className="px-3 py-3" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{hhmm(c.created_at)}</td>
                             <td className="px-3 py-3">
+                              <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{hhmm(c.created_at)}</div>
                               {bookedAt ? (
                                 <span
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold whitespace-nowrap"
+                                  className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold whitespace-nowrap"
                                   style={{ background: "#EFEAFB", color: "#5B4BB8" }}
                                   title={late ? "予約時間を過ぎてから受付されました" : undefined}
                                 >
-                                  <CalendarCheck size={12} />
+                                  <CalendarCheck size={11} />
                                   <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{bookedAt}</span>
                                   {late && <span style={{ color: "#B03A44" }}>遅</span>}
                                 </span>
                               ) : (
-                                <span className="text-xs" style={{ color: "#C9AEB3" }}>予約なし</span>
+                                <div className="text-[11px] leading-tight" style={{ color: "#C9AEB3" }}>予約なし</div>
                               )}
                             </td>
                             <td className="px-3 py-3">
