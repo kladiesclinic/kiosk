@@ -1265,10 +1265,13 @@
   // 来られた方には要らない。最終月経・妊娠の可能性・服薬とアレルギー・治療中の
   // 疾患は誰にでも要るので残す。更年期はHRTの禁忌がピルとほぼ同じなので
   // 「ピル系」に入れている。
+  //
+  // アフターピルはここに入れない。毎日飲む薬ではないので血栓症のスクリーニングが
+  // 当てはまらないうえ、急いで来られている場面で書く量を増やしたくない。
+  // ほかにピル系の理由も選べば、そちらの判定で詳しい質問は出る。
   var OC_REASONS = [
     "Birth control pills",
     "Mini-pill (progestogen-only)",
-    "Morning-after pill / Plan B",
     "Menstrual pain",
     "Irregular period",
     "Acne / skin",
