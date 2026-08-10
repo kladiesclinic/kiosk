@@ -197,6 +197,48 @@ function ecElapsed(dateStr) {
   return { days, over: days >= 3 };
 }
 
+// 問診票からアフターピル（MAP）の申告を拾う。受診理由にアフターピルが入っていれば、
+// 性交渉の日時（自由記入・任意なので空のことがある）と一緒に返す。
+// 初診の方は受付でアフターピルのボタンを通らず、問診票にだけ書いてある
+function mapFromForm(form) {
+  const rows = form?.answers || [];
+  const reason = rows.find((r) => /受診理由/.test(r?.label || ""))?.value || "";
+  if (!/Morning-after|アフターピル/i.test(reason)) return null;
+  const timing = rows.find((r) => /性交渉の日時/.test(r?.label || ""))?.value || "";
+  return { timing: timing && timing !== "—" ? timing : "" };
+}
+
+// MAP（モーニングアフターピル）のタグ。飲むまでの時間で出せる薬が変わるので、
+// 問診票を開かなくても一覧で気づけるようにする。
+//   date   … 受付で日付を選んでもらった場合（再診ルート）。経過日数を出せる
+//   timing … 問診票の自由記入（初診ルート）。書かれたまま出す
+function MapTag({ date, timing }) {
+  const e = ecElapsed(date);
+  return (
+    <div>
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+        style={{ background: "#FCE9EA", color: "#B03A44" }}
+        title="モーニングアフターピル"
+      >
+        MAP
+      </span>
+      {e ? (
+        <div className="mt-0.5 font-bold leading-tight" style={{ color: e.over ? "#B03A44" : "#C0762C" }}>
+          性行為 {date}
+          <br />
+          {e.days === 0 ? "本日" : `${e.days}日前`}
+          {e.over ? "・72時間超の可能性" : ""}
+        </div>
+      ) : timing ? (
+        <div className="mt-0.5 leading-tight" style={{ color: "#C0762C" }}>性交渉 {timing}</div>
+      ) : (
+        <div className="mt-0.5 leading-tight" style={{ color: "#C9AEB3" }}>性交渉の日時 未記入</div>
+      )}
+    </div>
+  );
+}
+
 // 診察の区分表示（初診 / 再診・○○）
 function visitKindLabel(c) {
   if (c.visit_type !== "consult") return "—";
@@ -700,6 +742,12 @@ export default function StaffView() {
                           (c.booking_id ? bookingForms.find((bf) => bf.booking_id === c.booking_id) : null) ||
                           null;
                         const f = c.visit_type === "consult" ? anyForm : null;
+                        // 受付のアフターピルボタン（再診）か、問診票の受診理由（初診）
+                        const map = c.ec_intercourse_date
+                          ? { date: c.ec_intercourse_date, timing: "" }
+                          : mapFromForm(anyForm);
+                        // タグに出すので、お薬の一覧からは外す
+                        const meds = (c.medications || []).filter((m) => !(map && /アフターピル/.test(m)));
                         const booking = bookingById.get(c.booking_id);
                         const kana = kanaFor(c, anyForm, booking);
                         const isDone = c.chart_done && c.payment_done;
@@ -755,22 +803,10 @@ export default function StaffView() {
                             </td>
                             <td className="px-3 py-3 text-xs">{visitKindLabel(c)}</td>
                             <td className="px-3 py-3 text-xs" style={{ color: "#8A7378" }}>
-                              {(c.medications || []).join("、") || "—"}
-                              {c.ec_intercourse_date && (() => {
-                                const e = ecElapsed(c.ec_intercourse_date);
-                                return (
-                                  <div
-                                    className="mt-0.5 font-bold leading-tight"
-                                    style={{ color: e.over ? "#B03A44" : "#C0762C" }}
-                                    title="避妊せずに性行為があった日（患者さんの申告）"
-                                  >
-                                    性行為 {c.ec_intercourse_date}
-                                    <br />
-                                    {e.days === 0 ? "本日" : `${e.days}日前`}
-                                    {e.over ? "・72時間超の可能性" : ""}
-                                  </div>
-                                );
-                              })()}
+                              {/* アフターピルは薬名を並べるより MAP のタグで出す。
+                                  再診は受付で日付を、初診は問診票で日時を聞いている */}
+                              {meds.join("、") || (map ? "" : "—")}
+                              {map && <MapTag date={map.date} timing={map.timing} />}
                             </td>
                             <td className="px-3 py-3 text-xs">
                               <InsuranceTag id={c.insurance} />
