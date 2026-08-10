@@ -718,18 +718,59 @@
 
       <div class="section-label">How did you find us?<span class="ja">当院を知ったきっかけ</span></div>
 
+      <!-- 追記の欄は選んだ項目のすぐ下に開く。選択肢の下にまとめて置いていた
+           ときは、離れているせいでほとんど書いてもらえなかった。 -->
       <div class="field">
         <div class="choice-group">
-          <label class="choice"><input type="radio" name="found_us" value="Internet search" required /> Internet search<span class="ja">インターネット検索</span></label>
-          <label class="choice"><input type="radio" name="found_us" value="Instagram" /> Instagram<span class="ja">インスタグラム</span></label>
-          <label class="choice"><input type="radio" name="found_us" value="Other social media" /> Other social media<span class="ja">その他SNS</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="radio" name="found_us" value="Internet search" required /> Internet search<span class="ja">インターネット検索</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-search">What words did you search for?<span class="ja">検索した言葉</span></label>
+                <input id="if-found-search" type="text" placeholder="e.g. Shinjuku pill prescription" />
+              </div>
+            </div>
+          </div>
+          <div class="reason-cell">
+            <label class="choice"><input type="radio" name="found_us" value="AI assistant" /> AI (ChatGPT, Gemini)<span class="ja">AIに聞いた（ChatGPTなど）</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-ai">What did you ask it?<span class="ja">どのように聞きましたか</span></label>
+                <input id="if-found-ai" type="text" placeholder="e.g. clinic in Shinjuku that prescribes the pill" />
+              </div>
+            </div>
+          </div>
           <label class="choice"><input type="radio" name="found_us" value="Google Maps" /> Google Maps<span class="ja">Googleマップ</span></label>
+          <label class="choice"><input type="radio" name="found_us" value="Instagram" /> Instagram<span class="ja">インスタグラム</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="radio" name="found_us" value="Other social media" /> Other social media<span class="ja">その他SNS</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-sns">Which one?<span class="ja">どのSNSですか</span></label>
+                <input id="if-found-sns" type="text" placeholder="e.g. X, TikTok, YouTube" />
+              </div>
+            </div>
+          </div>
           <label class="choice"><input type="radio" name="found_us" value="From a friend" /> From a friend<span class="ja">知人の紹介</span></label>
-          <label class="choice"><input type="radio" name="found_us" value="Other" /> Other<span class="ja">その他</span></label>
-        </div>
-        <div class="sub-field">
-          <label for="if-found-detail">If you searched, what words did you use? Otherwise, please describe<span class="ja">検索した場合は検索ワード／その他の場合は内容</span></label>
-          <input id="if-found-detail" type="text" />
+          <div class="reason-cell">
+            <label class="choice"><input type="radio" name="found_us" value="Referred by another clinic" /> Referred by another clinic<span class="ja">他院からの紹介</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-clinic">Which clinic?<span class="ja">医院名</span></label>
+                <input id="if-found-clinic" type="text" />
+              </div>
+            </div>
+          </div>
+          <label class="choice"><input type="radio" name="found_us" value="Saw the clinic / signage" /> Saw the clinic or its sign<span class="ja">通りがかり・看板</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="radio" name="found_us" value="Other" /> Other<span class="ja">その他</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-other">Please describe<span class="ja">内容</span></label>
+                <input id="if-found-other" type="text" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1008,6 +1049,9 @@
       "if-cycle-detail": "例）28日周期 ／ 2〜3ヶ月に1回",
       "if-refill-name": "例）ヘルペスのお薬",
       "if-oc-detail": "例）マーベロン28を2年",
+      "if-found-search": "例）新宿 ピル 処方",
+      "if-found-ai": "例）新宿でピルを出してくれるクリニック",
+      "if-found-sns": "例）X・TikTok・YouTube",
     };
     [].forEach.call(document.querySelectorAll("input[placeholder], textarea[placeholder]"), function (el) {
       if (PLACEHOLDERS_JA[el.id]) el.placeholder = PLACEHOLDERS_JA[el.id];
@@ -1240,13 +1284,22 @@
   // Each reason that has a follow-up question opens it directly underneath.
   // Unticking clears the answer, so an abandoned box never reaches the doctor.
   [].forEach.call(document.querySelectorAll(".reason-cell"), function (cell) {
-    var box = cell.querySelector('input[type="checkbox"]');
+    var box = cell.querySelector('input[type="checkbox"], input[type="radio"]');
     var field = cell.querySelector(".reason-sub input");
     if (!box || !field) return;
-    box.addEventListener("change", function () {
+    function sync(focus) {
       cell.classList.toggle("open", box.checked);
-      if (box.checked) { field.focus(); } else { field.value = ""; }
-    });
+      if (box.checked) { if (focus) field.focus(); } else { field.value = ""; }
+    }
+    if (box.type === "radio") {
+      // ラジオは他を選んでも自分には change が飛ばないので、同じグループ全体を聞く。
+      // そうしないと、選び直したあとも前の欄が開いたまま残る
+      [].forEach.call(document.querySelectorAll('input[name="' + box.name + '"]'), function (other) {
+        other.addEventListener("change", function () { sync(other === box); });
+      });
+    } else {
+      box.addEventListener("change", function () { sync(true); });
+    }
   });
 
   // 受診理由によって質問を減らす。判定は独立した2つ。
@@ -1599,10 +1652,13 @@
     "Crohn's disease": "クローン病",
     "Ulcerative colitis": "潰瘍性大腸炎",
     "Internet search": "インターネット検索",
+    "AI assistant": "AIに聞いた",
     "Instagram": "インスタグラム",
     "Other social media": "その他SNS",
     "Google Maps": "Googleマップ",
     "From a friend": "知人の紹介",
+    "Referred by another clinic": "他院からの紹介",
+    "Saw the clinic / signage": "通りがかり・看板",
   };
 
   function toJa(v) {
@@ -1689,7 +1745,10 @@
       family_history_thrombosis: radioVal("family_clots"),
       family_history_breast_cancer: radioVal("family_breast_cancer"),
       found_us: radioVal("found_us"),
-      found_us_detail: val("if-found-detail"),
+      // 追記の欄は選択肢ごとに分かれているが、ラジオなので同時に埋まることはない
+      // （選び直すと前の欄は消える）。保存は今までどおり1項目にまとめる
+      found_us_detail: ["if-found-search", "if-found-ai", "if-found-sns", "if-found-clinic", "if-found-other"]
+        .map(val).filter(Boolean).join(" / "),
       notes: val("if-notes"),
     };
 
