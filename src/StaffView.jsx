@@ -187,6 +187,16 @@ function bookingDetail(b) {
   return parts.join("　") || "—";
 }
 
+// アフターピルの受付に付く「避妊せずに性行為があった日」からの経過。
+// 服用までの時間で出せる薬が変わるので、72時間を過ぎていそうなら赤で出す。
+// 受付では日付しか聞いていないため、3日以上前を「超過の可能性」とする
+function ecElapsed(dateStr) {
+  if (!dateStr) return null;
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+  const days = Math.floor((new Date(`${today}T00:00:00`) - new Date(`${dateStr}T00:00:00`)) / 86400000);
+  return { days, over: days >= 3 };
+}
+
 // 診察の区分表示（初診 / 再診・○○）
 function visitKindLabel(c) {
   if (c.visit_type !== "consult") return "—";
@@ -746,6 +756,21 @@ export default function StaffView() {
                             <td className="px-3 py-3 text-xs">{visitKindLabel(c)}</td>
                             <td className="px-3 py-3 text-xs" style={{ color: "#8A7378" }}>
                               {(c.medications || []).join("、") || "—"}
+                              {c.ec_intercourse_date && (() => {
+                                const e = ecElapsed(c.ec_intercourse_date);
+                                return (
+                                  <div
+                                    className="mt-0.5 font-bold leading-tight"
+                                    style={{ color: e.over ? "#B03A44" : "#C0762C" }}
+                                    title="避妊せずに性行為があった日（患者さんの申告）"
+                                  >
+                                    性行為 {c.ec_intercourse_date}
+                                    <br />
+                                    {e.days === 0 ? "本日" : `${e.days}日前`}
+                                    {e.over ? "・72時間超の可能性" : ""}
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-3 py-3 text-xs">
                               <InsuranceTag id={c.insurance} />
