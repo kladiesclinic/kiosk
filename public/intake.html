@@ -421,6 +421,17 @@
           </div>
           <label class="choice"><input type="checkbox" name="reason" value="Menstrual pain" /> Menstrual pain<span class="ja">生理痛</span></label>
           <label class="choice"><input type="checkbox" name="reason" value="Irregular period" /> Irregular period<span class="ja">生理不順</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="reason" value="Period shifting" /> Moving my period<span class="ja">月経移動</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-period-shift-date">When is the trip or event?<span class="ja">ずらしたいご予定はいつですか</span></label>
+                <input id="if-period-shift-date" type="text" placeholder="e.g. trip on 20-23 September" />
+                <div class="hint">The medication has to be started at a set time before the
+                date, so please tell us as early as you can.<span class="ja">お薬を始める時期が決まっているため、できるだけ早めにお知らせください。</span></div>
+              </div>
+            </div>
+          </div>
           <label class="choice"><input type="checkbox" name="reason" value="Acne / skin" /> Acne / skin<span class="ja">ニキビ・肌荒れ</span></label>
           <label class="choice"><input type="checkbox" name="reason" value="PMS / mood" /> PMS / mood<span class="ja">PMS・気分の不調</span></label>
           <label class="choice"><input type="checkbox" name="reason" value="Menopause" /> Menopause<span class="ja">更年期</span></label>
@@ -1046,6 +1057,7 @@
     }
     var PLACEHOLDERS_JA = {
       "if-ec-timing": "例）7月28日 23時ごろ",
+      "if-period-shift-date": "例）9月20〜23日の旅行",
       "if-cycle-detail": "例）28日周期 ／ 2〜3ヶ月に1回",
       "if-refill-name": "例）ヘルペスのお薬",
       "if-oc-detail": "例）マーベロン28を2年",
@@ -1327,6 +1339,7 @@
     "Mini-pill (progestogen-only)",
     "Menstrual pain",
     "Irregular period",
+    "Period shifting",
     "Acne / skin",
     "PMS / mood",
     "Menopause",
@@ -1567,6 +1580,7 @@
     ["blood_pressure", "Blood pressure", "血圧"],
     ["reason_for_visit", "Reason for visit", "受診理由"],
     ["morning_after_timing", "Intercourse date / time", "性交渉の日時（アフターピル）"],
+    ["period_shift_date", "Date to move the period around", "ずらしたいご予定（月経移動）"],
     ["refill_requested", "Refill requested", "ご希望のお薬（追加処方）"],
     ["reason_other_detail", "Other, details", "その他の内容"],
     ["last_period_start", "Last period started", "最終月経の開始日"],
@@ -1618,6 +1632,7 @@
     "Morning-after pill / Plan B": "アフターピル",
     "Menstrual pain": "生理痛",
     "Irregular period": "生理不順",
+    "Period shifting": "月経移動",
     "Acne / skin": "ニキビ・肌荒れ",
     "PMS / mood": "PMS・気分の不調",
     "Menopause": "更年期",
@@ -1709,6 +1724,7 @@
       blood_pressure: val("if-bp"),
       reason_for_visit: checkVals("reason") || "None checked",
       morning_after_timing: val("if-ec-timing"),
+      period_shift_date: val("if-period-shift-date"),
       refill_requested: val("if-refill-name"),
       reason_other_detail: val("if-other-detail"),
       last_period_start: val("if-lmp"),
