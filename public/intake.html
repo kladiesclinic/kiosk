@@ -92,6 +92,15 @@
 
   /* 住所: 郵便番号で検索 → 都道府県・市区町村・町名を自動で入れ、番地と建物名は手入力。
      全体で1つの .field にしてあるので、ウィザードでは1問として出る。 */
+  /* 生年月日は年・月・日を別々に打ってもらう。1つの日付入力だと、スマホでは
+     カレンダーが今日から開き、何十年もさかのぼる操作になる。そこで止まる方が多い */
+  .dob-row { display: flex; gap: 8px; align-items: flex-start; }
+  .dob-cell { flex: 1 1 0; min-width: 0; }
+  .dob-cell.wide { flex: 1.6 1 0; }
+  .dob-cell input { width: 100%; text-align: center; }
+  .dob-unit { display: block; text-align: center; font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+  .dob-unit .ja { margin-left: 4px; }
+
   .postal-row { display: flex; gap: 8px; align-items: stretch; }
   .postal-row input { flex: 0 1 200px; min-width: 0; }
   .postal-btn {
@@ -201,6 +210,8 @@
       background: #FFFFFF; min-height: 0;
     }
     form textarea { min-height: 34px; }
+    .dob-row { gap: 4px; }
+    .dob-unit { font-size: 8px; margin-top: 1px; }
     .field-row { grid-template-columns: 1fr 1fr; gap: 5px 8px; }
     .field-row + .field, .field-row + .field-row { margin-top: 6px; }
     .unit-row { gap: 4px; flex-wrap: nowrap; }
@@ -299,8 +310,23 @@
 
       <div class="field-row">
         <div class="field">
-          <label for="if-dob">Date of birth<span class="ja">生年月日</span></label>
-          <input id="if-dob" type="date" required />
+          <label>Date of birth<span class="ja">生年月日</span></label>
+          <div class="dob-row">
+            <div class="dob-cell wide">
+              <input id="if-dob-y" type="text" inputmode="numeric" maxlength="4" placeholder="1990" aria-label="Year" required />
+              <span class="dob-unit">Year<span class="ja">年</span></span>
+            </div>
+            <div class="dob-cell">
+              <input id="if-dob-m" type="text" inputmode="numeric" maxlength="2" placeholder="5" aria-label="Month" required />
+              <span class="dob-unit">Month<span class="ja">月</span></span>
+            </div>
+            <div class="dob-cell">
+              <input id="if-dob-d" type="text" inputmode="numeric" maxlength="2" placeholder="10" aria-label="Day" required />
+              <span class="dob-unit">Day<span class="ja">日</span></span>
+            </div>
+          </div>
+          <!-- 送信も受付も従来どおり YYYY-MM-DD の1項目で扱う。3つ揃ったときだけ入る -->
+          <input id="if-dob" type="hidden" />
         </div>
         <div class="field">
           <label for="if-email">Email address<span class="ja">メールアドレス</span></label>
@@ -1287,6 +1313,41 @@
       kanaField.value = guessKana(nameField.value);
     });
   })();
+  // 生年月日: 年・月・日の3欄から YYYY-MM-DD を組み立て、隠しの if-dob に入れる。
+  // 送信も受付（ensureSelfCheckin）もこの1項目しか見ないので、扱いは今までどおり。
+  // ありえない日付はブラウザの検証で止める（ウィザードは checkValidity を見ている）
+  (function () {
+    var y = document.getElementById("if-dob-y");
+    var m = document.getElementById("if-dob-m");
+    var d = document.getElementById("if-dob-d");
+    var out = document.getElementById("if-dob");
+    if (!y || !m || !d || !out) return;
+    var isEnPage = document.documentElement.lang !== "ja";
+    var MSG = {
+      year: isEnPage ? "Please enter the year of birth as four digits." : "生まれた年を4桁で入れてください。",
+      month: isEnPage ? "Please enter a month between 1 and 12." : "月は1〜12で入れてください。",
+      day: isEnPage ? "Please enter a day between 1 and 31." : "日は1〜31で入れてください。",
+    };
+    function sync() {
+      [y, m, d].forEach(function (el) {
+        var cleaned = el.value.replace(/\D/g, "");
+        if (cleaned !== el.value) el.value = cleaned;
+      });
+      var okY = /^\d{4}$/.test(y.value) && +y.value >= 1900 && +y.value <= new Date().getFullYear();
+      var okM = m.value !== "" && +m.value >= 1 && +m.value <= 12;
+      var okD = d.value !== "" && +d.value >= 1 && +d.value <= 31;
+      // 空欄は required に任せる（打ち始める前から赤くしない）
+      y.setCustomValidity(y.value && !okY ? MSG.year : "");
+      m.setCustomValidity(m.value && !okM ? MSG.month : "");
+      d.setCustomValidity(d.value && !okD ? MSG.day : "");
+      out.value = okY && okM && okD
+        ? y.value + "-" + ("0" + m.value).slice(-2) + "-" + ("0" + d.value).slice(-2)
+        : "";
+    }
+    [y, m, d].forEach(function (el) { el.addEventListener("input", sync); el.addEventListener("blur", sync); });
+    sync();
+  })();
+
   var form = document.getElementById("intake-form");
   var statusEl = document.getElementById("if-status");
   var submitBtn = document.getElementById("if-submit");
