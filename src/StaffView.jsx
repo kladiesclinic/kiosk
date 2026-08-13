@@ -345,6 +345,7 @@ export default function StaffView() {
   const [proxyError, setProxyError] = useState("");
   // 取り消し中の受付ID（連打よけ）
   const [cancelling, setCancelling] = useState(null);
+  const [checkingIn, setCheckingIn] = useState(null);
   // 問診票のQRを見せる対象の受付行
   const [qrFor, setQrFor] = useState(null);
 
@@ -463,6 +464,39 @@ export default function StaffView() {
     }
     setLoadError("");
     setCheckins((prev) => prev.filter((c) => c.id !== row.id));
+  };
+
+  // 予約状況の行からその場で受付する。スマホを持っていない方、操作に困っている方、
+  // 受付を通らず診察室まで来てしまった方のため。
+  //
+  // 患者さんのスマホと同じ RPC を呼ぶ。予約の照合は RPC 側が氏名と生年月日で
+  // 行うので、押した行の予約に紐付き、その予約は「来院済み」に変わる。
+  // 受付番号の採番も二重受付の防止もそのまま効く。
+  const checkinFromBooking = async (b) => {
+    if (checkingIn) return;
+    if (!window.confirm(`${b.time}　${b.patient_name} さんを受付します。よろしいですか？`)) return;
+    setCheckingIn(b.id);
+    const { error } = await supabase.rpc("create_self_checkin", {
+      // アフターピルなど日によって扱いが変わるメニューは RPC 側が決め直す
+      p_visit_type: b.visit_menus?.kind === "pickup" ? "pickup" : "consult",
+      p_patient_name: b.patient_name,
+      p_date_of_birth: b.birthdate || null,
+      // 予約時に聞いた保険の申告。RPCが受け付けない値なら空で作る（口頭で確認できる）
+      p_insurance: INSURANCE_BADGE[b.insurance] ? b.insurance : null,
+      p_visit_kind: b.visit_kind || null,
+      p_return_reason: b.return_reason || null,
+      p_medications: null,
+      p_line_user_id: null,
+      p_source: "staff",
+      p_patient_kana: b.patient_kana || null,
+    });
+    setCheckingIn(null);
+    if (error) {
+      setLoadError(`受付できませんでした: ${error.message}`);
+      return;
+    }
+    setLoadError("");
+    load();
   };
 
   const emptyProxy = {
@@ -742,6 +776,18 @@ export default function StaffView() {
                                 <span className="block text-xs mt-1" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
                                   受付 #{checkin.checkin_number}
                                 </span>
+                              )}
+                              {/* 受付はその日のうちにしか作れないので、当日を見ているときだけ出す */}
+                              {isToday && b.status === "booked" && !checkin && (
+                                <button
+                                  onClick={() => checkinFromBooking(b)}
+                                  disabled={checkingIn === b.id}
+                                  className="inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                  style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: checkingIn === b.id ? 0.5 : 1 }}
+                                >
+                                  <UserPlus size={12} />
+                                  {checkingIn === b.id ? "受付中..." : "受付する"}
+                                </button>
                               )}
                             </td>
                           </tr>
