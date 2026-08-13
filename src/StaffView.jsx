@@ -787,7 +787,9 @@ export default function StaffView() {
         </header>
 
         {/* タブ切り替え: 受付一覧 / 予約状況 */}
-        <div className="px-6 pt-4 max-w-5xl mx-auto w-full">
+        {/* 幅は画面いっぱいまで使う。1024pxで頭打ちにしていたので、
+            列がそろわず横スクロールになっていた（iPadは横向きで1024px） */}
+        <div className="px-3 sm:px-6 pt-4 max-w-[1500px] mx-auto w-full">
           <div className="inline-flex rounded-xl overflow-hidden" style={{ border: "1.5px solid #F2DFE4", background: "#FFFFFF" }}>
             {[
               { id: "checkins", label: "受付一覧", Icon: ClipboardList },
@@ -815,7 +817,7 @@ export default function StaffView() {
           </div>
         </div>
 
-        <main className="p-6 flex flex-col gap-8 max-w-5xl mx-auto">
+        <main className="p-3 sm:p-6 flex flex-col gap-8 max-w-[1500px] mx-auto w-full">
           {loadError && (
             <div className="p-4 rounded-xl text-sm" style={{ background: "#FCE9EA", color: "#B03A44" }}>
               読み込みエラー: {loadError}
@@ -845,19 +847,18 @@ export default function StaffView() {
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 920 }}>
+                  {/* 受付一覧と同じで、連絡先は列を分けずにお名前の下へ積む */}
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 780 }}>
                     <thead>
                       <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
-                        <th className="px-4 py-2.5 font-medium">時間</th>
-                        <th className="px-3 py-2.5 font-medium">お名前</th>
-                        <th className="px-3 py-2.5 font-medium">メニュー</th>
-                        <th className="px-3 py-2.5 font-medium">内容</th>
-                        <th className="px-3 py-2.5 font-medium">保険</th>
-                        <th className="px-3 py-2.5 font-medium">生年月日</th>
-                        <th className="px-3 py-2.5 font-medium">電話</th>
-                        <th className="px-3 py-2.5 font-medium">経路</th>
-                        <th className="px-3 py-2.5 font-medium">問診票</th>
-                        <th className="px-3 py-2.5 font-medium">状態</th>
+                        <th className="px-3 py-2.5 font-medium">時間</th>
+                        <th className="px-2 py-2.5 font-medium">お名前・生年月日・電話</th>
+                        <th className="px-2 py-2.5 font-medium">メニュー</th>
+                        <th className="px-2 py-2.5 font-medium">内容</th>
+                        <th className="px-2 py-2.5 font-medium">保険</th>
+                        <th className="px-2 py-2.5 font-medium">経路</th>
+                        <th className="px-2 py-2.5 font-medium">問診票</th>
+                        <th className="px-2 py-2.5 font-medium">状態</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -869,16 +870,22 @@ export default function StaffView() {
                         const isPickup = b.visit_menus?.kind === "pickup";
                         return (
                           <tr key={b.id} style={{ borderTop: "1px solid #FAEEF0", opacity: b.status === "cancelled" ? 0.45 : 1 }}>
-                            <td className="px-4 py-3 font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                            <td className="px-3 py-3 font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
                               {b.time}
                             </td>
-                            <td className="px-3 py-3 font-medium">
+                            <td className="px-2 py-3 font-medium">
                               {b.patient_name}
                               {b.patient_kana && (
                                 <span className="block text-xs font-normal" style={{ color: "#B08A90" }}>{b.patient_kana}</span>
                               )}
+                              <span
+                                className="block text-[11px] font-normal leading-tight"
+                                style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}
+                              >
+                                {b.birthdate || "—"}　{b.phone || "—"}
+                              </span>
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3">
                               <span
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
                                 style={
@@ -891,12 +898,10 @@ export default function StaffView() {
                                 {b.visit_menus?.name || b.menu_id}
                               </span>
                             </td>
-                            <td className="px-3 py-3 text-xs" style={{ color: "#8A7378", maxWidth: 220 }}>{bookingDetail(b)}</td>
-                            <td className="px-3 py-3 text-xs"><InsuranceTag id={b.insurance} /></td>
-                            <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{b.birthdate || "—"}</td>
-                            <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{b.phone || "—"}</td>
-                            <td className="px-3 py-3 text-xs">{CHANNEL_LABEL[b.channel] || b.channel}</td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3 text-xs" style={{ color: "#8A7378", maxWidth: 200 }}>{bookingDetail(b)}</td>
+                            <td className="px-2 py-3 text-xs"><InsuranceTag id={b.insurance} /></td>
+                            <td className="px-2 py-3 text-xs">{CHANNEL_LABEL[b.channel] || b.channel}</td>
+                            <td className="px-2 py-3">
                               {bf ? (
                                 <button
                                   onClick={() => setSelectedForm(bf)}
@@ -910,7 +915,7 @@ export default function StaffView() {
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>{isPickup ? "—" : "未記入"}</span>
                               )}
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3">
                               <span
                                 className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
                                 style={{ background: status.bg, color: status.fg }}
@@ -1118,23 +1123,22 @@ export default function StaffView() {
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 1040 }}>
+                  {/* 1画面に収める。関係の近いものは列を分けずに縦へ積む
+                      （受付時刻と予約時間／氏名とカナと生年月日／診察か薬かと初診か再診か）。
+                      列を増やすほど横に伸びて、iPadでは横スクロールになる */}
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 860 }}>
                     <thead>
                       <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
-                        <th className="px-4 py-2.5 font-medium">番号</th>
-                        {/* 受付時刻と予約時間は同じ列に縦に積む。列を増やすと表が
-                            横に伸びて、受付のノートPCで横スクロールが要る */}
-                        <th className="px-3 py-2.5 font-medium">時刻</th>
-                        <th className="px-3 py-2.5 font-medium">お名前</th>
-                        <th className="px-3 py-2.5 font-medium">種別</th>
-                        <th className="px-3 py-2.5 font-medium">区分</th>
-                        <th className="px-3 py-2.5 font-medium">お薬</th>
-                        <th className="px-3 py-2.5 font-medium">保険</th>
-                        <th className="px-3 py-2.5 font-medium">生年月日</th>
+                        <th className="px-3 py-2.5 font-medium">番号</th>
+                        <th className="px-2 py-2.5 font-medium">時刻</th>
+                        <th className="px-2 py-2.5 font-medium">お名前・生年月日</th>
+                        <th className="px-2 py-2.5 font-medium">種別</th>
+                        <th className="px-2 py-2.5 font-medium">お薬</th>
+                        <th className="px-2 py-2.5 font-medium">保険</th>
                         {/* 電子カルテとは繋がっていないので、番号は人が見て入れる */}
-                        <th className="px-3 py-2.5 font-medium">カルテ番号</th>
-                        <th className="px-3 py-2.5 font-medium">問診票</th>
-                        <th className="px-3 py-2.5 font-medium">状態</th>
+                        <th className="px-2 py-2.5 font-medium">カルテ</th>
+                        <th className="px-2 py-2.5 font-medium">問診票</th>
+                        <th className="px-2 py-2.5 font-medium">状態</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1162,10 +1166,10 @@ export default function StaffView() {
                         const late = bookedAt && hhmm(c.created_at) > bookedAt;
                         return (
                           <tr key={c.id} style={{ borderTop: "1px solid #FAEEF0", opacity: isDone ? 0.5 : 1 }}>
-                            <td className="px-4 py-3 text-lg font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                            <td className="px-3 py-3 text-lg font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
                               {c.checkin_number}
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3">
                               <div style={{ fontFamily: "'JetBrains Mono', monospace" }}>{hhmm(c.created_at)}</div>
                               {bookedAt ? (
                                 <span
@@ -1181,7 +1185,7 @@ export default function StaffView() {
                                 <div className="text-[11px] leading-tight" style={{ color: "#C9AEB3" }}>予約なし</div>
                               )}
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3">
                               <div className="font-medium">{c.patient_name}</div>
                               {kana && (
                                 <div
@@ -1192,10 +1196,18 @@ export default function StaffView() {
                                   {kana.text}
                                 </div>
                               )}
+                              {/* 生年月日は本人確認に使うだけなので、列を1つ使うほどではない */}
+                              <div
+                                className="text-[11px] leading-tight"
+                                style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}
+                              >
+                                {c.date_of_birth || "生年月日 —"}
+                              </div>
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3">
+                              {/* 「診察か薬か」と「初診か再診か」は続けて読むものなので同じ列に積む */}
                               <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
                                 style={
                                   c.visit_type === "pickup"
                                     ? { background: "#DFF5F3", color: "#0F8B8D" }
@@ -1205,25 +1217,27 @@ export default function StaffView() {
                                 {c.visit_type === "pickup" ? <PackageCheck size={12} /> : <Stethoscope size={12} />}
                                 {c.visit_type === "pickup" ? "薬のみ" : "診察"}
                               </span>
+                              {c.visit_type === "consult" && (
+                                <div className="text-xs mt-1"><VisitKindTag c={c} /></div>
+                              )}
                             </td>
-                            <td className="px-3 py-3 text-xs"><VisitKindTag c={c} /></td>
-                            <td className="px-3 py-3 text-xs" style={{ color: "#8A7378" }}>
+                            <td className="px-2 py-3 text-xs" style={{ color: "#8A7378" }}>
                               {/* アフターピルは薬名を並べるより MAP のタグで出す。
                                   再診は受付で日付を、初診は問診票で日時を聞いている */}
                               {meds.join("、") || (map ? "" : "—")}
                               {map && <MapTag date={map.date} timing={map.timing} />}
                             </td>
-                            <td className="px-3 py-3 text-xs">
+                            <td className="px-2 py-3 text-xs">
                               <InsuranceTag id={c.insurance} />
                             </td>
-                            <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{c.date_of_birth || "—"}</td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3">
                               <ChartNumberInput
                                 value={c.chart_number || anyForm?.chart_number || ""}
+                                width={76}
                                 onSave={(v) => saveChartNumber({ checkinId: c.id, formId: anyForm?.id, value: v })}
                               />
                             </td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-3">
                               {c.visit_type === "consult" ? (
                                 f ? (
                                   <div className="flex flex-col items-start gap-0.5">
@@ -1267,9 +1281,11 @@ export default function StaffView() {
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
                               )}
                             </td>
-                            <td className="px-3 py-3">
-                              {/* カルテ済/会計済の独立トグル。押すたびに済⇔未でオンオフ */}
-                              <div className="flex items-center gap-1.5">
+                            <td className="px-2 py-3">
+                              {/* カルテ済/会計済の独立トグル。押すたびに済⇔未でオンオフ。
+                                  横に並べると列が2倍近く広がるので縦に積む */}
+                              <div className="flex items-start gap-1.5">
+                              <div className="flex flex-col gap-1">
                                 <button
                                   onClick={() => toggleFlag(c, "chart_done")}
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
@@ -1295,6 +1311,7 @@ export default function StaffView() {
                                   <CheckCircle2 size={12} style={{ visibility: c.payment_done ? "visible" : "hidden" }} />
                                   会計済
                                 </button>
+                                </div>
                                 {/* 押し間違い・別人の受付・動作確認の後始末。
                                     予約は「予約中」に戻り、問診票は残る */}
                                 <button
