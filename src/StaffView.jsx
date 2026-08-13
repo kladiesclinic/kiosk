@@ -17,6 +17,7 @@ import {
   UserPlus,
   QrCode,
   Trash2,
+  Search,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
@@ -320,6 +321,86 @@ function QrImage({ url, size = 220 }) {
   return <img src={dataUrl} alt="問診票のQRコード" width={size} height={size} style={{ borderRadius: 12 }} />;
 }
 
+// 院内カルテ番号の入力欄。
+//
+// 電子カルテとは繋がっていないので、どの問診票がどのカルテの方かは人が見て決める。
+// 受付一覧の行からも、あとから探した問診票からも同じように書き込めるようにする。
+//
+// 受付一覧は10秒ごとに勝手に読み直すので、入力中に上書きされないよう、
+// 手を入れた後（dirty）は外からの値を無視する
+function ChartNumberInput({ value, onSave, width = 88 }) {
+  const [text, setText] = useState(value || "");
+  const [dirty, setDirty] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!dirty) setText(value || "");
+  }, [value, dirty]);
+
+  const commit = async () => {
+    const next = text.trim();
+    if (next === (value || "").trim()) { setDirty(false); return; }
+    setBusy(true);
+    const ok = await onSave(next);
+    setBusy(false);
+    setDirty(false);
+    if (ok) {
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1600);
+    } else {
+      setText(value || "");
+    }
+  };
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={text}
+        disabled={busy}
+        onChange={(e) => { setText(e.target.value); setDirty(true); }}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+        placeholder="—"
+        aria-label="カルテ番号"
+        className="px-2 py-1 rounded-lg text-xs outline-none"
+        style={{
+          width,
+          background: "#FFF8F7",
+          border: `1px solid ${saved ? "#0F8B8D" : "#F2DFE4"}`,
+          color: "#3A2E30",
+          fontFamily: "'JetBrains Mono', monospace",
+        }}
+      />
+      {saved && <CheckCircle2 size={13} color="#0F8B8D" />}
+    </span>
+  );
+}
+
+// 検索語をPostgRESTのフィルタに渡せる形にする。カンマや括弧はフィルタの
+// 区切り記号なので落とし、% と _ はLIKEのワイルドカードなので落とす
+function safeLike(s) {
+  return String(s || "").trim().replace(/[,()"\\%_*]/g, "");
+}
+
+// 生年月日の入力ゆれを YYYY-MM-DD の前方一致に直す。
+// 「1990」「1990-05」「1990/5/20」「19900520」のどれでも候補を出せるようにする
+function dobPrefix(input) {
+  const s = String(input || "").trim();
+  if (!s) return "";
+  const digits = s.replace(/\D/g, "");
+  if (/^\d{8}$/.test(digits)) return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
+  if (/^\d{4}$/.test(digits) && !/[-/]/.test(s)) return digits;
+  const parts = s.split(/[-/.]/).filter(Boolean);
+  if (!parts.length || !/^\d{4}$/.test(parts[0])) return "";
+  return parts
+    .slice(0, 3)
+    .map((p, i) => (i === 0 ? p : String(p).padStart(2, "0")))
+    .join("-");
+}
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
@@ -348,6 +429,11 @@ export default function StaffView() {
   const [checkingIn, setCheckingIn] = useState(null);
   // 問診票のQRを見せる対象の受付行
   const [qrFor, setQrFor] = useState(null);
+  // 患者を探す（過去の問診票の呼び出し）
+  const [query, setQuery] = useState({ name: "", dob: "", chart: "" });
+  const [results, setResults] = useState(null); // null=まだ検索していない
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
   const toggleHideChartDone = () => {
     setHideChartDone((v) => {
@@ -410,8 +496,9 @@ export default function StaffView() {
 
   useEffect(() => {
     load();
-    // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降
-    const canGrow = tab === "bookings" ? dateKey >= todayKey() : isToday;
+    // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
+    // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
+    const canGrow = tab === "search" ? false : tab === "bookings" ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
@@ -464,6 +551,60 @@ export default function StaffView() {
     }
     setLoadError("");
     setCheckins((prev) => prev.filter((c) => c.id !== row.id));
+  };
+
+  // 院内カルテ番号を書き込む。受付（その日の来院）と問診票の両方に同じ番号を持たせる。
+  // 受付は日ごとに流れていくが問診票は残るので、問診票側にも入れておかないと
+  // 何年か後に呼び出したときに番号が分からなくなる
+  const saveChartNumber = async ({ checkinId, formId, value }) => {
+    const v = value.trim() || null;
+    const jobs = [];
+    if (checkinId) jobs.push(supabase.from("reception_checkins").update({ chart_number: v }).eq("id", checkinId));
+    if (formId) jobs.push(supabase.from("intake_forms").update({ chart_number: v }).eq("id", formId));
+    if (!jobs.length) return false;
+    const res = await Promise.all(jobs);
+    const failed = res.find((r) => r.error);
+    if (failed) {
+      setLoadError(`カルテ番号を保存できませんでした: ${failed.error.message}`);
+      return false;
+    }
+    setLoadError("");
+    // 開いている一覧すべてに反映する（どこから入れても同じ番号が見えるように）
+    if (checkinId) setCheckins((prev) => prev.map((c) => (c.id === checkinId ? { ...c, chart_number: v } : c)));
+    if (formId) {
+      const patch = (list) => list.map((f) => (f.id === formId ? { ...f, chart_number: v } : f));
+      setForms(patch);
+      setBookingForms(patch);
+      setResults((prev) => (prev ? patch(prev) : prev));
+      setSelectedForm((prev) => (prev && prev.id === formId ? { ...prev, chart_number: v } : prev));
+    }
+    return true;
+  };
+
+  // 過去の問診票を呼び出す。氏名・生年月日・カルテ番号のどれからでも引ける。
+  // 生年月日は前方一致なので、年だけ・年月だけでも候補を出せる
+  const runSearch = async () => {
+    const name = safeLike(query.name);
+    const dob = dobPrefix(query.dob);
+    const chart = safeLike(query.chart);
+    if (!name && !dob && !chart) {
+      setSearchError("お名前・生年月日・カルテ番号のどれかを入れてください。");
+      return;
+    }
+    setSearching(true);
+    setSearchError("");
+    let q = supabase.from("intake_forms").select("*").order("created_at", { ascending: false }).limit(200);
+    if (name) q = q.ilike("patient_name", `%${name}%`);
+    if (dob) q = q.like("date_of_birth", `${dob}%`);
+    if (chart) q = q.eq("chart_number", chart);
+    const { data, error } = await q;
+    setSearching(false);
+    if (error) {
+      setSearchError(error.message);
+      setResults([]);
+      return;
+    }
+    setResults(data || []);
   };
 
   // 予約状況の行からその場で受付する。スマホを持っていない方、操作に困っている方、
@@ -559,20 +700,23 @@ export default function StaffView() {
                 受付一覧（スタッフ用）
               </div>
               <div className="text-xs" style={{ color: "#B08A90" }}>
-                {tab === "bookings"
-                  ? `${dateKey} の予約 ${bookings.filter((b) => b.status !== "cancelled").length}件　`
-                  : isToday
-                    ? `待ち ${waiting.length}件　`
-                    : `${dateKey} の記録（過去分）　`}
-                {lastUpdated && `最終更新 ${hhmm(lastUpdated.toISOString())}`}
+                {tab === "search"
+                  ? "過去の問診票を呼び出す"
+                  : tab === "bookings"
+                    ? `${dateKey} の予約 ${bookings.filter((b) => b.status !== "cancelled").length}件　`
+                    : isToday
+                      ? `待ち ${waiting.length}件　`
+                      : `${dateKey} の記録（過去分）　`}
+                {tab !== "search" && lastUpdated && `最終更新 ${hhmm(lastUpdated.toISOString())}`}
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {/* 表示日の切り替え（過去分も同じ画面で見られる） */}
+            {/* 表示日の切り替え（過去分も同じ画面で見られる）。
+                患者を探すタブは日付で絞らないので出さない */}
             <div
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30" }}
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" ? "none" : undefined }}
             >
               <CalendarDays size={15} color="#B08A90" />
               <input
@@ -648,6 +792,7 @@ export default function StaffView() {
             {[
               { id: "checkins", label: "受付一覧", Icon: ClipboardList },
               { id: "bookings", label: "予約状況", Icon: CalendarCheck },
+              { id: "search", label: "患者を探す", Icon: Search },
             ].map(({ id, label, Icon }) => (
               <button
                 key={id}
@@ -801,6 +946,160 @@ export default function StaffView() {
           </section>
           )}
 
+          {tab === "search" && (
+          /* 患者を探す。日付をまたいで過去の問診票を呼び出し、もう一度見る・印刷する。
+             生年月日は前方一致なので、年だけ・年月だけでも候補を絞れる */
+          <section>
+            <h2 className="text-lg font-bold mb-1" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+              患者を探す
+            </h2>
+            <p className="text-xs mb-4" style={{ color: "#B08A90" }}>
+              過去に提出された問診票を呼び出します。表示・印刷と、カルテ番号の書き込みができます。
+              生年月日は「1990」「1990-05」のように途中まででも候補が出ます。
+            </p>
+
+            <form
+              onSubmit={(e) => { e.preventDefault(); runSearch(); }}
+              className="flex items-end gap-3 flex-wrap p-4 rounded-2xl mb-5"
+              style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}
+            >
+              <label className="block">
+                <span className="block text-xs font-medium mb-1" style={{ color: "#8A7378" }}>お名前（一部でも可）</span>
+                <input
+                  type="text"
+                  value={query.name}
+                  onChange={(e) => setQuery({ ...query, name: e.target.value })}
+                  placeholder="山田　／　ヤマダ　／　Yamada"
+                  className="p-2.5 rounded-lg text-sm outline-none"
+                  style={{ width: 220, background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30" }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium mb-1" style={{ color: "#8A7378" }}>生年月日</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={query.dob}
+                  onChange={(e) => setQuery({ ...query, dob: e.target.value })}
+                  placeholder="1990-05-20"
+                  className="p-2.5 rounded-lg text-sm outline-none"
+                  style={{ width: 150, background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-medium mb-1" style={{ color: "#8A7378" }}>カルテ番号</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={query.chart}
+                  onChange={(e) => setQuery({ ...query, chart: e.target.value })}
+                  placeholder="12345"
+                  className="p-2.5 rounded-lg text-sm outline-none"
+                  style={{ width: 130, background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={searching}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-bold active:opacity-70"
+                style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: searching ? 0.5 : 1 }}
+              >
+                <Search size={15} />
+                {searching ? "探しています..." : "探す"}
+              </button>
+              {(query.name || query.dob || query.chart || results) && (
+                <button
+                  type="button"
+                  onClick={() => { setQuery({ name: "", dob: "", chart: "" }); setResults(null); setSearchError(""); }}
+                  className="px-4 py-2.5 rounded-xl text-sm font-medium active:opacity-70"
+                  style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  クリア
+                </button>
+              )}
+            </form>
+
+            {searchError && (
+              <div className="p-3 rounded-xl text-sm mb-4" style={{ background: "#FCE9EA", color: "#B03A44" }}>
+                {searchError}
+              </div>
+            )}
+
+            {results === null ? (
+              <p className="text-sm" style={{ color: "#B08A90" }}>条件を入れて「探す」を押してください。</p>
+            ) : results.length === 0 ? (
+              <p className="text-sm" style={{ color: "#B08A90" }}>
+                見つかりませんでした。お名前は漢字・カナ・ローマ字のどれで書かれているか分からないので、
+                生年月日だけで探すほうが確実です。
+              </p>
+            ) : (
+              <>
+                <p className="text-xs mb-2" style={{ color: "#B08A90" }}>
+                  {results.length}件{results.length >= 200 && "（多いため新しい200件まで）"}・新しい順
+                </p>
+                <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 720 }}>
+                      <thead>
+                        <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
+                          <th className="px-4 py-2.5 font-medium">提出日</th>
+                          <th className="px-3 py-2.5 font-medium">お名前</th>
+                          <th className="px-3 py-2.5 font-medium">生年月日</th>
+                          <th className="px-3 py-2.5 font-medium">種類</th>
+                          <th className="px-3 py-2.5 font-medium">カルテ番号</th>
+                          <th className="px-3 py-2.5 font-medium">問診票</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {results.map((f) => {
+                          const dob = formBirthdate(f);
+                          const age = ageFrom(dob);
+                          const kind = (f.answers || []).find((r) => /^種類/.test(r?.label || ""))?.value || "";
+                          return (
+                            <tr key={f.id} style={{ borderTop: "1px solid #FAEEF0" }}>
+                              <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                {String(f.created_at).slice(0, 10)}
+                                <span className="block" style={{ color: "#B08A90" }}>{hhmm(f.created_at)}</span>
+                              </td>
+                              <td className="px-3 py-3 font-medium">{f.patient_name}</td>
+                              <td className="px-3 py-3 text-xs whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                {dob || "—"}
+                                {age !== null && <span style={{ color: "#B08A90" }}>　{age}歳</span>}
+                              </td>
+                              <td className="px-3 py-3 text-xs" style={{ color: "#8A7378", maxWidth: 200 }}>
+                                {/Follow-up|簡易/.test(kind) ? "再診（簡易）" : "初診・詳細"}
+                              </td>
+                              <td className="px-3 py-3">
+                                <ChartNumberInput
+                                  value={f.chart_number || ""}
+                                  onSave={(v) => saveChartNumber({ checkinId: f.checkin_id, formId: f.id, value: v })}
+                                />
+                              </td>
+                              <td className="px-3 py-3">
+                                <button
+                                  onClick={() => setSelectedForm(f)}
+                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium active:opacity-70"
+                                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                >
+                                  <FileText size={13} />
+                                  表示・印刷
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+                <p className="text-[11px] mt-3" style={{ color: "#B08A90" }}>
+                  ここに出るのは患者さんご本人が書かれた問診票です。閲覧・印刷した記録は残りません。取り扱いにご注意ください。
+                </p>
+              </>
+            )}
+          </section>
+          )}
+
           {tab === "checkins" && (
           <>
           {/* 受付リスト */}
@@ -819,7 +1118,7 @@ export default function StaffView() {
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 920 }}>
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 1040 }}>
                     <thead>
                       <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
                         <th className="px-4 py-2.5 font-medium">番号</th>
@@ -832,6 +1131,8 @@ export default function StaffView() {
                         <th className="px-3 py-2.5 font-medium">お薬</th>
                         <th className="px-3 py-2.5 font-medium">保険</th>
                         <th className="px-3 py-2.5 font-medium">生年月日</th>
+                        {/* 電子カルテとは繋がっていないので、番号は人が見て入れる */}
+                        <th className="px-3 py-2.5 font-medium">カルテ番号</th>
                         <th className="px-3 py-2.5 font-medium">問診票</th>
                         <th className="px-3 py-2.5 font-medium">状態</th>
                       </tr>
@@ -916,6 +1217,12 @@ export default function StaffView() {
                               <InsuranceTag id={c.insurance} />
                             </td>
                             <td className="px-3 py-3 text-xs" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{c.date_of_birth || "—"}</td>
+                            <td className="px-3 py-3">
+                              <ChartNumberInput
+                                value={c.chart_number || anyForm?.chart_number || ""}
+                                onSave={(v) => saveChartNumber({ checkinId: c.id, formId: anyForm?.id, value: v })}
+                              />
+                            </td>
                             <td className="px-3 py-3">
                               {c.visit_type === "consult" ? (
                                 f ? (
@@ -1113,7 +1420,8 @@ export default function StaffView() {
                 <div>
                   <div className="text-xs font-medium mb-1.5" style={{ color: "#8A7378" }}>ご用件</div>
                   <div className="flex gap-2">
-                    {[["consult", "診察"], ["pickup", "薬受け取り"]].map(([id, label]) => (
+                    {/* 一覧のバッジと同じ言葉にする（「薬受け取り」だと別物に見える） */}
+                    {[["consult", "診察"], ["pickup", "薬のみ"]].map(([id, label]) => (
                       <button
                         key={id}
                         onClick={() => setProxy({ ...proxy, visitType: id })}
@@ -1277,10 +1585,20 @@ export default function StaffView() {
                     問診票　{selectedForm.patient_name}
                   </div>
                   <div className="text-xs" style={{ color: "#B08A90" }}>
-                    {hhmm(selectedForm.created_at)} 受信{selectedForm.date_of_birth ? `　生年月日 ${selectedForm.date_of_birth}` : ""}
+                    {String(selectedForm.created_at).slice(0, 10)} {hhmm(selectedForm.created_at)} 受信
+                    {selectedForm.date_of_birth ? `　生年月日 ${selectedForm.date_of_birth}` : ""}
                     {!selectedForm.checkin_id && (
                       <span style={{ color: "#C0762C" }}>　※QR未経由の送信（名前照合のみ・未確認）</span>
                     )}
+                  </div>
+                  {/* 読みながらそのまま番号を入れられるようにする。印刷にも載る */}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-xs" style={{ color: "#8A7378" }}>カルテ番号</span>
+                    <ChartNumberInput
+                      value={selectedForm.chart_number || ""}
+                      width={110}
+                      onSave={(v) => saveChartNumber({ checkinId: selectedForm.checkin_id, formId: selectedForm.id, value: v })}
+                    />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1349,6 +1667,8 @@ export default function StaffView() {
               const paren = dob ? `（${dob}${age === null ? "" : `・${age}歳`}）` : "";
               return (
                 <span style={{ fontSize: 14 }}>
+                  {/* 紙はカルテに綴じるので、番号が入っていれば先頭に出す */}
+                  {selectedForm.chart_number ? <strong>カルテ {selectedForm.chart_number}　</strong> : null}
                   {selectedForm.patient_name}
                   {paren}　{selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
                 </span>
