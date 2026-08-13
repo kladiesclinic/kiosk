@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import QRCode from "qrcode";
@@ -556,11 +556,15 @@ export default function StaffView() {
   // 院内カルテ番号を書き込む。受付（その日の来院）と問診票の両方に同じ番号を持たせる。
   // 受付は日ごとに流れていくが問診票は残るので、問診票側にも入れておかないと
   // 何年か後に呼び出したときに番号が分からなくなる
-  const saveChartNumber = async ({ checkinId, formId, value }) => {
+  // まとめて何件でも受け付ける。1人の方の問診票が何枚もあるとき、番号を1回入れれば
+  // 全部に同じ番号が入る（それが「この人はこのカルテの方」と決める作業そのもの）
+  const saveChartNumber = async ({ checkinIds = [], formIds = [], value }) => {
     const v = value.trim() || null;
+    const cIds = checkinIds.filter(Boolean);
+    const fIds = formIds.filter(Boolean);
     const jobs = [];
-    if (checkinId) jobs.push(supabase.from("reception_checkins").update({ chart_number: v }).eq("id", checkinId));
-    if (formId) jobs.push(supabase.from("intake_forms").update({ chart_number: v }).eq("id", formId));
+    if (cIds.length) jobs.push(supabase.from("reception_checkins").update({ chart_number: v }).in("id", cIds));
+    if (fIds.length) jobs.push(supabase.from("intake_forms").update({ chart_number: v }).in("id", fIds));
     if (!jobs.length) return false;
     const res = await Promise.all(jobs);
     const failed = res.find((r) => r.error);
@@ -570,23 +574,30 @@ export default function StaffView() {
     }
     setLoadError("");
     // 開いている一覧すべてに反映する（どこから入れても同じ番号が見えるように）
-    if (checkinId) setCheckins((prev) => prev.map((c) => (c.id === checkinId ? { ...c, chart_number: v } : c)));
-    if (formId) {
-      const patch = (list) => list.map((f) => (f.id === formId ? { ...f, chart_number: v } : f));
+    const cSet = new Set(cIds);
+    const fSet = new Set(fIds);
+    if (cIds.length) setCheckins((prev) => prev.map((c) => (cSet.has(c.id) ? { ...c, chart_number: v } : c)));
+    if (fIds.length) {
+      const patch = (list) => list.map((f) => (fSet.has(f.id) ? { ...f, chart_number: v } : f));
       setForms(patch);
       setBookingForms(patch);
       setResults((prev) => (prev ? patch(prev) : prev));
-      setSelectedForm((prev) => (prev && prev.id === formId ? { ...prev, chart_number: v } : prev));
+      setSelectedForm((prev) => (prev && fSet.has(prev.id) ? { ...prev, chart_number: v } : prev));
     }
     return true;
   };
 
   // 過去の問診票を呼び出す。氏名・生年月日・カルテ番号のどれからでも引ける。
-  // 生年月日は前方一致なので、年だけ・年月だけでも候補を出せる
-  const runSearch = async () => {
-    const name = safeLike(query.name);
-    const dob = dobPrefix(query.dob);
-    const chart = safeLike(query.chart);
+  // 生年月日は前方一致なので、年だけ・年月だけでも候補を出せる。
+  //
+  // 見つかった方にカルテ番号が付いていたら、その番号でもう一度引き直す。
+  // お名前は漢字で書く回もローマ字で書く回もあるので、名前だけで探すと同じ方の
+  // 記入が別々に出てくる。番号でつながっていれば、それを1人分にまとめられる
+  const runSearch = async (override) => {
+    const src = override || query;
+    const name = safeLike(src.name);
+    const dob = dobPrefix(src.dob);
+    const chart = safeLike(src.chart);
     if (!name && !dob && !chart) {
       setSearchError("お名前・生年月日・カルテ番号のどれかを入れてください。");
       return;
@@ -598,13 +609,32 @@ export default function StaffView() {
     if (dob) q = q.like("date_of_birth", `${dob}%`);
     if (chart) q = q.eq("chart_number", chart);
     const { data, error } = await q;
-    setSearching(false);
     if (error) {
+      setSearching(false);
       setSearchError(error.message);
       setResults([]);
       return;
     }
-    setResults(data || []);
+    let rows = data || [];
+    const numbers = [...new Set(rows.map((r) => r.chart_number).filter(Boolean))];
+    if (numbers.length) {
+      const more = await supabase.from("intake_forms").select("*").in("chart_number", numbers);
+      if (!more.error) {
+        const seen = new Set(rows.map((r) => r.id));
+        rows = rows.concat((more.data || []).filter((r) => !seen.has(r.id)));
+      }
+    }
+    rows.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+    setSearching(false);
+    setResults(rows);
+  };
+
+  // 受付一覧から、その方の過去の問診票をまとめて見る
+  const showHistory = (chart) => {
+    const next = { name: "", dob: "", chart: String(chart) };
+    setQuery(next);
+    setTab("search");
+    runSearch(next);
   };
 
   // 予約状況の行からその場で受付する。スマホを持っていない方、操作に困っている方、
@@ -684,6 +714,37 @@ export default function StaffView() {
   const visibleCheckins = checkins.filter(
     (c) => !(hideChartDone && c.chart_done) && !(hidePaymentDone && c.payment_done)
   );
+
+  // 検索結果を1人ぶんにまとめる。
+  // カルテ番号が付いていればそれが同一人物の印なので、氏名の書き方が回ごとに
+  // 違っていても1人にまとまる。番号がまだ無い方は、氏名（空白を除く）と生年月日が
+  // 同じものを同じ方とみなす — 番号を入れた時点で、以後は番号でまとまる
+  const patientGroups = useMemo(() => {
+    if (!results) return [];
+    const map = new Map();
+    results.forEach((f) => {
+      const dob = formBirthdate(f) || "";
+      const key = f.chart_number
+        ? `c:${f.chart_number}`
+        : `n:${normalizeName(f.patient_name)}|${dob}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(f);
+    });
+    return [...map.entries()]
+      .map(([key, forms]) => {
+        const dob = forms.map(formBirthdate).find(Boolean) || "";
+        return {
+          key,
+          forms,
+          chart: forms.find((f) => f.chart_number)?.chart_number || "",
+          name: forms[0].patient_name,
+          aliases: [...new Set(forms.map((f) => f.patient_name))],
+          dob,
+          age: ageFrom(dob),
+        };
+      })
+      .sort((a, b) => (a.forms[0].created_at < b.forms[0].created_at ? 1 : -1));
+  }, [results]);
 
   return (
     <div style={{ fontFamily: "'Noto Sans JP', sans-serif" }}>
@@ -959,8 +1020,10 @@ export default function StaffView() {
               患者を探す
             </h2>
             <p className="text-xs mb-4" style={{ color: "#B08A90" }}>
-              過去に提出された問診票を呼び出します。表示・印刷と、カルテ番号の書き込みができます。
-              生年月日は「1990」「1990-05」のように途中まででも候補が出ます。
+              過去に提出された問診票を、患者さんごとにまとめて呼び出します。表示・印刷ができます。
+              生年月日は「1990」「1990-05」のように途中まででも候補が出ます。<br />
+              カルテ番号を入れると、<b>その方の問診票すべてに同じ番号が入ります</b>。一度つながれば、
+              お名前を漢字で書いた回もローマ字で書いた回も同じ1人としてまとまります。
             </p>
 
             <form
@@ -1040,62 +1103,80 @@ export default function StaffView() {
             ) : (
               <>
                 <p className="text-xs mb-2" style={{ color: "#B08A90" }}>
-                  {results.length}件{results.length >= 200 && "（多いため新しい200件まで）"}・新しい順
+                  {patientGroups.length}人・問診票 {results.length}件
+                  {results.length >= 200 && "（多いため新しい200件まで）"}・新しい順
                 </p>
-                <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 720 }}>
-                      <thead>
-                        <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
-                          <th className="px-4 py-2.5 font-medium">提出日</th>
-                          <th className="px-3 py-2.5 font-medium">お名前</th>
-                          <th className="px-3 py-2.5 font-medium">生年月日</th>
-                          <th className="px-3 py-2.5 font-medium">種類</th>
-                          <th className="px-3 py-2.5 font-medium">カルテ番号</th>
-                          <th className="px-3 py-2.5 font-medium">問診票</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {results.map((f) => {
-                          const dob = formBirthdate(f);
-                          const age = ageFrom(dob);
-                          const kind = (f.answers || []).find((r) => /^種類/.test(r?.label || ""))?.value || "";
-                          return (
-                            <tr key={f.id} style={{ borderTop: "1px solid #FAEEF0" }}>
-                              <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                                {String(f.created_at).slice(0, 10)}
-                                <span className="block" style={{ color: "#B08A90" }}>{hhmm(f.created_at)}</span>
-                              </td>
-                              <td className="px-3 py-3 font-medium">{f.patient_name}</td>
-                              <td className="px-3 py-3 text-xs whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                                {dob || "—"}
-                                {age !== null && <span style={{ color: "#B08A90" }}>　{age}歳</span>}
-                              </td>
-                              <td className="px-3 py-3 text-xs" style={{ color: "#8A7378", maxWidth: 200 }}>
-                                {/Follow-up|簡易/.test(kind) ? "再診（簡易）" : "初診・詳細"}
-                              </td>
-                              <td className="px-3 py-3">
-                                <ChartNumberInput
-                                  value={f.chart_number || ""}
-                                  onSave={(v) => saveChartNumber({ checkinId: f.checkin_id, formId: f.id, value: v })}
-                                />
-                              </td>
-                              <td className="px-3 py-3">
-                                <button
-                                  onClick={() => setSelectedForm(f)}
-                                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium active:opacity-70"
-                                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
-                                >
-                                  <FileText size={13} />
-                                  表示・印刷
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                <div className="flex flex-col gap-3">
+                  {patientGroups.map((g) => (
+                    <div key={g.key} className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+                      {/* 1人ぶんの見出し。番号はここで入れると、下の問診票すべてに入る */}
+                      <div
+                        className="flex items-center justify-between gap-3 flex-wrap px-4 py-3"
+                        style={{ background: "#FFF8F7", borderBottom: "1px solid #F2DFE4" }}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold" style={{ color: "#3A2E30" }}>
+                            {g.name}
+                            <span className="ml-2 text-xs font-normal" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
+                              {g.dob || "生年月日 —"}
+                              {g.age !== null && `　${g.age}歳`}
+                            </span>
+                          </div>
+                          <div className="text-[11px] mt-0.5" style={{ color: "#B08A90" }}>
+                            問診票 {g.forms.length}件
+                            {g.aliases.length > 1 && `　表記: ${g.aliases.join(" / ")}`}
+                            {!g.chart && "　※ カルテ番号がまだ付いていません"}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs" style={{ color: "#8A7378" }}>カルテ番号</span>
+                          <ChartNumberInput
+                            value={g.chart}
+                            width={110}
+                            onSave={(v) => saveChartNumber({
+                              checkinIds: g.forms.map((f) => f.checkin_id),
+                              formIds: g.forms.map((f) => f.id),
+                              value: v,
+                            })}
+                          />
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 560 }}>
+                          <tbody>
+                            {g.forms.map((f, i) => {
+                              const kind = (f.answers || []).find((r) => /^種類/.test(r?.label || ""))?.value || "";
+                              return (
+                                <tr key={f.id} style={{ borderTop: i === 0 ? "none" : "1px solid #FAEEF0" }}>
+                                  <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                                    {String(f.created_at).slice(0, 10)}
+                                    <span className="ml-2" style={{ color: "#B08A90" }}>{hhmm(f.created_at)}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-xs" style={{ color: "#8A7378" }}>
+                                    {/Follow-up|簡易/.test(kind) ? "再診（簡易）" : "初診・詳細"}
+                                  </td>
+                                  {/* 同じ人でも書き方が違うことがあるので、その回の氏名も出す */}
+                                  <td className="px-3 py-2.5 text-xs" style={{ color: "#8A7378" }}>
+                                    {f.patient_name !== g.name ? f.patient_name : ""}
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right">
+                                    <button
+                                      onClick={() => setSelectedForm(f)}
+                                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium active:opacity-70"
+                                      style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                    >
+                                      <FileText size={13} />
+                                      表示・印刷
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
                 </div>
                 <p className="text-[11px] mt-3" style={{ color: "#B08A90" }}>
                   ここに出るのは患者さんご本人が書かれた問診票です。閲覧・印刷した記録は残りません。取り扱いにご注意ください。
@@ -1231,11 +1312,24 @@ export default function StaffView() {
                               <InsuranceTag id={c.insurance} />
                             </td>
                             <td className="px-2 py-3">
-                              <ChartNumberInput
-                                value={c.chart_number || anyForm?.chart_number || ""}
-                                width={76}
-                                onSave={(v) => saveChartNumber({ checkinId: c.id, formId: anyForm?.id, value: v })}
-                              />
+                              <div className="flex items-center gap-1">
+                                <ChartNumberInput
+                                  value={c.chart_number || anyForm?.chart_number || ""}
+                                  width={76}
+                                  onSave={(v) => saveChartNumber({ checkinIds: [c.id], formIds: [anyForm?.id], value: v })}
+                                />
+                                {/* 番号が付いていれば、その方の過去の問診票をまとめて見られる */}
+                                {(c.chart_number || anyForm?.chart_number) && (
+                                  <button
+                                    onClick={() => showHistory(c.chart_number || anyForm.chart_number)}
+                                    title="この方の過去の問診票を見る"
+                                    className="inline-flex items-center justify-center p-1 rounded-lg active:opacity-70"
+                                    style={{ color: "#0F8B8D" }}
+                                  >
+                                    <Search size={13} />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td className="px-2 py-3">
                               {c.visit_type === "consult" ? (
@@ -1614,7 +1708,7 @@ export default function StaffView() {
                     <ChartNumberInput
                       value={selectedForm.chart_number || ""}
                       width={110}
-                      onSave={(v) => saveChartNumber({ checkinId: selectedForm.checkin_id, formId: selectedForm.id, value: v })}
+                      onSave={(v) => saveChartNumber({ checkinIds: [selectedForm.checkin_id], formIds: [selectedForm.id], value: v })}
                     />
                   </div>
                 </div>
