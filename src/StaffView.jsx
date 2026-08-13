@@ -269,12 +269,29 @@ function MapTag({ date, timing }) {
   );
 }
 
-// 診察の区分表示（初診 / 再診・○○）
-function visitKindLabel(c) {
-  if (c.visit_type !== "consult") return "—";
-  if (c.visit_kind === "first") return "初診";
-  if (c.visit_kind === "return") return `再診・${RETURN_REASON_LABEL[c.return_reason] || ""}`;
-  return "—";
+// 診察の区分表示（初診 / 再診・○○）。
+// 初診はカルテも問診票も新しく作る／診察も長い。一覧を上から目で追うときに
+// 文字を読まずに拾えるよう、初診と再診で色を分ける
+const VISIT_KIND_BADGE = {
+  first: { label: "初診", bg: "#F3E8FB", fg: "#6B3A96" },
+  return: { label: "再診", bg: "#DFF5F3", fg: "#0F8B8D" },
+};
+
+function VisitKindTag({ c }) {
+  const badge = c.visit_type === "consult" ? VISIT_KIND_BADGE[c.visit_kind] : null;
+  if (!badge) return <span style={{ color: "#C9AEB3" }}>—</span>;
+  const reason = c.visit_kind === "return" ? RETURN_REASON_LABEL[c.return_reason] : "";
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+        style={{ background: badge.bg, color: badge.fg }}
+      >
+        {badge.label}
+      </span>
+      {reason && <span style={{ color: "#8A7378" }}>{reason}</span>}
+    </span>
+  );
 }
 
 // 受付行から問診票のURLを組み立てる（受付機の qrUrlFor と同じ出し分け）。
@@ -842,7 +859,7 @@ export default function StaffView() {
                                 {c.visit_type === "pickup" ? "薬受け取り" : "診察"}
                               </span>
                             </td>
-                            <td className="px-3 py-3 text-xs">{visitKindLabel(c)}</td>
+                            <td className="px-3 py-3 text-xs"><VisitKindTag c={c} /></td>
                             <td className="px-3 py-3 text-xs" style={{ color: "#8A7378" }}>
                               {/* アフターピルは薬名を並べるより MAP のタグで出す。
                                   再診は受付で日付を、初診は問診票で日時を聞いている */}
