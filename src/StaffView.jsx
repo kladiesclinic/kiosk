@@ -25,11 +25,28 @@ const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
 `;
 
+// iPadOS 13以降のSafariはUAをMacと名乗るので、UAだけでは判別できない。
+// タッチできるMacは実質iPadなので、その組み合わせも見る
+const IS_IOS =
+  typeof navigator !== "undefined" &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
 // 印刷は「レイアウト用の隠しDOM → 画像化 → A4のPDF → 印刷ダイアログ」の流れ。
 // PDFはダウンロードせず、非表示iframeに読み込んで印刷ダイアログだけを開く
 // （スタッフはそこで印刷するか、必要ならPDF保存を選べる）。
-async function printElementAsPdf(el) {
+//
+// ただしiPadのSafariは、iframeの中のPDFに対する print() を無視して画面のほうを
+// 印刷してしまう。そのため受付一覧の見た目がそのまま何枚にも渡って出ていた。
+// iPadでは作ったPDFを新しいタブに出し、共有メニューの「プリント」から
+// 出してもらう。PDF自体は他の端末とまったく同じものになる
+async function printElementAsPdf(el, iosWindow, fileName) {
   el.style.display = "block";
+  // Webフォントが届く前に画像化すると代替フォントの字幅で組まれ、行の折り返しが
+  // 変わって別のPDFになる。iPadは初回表示でここに引っかかりやすい
+  if (document.fonts && document.fonts.ready) {
+    try { await document.fonts.ready; } catch { /* 待てなくても続行する */ }
+  }
   const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#FFFFFF" });
   el.style.display = "none";
 
@@ -49,6 +66,19 @@ async function printElementAsPdf(el) {
   pdf.addImage(img, "JPEG", (pageW - imgW) / 2, margin, imgW, imgH);
 
   const blobUrl = pdf.output("bloburl");
+
+  if (IS_IOS) {
+    // タブはクリックと同じ処理の中でしか開けないので、呼び出し側が先に開いておく
+    if (iosWindow && !iosWindow.closed) {
+      iosWindow.location.href = blobUrl;
+      return;
+    }
+    // タブを開けなかったときはダウンロードにする。この画面を離れると
+    // PDFの一時URLごと消えてしまうので、同じタブで開くことはしない
+    pdf.save(fileName || "問診票.pdf");
+    return;
+  }
+
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
   iframe.src = blobUrl;
@@ -316,9 +346,20 @@ export default function StaffView() {
 
   const handlePrint = async () => {
     if (!printAreaRef.current || printing) return;
+    // PDFを作ってからでは新しいタブがポップアップとして塞がれるので、
+    // 押した瞬間に空のタブだけ先に開いておく（iPadのみ）
+    const iosWindow = IS_IOS ? window.open("", "_blank") : null;
     setPrinting(true);
     try {
-      await printElementAsPdf(printAreaRef.current);
+      await printElementAsPdf(
+        printAreaRef.current,
+        iosWindow,
+        `問診票_${selectedForm?.patient_name || ""}_${selectedForm?.date_key || ""}.pdf`,
+      );
+    } catch (e) {
+      // 空けたタブを残すと白いまま置き去りになる
+      if (iosWindow && !iosWindow.closed) iosWindow.close();
+      setLoadError(`問診票のPDFを作れませんでした: ${e.message}`);
     } finally {
       setPrinting(false);
     }
@@ -1230,6 +1271,10 @@ export default function StaffView() {
             padding: 28,
             color: "#000000",
             fontFamily: "'Noto Sans JP', sans-serif",
+            // iPadの画面より広い箱なので、Safariが読みやすさのために文字を
+            // 勝手に大きくする。そのぶん行が折り返して別のPDFになるため止める
+            WebkitTextSizeAdjust: "100%",
+            textSizeAdjust: "100%",
           }}
         >
           <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
