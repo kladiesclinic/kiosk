@@ -856,7 +856,7 @@ export default function StaffView() {
                                 }
                               >
                                 {c.visit_type === "pickup" ? <PackageCheck size={12} /> : <Stethoscope size={12} />}
-                                {c.visit_type === "pickup" ? "薬受け取り" : "診察"}
+                                {c.visit_type === "pickup" ? "薬のみ" : "診察"}
                               </span>
                             </td>
                             <td className="px-3 py-3 text-xs"><VisitKindTag c={c} /></td>
