@@ -138,6 +138,29 @@ function ageFrom(dob) {
   return age >= 0 && age < 130 ? age : null;
 }
 
+// 生年月日（YYYY-MM-DD）の和暦の年（例: 平成4年）。保険証やカルテは和暦表記
+// なので、紙の問診票に添えておくと突き合わせで暗算しなくて済む。
+// 月日は西暦と同じなので年号+年だけでよい
+function warekiFrom(dob) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(dob || "").trim());
+  if (!m) return null;
+  const key = +m[1] * 10000 + +m[2] * 100 + +m[3];
+  const era =
+    key >= 20190501 ? ["令和", 2019] :
+    key >= 19890108 ? ["平成", 1989] :
+    key >= 19261225 ? ["昭和", 1926] :
+    key >= 19120730 ? ["大正", 1912] : null;
+  if (!era) return null;
+  const n = +m[1] - era[1] + 1;
+  return `${era[0]}${n === 1 ? "元" : n}年`;
+}
+
+// 「1992-03-07（平成4年・34歳）」の括弧の中身。判定できない部分は黙って省く
+function dobAnnotation(dob) {
+  const age = ageFrom(dob);
+  return [warekiFrom(dob), age === null ? null : `${age}歳`].filter(Boolean).join("・");
+}
+
 // 生年月日は列に入っているのが基本だが、列が空の問診票（LPからの記入など）も
 // あるので、回答の中の生年月日欄も見にいく
 function formBirthdate(form) {
@@ -1840,10 +1863,10 @@ export default function StaffView() {
           <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire</strong>
             {(() => {
-              // 紙を見た医師がすぐ年齢を掴めるように、生年月日のとなりに満年齢を出す
+              // 紙を見た医師がすぐ掴めるように、生年月日のとなりに和暦と満年齢を出す
               const dob = formBirthdate(selectedForm);
-              const age = ageFrom(dob);
-              const paren = dob ? `（${dob}${age === null ? "" : `・${age}歳`}）` : "";
+              const extra = dobAnnotation(dob);
+              const paren = dob ? `（${dob}${extra ? `　${extra}` : ""}）` : "";
               return (
                 <span style={{ fontSize: 14 }}>
                   {/* 紙はカルテに綴じるので、番号が入っていれば先頭に出す */}
@@ -1861,12 +1884,19 @@ export default function StaffView() {
               return [rows.slice(0, half), rows.slice(half)].map((col, ci) => (
                 <table key={ci} style={{ width: "50%", borderCollapse: "collapse", fontSize: 13 }}>
                   <tbody>
-                    {col.map((row, i) => (
-                      <tr key={i}>
-                        <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>{row.label}</td>
-                        <td style={{ border: "1px solid #999999", padding: "4px 7px", fontWeight: 600 }}>{row.value}</td>
-                      </tr>
-                    ))}
+                    {col.map((row, i) => {
+                      // 生年月日の行には和暦と満年齢を添える（保険証・カルテとの突き合わせ用）
+                      const isDob = /生年月日|date of birth/i.test(row.label || "");
+                      const extra = isDob ? dobAnnotation(row.value) : "";
+                      return (
+                        <tr key={i}>
+                          <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>{row.label}</td>
+                          <td style={{ border: "1px solid #999999", padding: "4px 7px", fontWeight: 600 }}>
+                            {row.value}{extra ? `（${extra}）` : ""}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               ));
