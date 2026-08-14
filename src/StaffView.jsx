@@ -402,6 +402,13 @@ function ChartNumberInput({ value, onSave, width = 88 }) {
   );
 }
 
+// 「同じ人」の判定キー。氏名（空白無視）と生年月日の両方が一致したときだけ
+// 同一人物とみなす（同姓同名対策。どちらか欠けていれば照合しない）
+function chartMatchKey(name, dob) {
+  const n = normalizeName(name);
+  return n && dob ? `${n}|${dob}` : null;
+}
+
 // 検索語をPostgRESTのフィルタに渡せる形にする。カンマや括弧はフィルタの
 // 区切り記号なので落とし、% と _ はLIKEのワイルドカードなので落とす
 function safeLike(s) {
@@ -458,6 +465,8 @@ export default function StaffView() {
   const [searchCheckins, setSearchCheckins] = useState([]); // 同じ検索で見つかった受付
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
+  // 2回目以降の方のカルテ番号の自動表示: "氏名|生年月日" → 過去の記録に入っていた番号
+  const [pastCharts, setPastCharts] = useState(new Map());
 
   const toggleHideChartDone = () => {
     setHideChartDone((v) => {
@@ -516,6 +525,33 @@ export default function StaffView() {
     setBookings(bRes.data || []);
     setBookingForms(bForms);
     setLastUpdated(new Date());
+
+    // 2回目以降の来院・予約では、過去の受付・問診票に入れたカルテ番号を自動で
+    // 引いて見せる（電子カルテと繋がっていないぶん、前回の入力を再利用する）。
+    // 生年月日で候補を引き、氏名も一致した記録の番号だけを出す
+    const dobs = [...new Set([
+      ...(cRes.data || []).map((c) => c.date_of_birth),
+      ...(bRes.data || []).map((b) => b.birthdate),
+    ].filter(Boolean))];
+    if (!dobs.length) {
+      setPastCharts(new Map());
+      return;
+    }
+    const [pf, pc] = await Promise.all([
+      supabase.from("intake_forms").select("patient_name, date_of_birth, chart_number, created_at")
+        .in("date_of_birth", dobs).not("chart_number", "is", null),
+      supabase.from("reception_checkins").select("patient_name, date_of_birth, chart_number, created_at")
+        .in("date_of_birth", dobs).not("chart_number", "is", null),
+    ]);
+    // ここで引けなくても一覧は出す（この表示はあくまで補助）
+    const map = new Map();
+    [...(pf.data || []), ...(pc.data || [])]
+      .sort((a, b) => ((a.created_at || "") < (b.created_at || "") ? -1 : 1))
+      .forEach((r) => {
+        const key = chartMatchKey(r.patient_name, r.date_of_birth);
+        if (key) map.set(key, r.chart_number); // 新しい記録の番号が残る
+      });
+    setPastCharts(map);
   };
 
   useEffect(() => {
@@ -1025,6 +1061,18 @@ export default function StaffView() {
                               >
                                 {b.birthdate || "—"}　{b.phone || "—"}
                               </span>
+                              {(() => {
+                                // 2回目以降の方は、過去の受付・問診票の番号を出す（カルテ出しの準備用）
+                                const pastChart = pastCharts.get(chartMatchKey(b.patient_name, b.birthdate));
+                                return pastChart ? (
+                                  <span
+                                    className="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold"
+                                    style={{ background: "#DFF5F3", color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}
+                                  >
+                                    カルテ {pastChart}
+                                  </span>
+                                ) : null;
+                              })()}
                             </td>
                             <td className="px-2 py-3">
                               <span
@@ -1336,6 +1384,11 @@ export default function StaffView() {
                         // 受付時刻が予約時間を過ぎていれば遅れて来られた方なので、そこも分かるようにする
                         const bookedAt = booking?.time ? String(booking.time).slice(0, 5) : null;
                         const late = bookedAt && hhmm(c.created_at) > bookedAt;
+                        // 番号がまだ入っていない2回目以降の方は、前回までの番号を出す
+                        const savedChart = c.chart_number || anyForm?.chart_number || "";
+                        const pastChart = savedChart
+                          ? null
+                          : pastCharts.get(chartMatchKey(c.patient_name, c.date_of_birth)) || null;
                         return (
                           <tr key={c.id} style={{ borderTop: "1px solid #FAEEF0", opacity: isDone ? 0.5 : 1 }}>
                             <td className="px-3 py-3 text-lg font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -1421,6 +1474,17 @@ export default function StaffView() {
                                   </button>
                                 )}
                               </div>
+                              {pastChart && (
+                                // 前回までの記録から自動で引いた番号。タップでこの受付にも入る
+                                <button
+                                  onClick={() => saveChartNumber({ checkinIds: [c.id], formIds: [anyForm?.id], value: pastChart })}
+                                  title="前回までの受付・問診票に入っていた番号です。タップで今回の受付にも入ります"
+                                  className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold active:opacity-70 whitespace-nowrap"
+                                  style={{ background: "#DFF5F3", color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}
+                                >
+                                  前回 {pastChart}
+                                </button>
+                              )}
                             </td>
                             <td className="px-2 py-3">
                               {c.visit_type === "consult" ? (
