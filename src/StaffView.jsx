@@ -431,7 +431,8 @@ export default function StaffView() {
   const [qrFor, setQrFor] = useState(null);
   // 患者を探す（過去の問診票の呼び出し）
   const [query, setQuery] = useState({ name: "", dob: "", chart: "" });
-  const [results, setResults] = useState(null); // null=まだ検索していない
+  const [results, setResults] = useState(null); // null=まだ検索していない（問診票）
+  const [searchCheckins, setSearchCheckins] = useState([]); // 同じ検索で見つかった受付
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
 
@@ -604,29 +605,68 @@ export default function StaffView() {
     }
     setSearching(true);
     setSearchError("");
-    let q = supabase.from("intake_forms").select("*").order("created_at", { ascending: false }).limit(200);
-    if (name) q = q.ilike("patient_name", `%${name}%`);
-    if (dob) q = q.like("date_of_birth", `${dob}%`);
-    if (chart) q = q.eq("chart_number", chart);
-    const { data, error } = await q;
-    if (error) {
+
+    // 問診票と受付の両方を探す。
+    // 番号は受付にしか付いていないことがある（薬のみの方、問診票がまだ届いていない
+    // うちに入れた方、問診票を出さずに帰られた方）。問診票だけを見ていると
+    // 「入れたはずなのに出てこない」になる
+    let fq = supabase.from("intake_forms").select("*").order("created_at", { ascending: false }).limit(200);
+    if (name) fq = fq.ilike("patient_name", `%${name}%`);
+    if (dob) fq = fq.like("date_of_birth", `${dob}%`);
+    if (chart) fq = fq.eq("chart_number", chart);
+
+    let cq = supabase.from("reception_checkins").select("*").order("date_key", { ascending: false }).limit(200);
+    if (name) cq = cq.ilike("patient_name", `%${name}%`);
+    if (dob) cq = cq.like("date_of_birth", `${dob}%`);
+    if (chart) cq = cq.eq("chart_number", chart);
+
+    const [fRes, cRes] = await Promise.all([fq, cq]);
+    if (fRes.error || cRes.error) {
       setSearching(false);
-      setSearchError(error.message);
+      setSearchError((fRes.error || cRes.error).message);
       setResults([]);
+      setSearchCheckins([]);
       return;
     }
-    let rows = data || [];
-    const numbers = [...new Set(rows.map((r) => r.chart_number).filter(Boolean))];
-    if (numbers.length) {
-      const more = await supabase.from("intake_forms").select("*").in("chart_number", numbers);
-      if (!more.error) {
-        const seen = new Set(rows.map((r) => r.id));
-        rows = rows.concat((more.data || []).filter((r) => !seen.has(r.id)));
-      }
+    let rows = fRes.data || [];
+    let cRows = cRes.data || [];
+
+    // 見つかった番号でもう一度引き直す。お名前は漢字で書く回もローマ字で書く回も
+    // あるので、名前だけで探すと同じ方の記入が別々に出てくる。
+    // 受付側で見つかった番号も混ぜる（そこからその方の問診票にたどり着ける）
+    const numbers = [...new Set([
+      ...rows.map((r) => r.chart_number),
+      ...cRows.map((r) => r.chart_number),
+    ].filter(Boolean))];
+    const checkinIds = [...new Set(cRows.map((r) => r.id))];
+
+    const extra = await Promise.all([
+      numbers.length ? supabase.from("intake_forms").select("*").in("chart_number", numbers) : null,
+      // 番号がまだ無い受付でも、そこに紐付いた問診票は同じ方のもの
+      checkinIds.length ? supabase.from("intake_forms").select("*").in("checkin_id", checkinIds) : null,
+      numbers.length ? supabase.from("reception_checkins").select("*").in("chart_number", numbers) : null,
+    ]);
+    const seenF = new Set(rows.map((r) => r.id));
+    [extra[0], extra[1]].forEach((res) => {
+      if (!res || res.error) return;
+      (res.data || []).forEach((r) => {
+        if (seenF.has(r.id)) return;
+        seenF.add(r.id);
+        rows.push(r);
+      });
+    });
+    if (extra[2] && !extra[2].error) {
+      const seenC = new Set(cRows.map((r) => r.id));
+      (extra[2].data || []).forEach((r) => {
+        if (!seenC.has(r.id)) { seenC.add(r.id); cRows.push(r); }
+      });
     }
+
     rows.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+    cRows.sort((a, b) => (a.date_key < b.date_key ? 1 : a.date_key > b.date_key ? -1 : 0));
     setSearching(false);
     setResults(rows);
+    setSearchCheckins(cRows);
   };
 
   // 受付一覧から、その方の過去の問診票をまとめて見る
@@ -722,29 +762,46 @@ export default function StaffView() {
   const patientGroups = useMemo(() => {
     if (!results) return [];
     const map = new Map();
+    const slot = (key) => {
+      if (!map.has(key)) map.set(key, { forms: [], checkins: [] });
+      return map.get(key);
+    };
+    // 受付の問診票への紐付け（受付にだけ番号があるとき、その問診票も同じ方）
+    const keyByCheckinId = new Map();
     results.forEach((f) => {
-      const dob = formBirthdate(f) || "";
       const key = f.chart_number
         ? `c:${f.chart_number}`
-        : `n:${normalizeName(f.patient_name)}|${dob}`;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key).push(f);
+        : `n:${normalizeName(f.patient_name)}|${formBirthdate(f) || ""}`;
+      slot(key).forms.push(f);
+      if (f.checkin_id) keyByCheckinId.set(f.checkin_id, key);
+    });
+    searchCheckins.forEach((c) => {
+      const key = c.chart_number
+        ? `c:${c.chart_number}`
+        : keyByCheckinId.get(c.id) || `n:${normalizeName(c.patient_name)}|${c.date_of_birth || ""}`;
+      slot(key).checkins.push(c);
     });
     return [...map.entries()]
-      .map(([key, forms]) => {
-        const dob = forms.map(formBirthdate).find(Boolean) || "";
+      .map(([key, { forms, checkins }]) => {
+        const dob = forms.map(formBirthdate).find(Boolean) || checkins.map((c) => c.date_of_birth).find(Boolean) || "";
+        const names = [...new Set([...forms, ...checkins].map((r) => r.patient_name).filter(Boolean))];
         return {
           key,
           forms,
-          chart: forms.find((f) => f.chart_number)?.chart_number || "",
-          name: forms[0].patient_name,
-          aliases: [...new Set(forms.map((f) => f.patient_name))],
+          checkins,
+          chart: forms.find((f) => f.chart_number)?.chart_number
+            || checkins.find((c) => c.chart_number)?.chart_number
+            || "",
+          name: names[0] || "（お名前なし）",
+          aliases: names,
           dob,
           age: ageFrom(dob),
+          // 並べ替えに使う「いちばん新しい記録の日」
+          last: forms[0]?.created_at || `${checkins[0]?.date_key || ""}T00:00:00`,
         };
       })
-      .sort((a, b) => (a.forms[0].created_at < b.forms[0].created_at ? 1 : -1));
-  }, [results]);
+      .sort((a, b) => (a.last < b.last ? 1 : a.last > b.last ? -1 : 0));
+  }, [results, searchCheckins]);
 
   return (
     <div style={{ fontFamily: "'Noto Sans JP', sans-serif" }}>
@@ -1078,7 +1135,7 @@ export default function StaffView() {
               {(query.name || query.dob || query.chart || results) && (
                 <button
                   type="button"
-                  onClick={() => { setQuery({ name: "", dob: "", chart: "" }); setResults(null); setSearchError(""); }}
+                  onClick={() => { setQuery({ name: "", dob: "", chart: "" }); setResults(null); setSearchCheckins([]); setSearchError(""); }}
                   className="px-4 py-2.5 rounded-xl text-sm font-medium active:opacity-70"
                   style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
                 >
@@ -1095,7 +1152,7 @@ export default function StaffView() {
 
             {results === null ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>条件を入れて「探す」を押してください。</p>
-            ) : results.length === 0 ? (
+            ) : patientGroups.length === 0 ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>
                 見つかりませんでした。お名前は漢字・カナ・ローマ字のどれで書かれているか分からないので、
                 生年月日だけで探すほうが確実です。
@@ -1103,7 +1160,7 @@ export default function StaffView() {
             ) : (
               <>
                 <p className="text-xs mb-2" style={{ color: "#B08A90" }}>
-                  {patientGroups.length}人・問診票 {results.length}件
+                  {patientGroups.length}人・問診票 {results.length}件・来院 {searchCheckins.length}件
                   {results.length >= 200 && "（多いため新しい200件まで）"}・新しい順
                 </p>
                 <div className="flex flex-col gap-3">
@@ -1123,7 +1180,7 @@ export default function StaffView() {
                             </span>
                           </div>
                           <div className="text-[11px] mt-0.5" style={{ color: "#B08A90" }}>
-                            問診票 {g.forms.length}件
+                            問診票 {g.forms.length}件　来院 {g.checkins.length}件
                             {g.aliases.length > 1 && `　表記: ${g.aliases.join(" / ")}`}
                             {!g.chart && "　※ カルテ番号がまだ付いていません"}
                           </div>
@@ -1134,13 +1191,24 @@ export default function StaffView() {
                             value={g.chart}
                             width={110}
                             onSave={(v) => saveChartNumber({
-                              checkinIds: g.forms.map((f) => f.checkin_id),
+                              checkinIds: [...g.forms.map((f) => f.checkin_id), ...g.checkins.map((c) => c.id)],
                               formIds: g.forms.map((f) => f.id),
                               value: v,
                             })}
                           />
                         </div>
                       </div>
+                      {/* 問診票が1枚も無い方。薬のみで来られた方や、書かずに
+                          帰られた方。番号だけ付けてあることがあるので、来院日を出す */}
+                      {g.forms.length === 0 && (
+                        <div className="px-4 py-3 text-xs" style={{ color: "#8A7378" }}>
+                          問診票はありません（受付の記録のみ）。来院日：
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                            {g.checkins.slice(0, 8).map((c) => c.date_key).join("　")}
+                          </span>
+                          {g.checkins.length > 8 && ` ほか${g.checkins.length - 8}件`}
+                        </div>
+                      )}
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 560 }}>
                           <tbody>
