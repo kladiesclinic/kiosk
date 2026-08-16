@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
+import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
+import { Settings, Plus, Pencil, RotateCcw } from "lucide-react";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -550,6 +552,55 @@ function MonshinPrintSheet({ row }) {
   );
 }
 
+// 来院受付の問診票（intake_forms）1枚分のA4レイアウト（画面外に隠して画像化する）。
+// selectedForm 個別印刷（printAreaRef）と同じ体裁。一括印刷で1人1枚ずつ画像化して使う。
+function IntakePrintSheet({ form }) {
+  const rows = form.answers || [];
+  const half = Math.ceil(rows.length / 2);
+  const dob = formBirthdate(form);
+  const extra = dobAnnotation(dob);
+  const paren = dob ? `（${dob}${extra ? `　${extra}` : ""}）` : "";
+  return (
+    <div
+      style={{
+        width: 1120,
+        background: "#FFFFFF",
+        padding: 28,
+        color: "#000000",
+        fontFamily: "'Noto Sans JP', sans-serif",
+        WebkitTextSizeAdjust: "100%",
+        textSizeAdjust: "100%",
+      }}
+    >
+      <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（来院受付）</strong>
+        <span style={{ fontSize: 14 }}>
+          {form.chart_number ? <strong>カルテ {form.chart_number}　</strong> : null}
+          {form.patient_name}{paren}　{form.date_key} {hhmm(form.created_at)} 受信
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        {[rows.slice(0, half), rows.slice(half)].map((col, ci) => (
+          <table key={ci} style={{ width: "50%", borderCollapse: "collapse", fontSize: 13 }}>
+            <tbody>
+              {col.map((row, i) => {
+                const isDob = /生年月日|date of birth/i.test(row.label || "");
+                const ex = isDob ? dobAnnotation(row.value) : "";
+                return (
+                  <tr key={i}>
+                    <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>{row.label}</td>
+                    <td style={{ border: "1px solid #999999", padding: "4px 7px", fontWeight: 600 }}>{row.value}{ex ? `（${ex}）` : ""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
@@ -592,6 +643,14 @@ export default function StaffView() {
   const [monshinPrinting, setMonshinPrinting] = useState(false);
   const monshinPrintRef = useRef(null); // 個別印刷用の隠しA4
   const monshinBatchRef = useRef(null); // 一括印刷用（複数ページ）
+  const intakeBatchRef = useRef(null); // 来院受付の問診票 一括印刷用（オンラインと合わせて出す）
+  // 予約の編集・代理予約（booking-app から移植）に必要な設定・メニュー・祝日
+  const [menusAll, setMenusAll] = useState([]);
+  const [visitSettings, setVisitSettings] = useState(null);
+  const [visitHolidays, setVisitHolidays] = useState(new Set());
+  const [editingBooking, setEditingBooking] = useState(null); // null | "new" | 予約行
+  const [notice, setNotice] = useState(""); // 予約の保存など、成功メッセージの一時表示
+  const showNotice = (m) => { setNotice(m); setTimeout(() => setNotice(""), 2600); };
 
   const toggleHideChartDone = () => {
     setHideChartDone((v) => {
@@ -656,6 +715,27 @@ export default function StaffView() {
     try {
       const els = [...monshinBatchRef.current.querySelectorAll(".monshin-batch-sheet")];
       await printElementsAsPdf(els, iosWindow, `オンライン診療_問診票_${dateKey}.pdf`);
+      monshinRows.forEach((m) => markMonshinPrinted(m.id));
+    } catch (e) {
+      if (iosWindow && !iosWindow.closed) iosWindow.close();
+      setLoadError(`一括印刷のPDFを作れませんでした: ${e.message}`);
+    } finally {
+      setMonshinPrinting(false);
+    }
+  };
+
+  // この日の問診票をまとめて印刷: オンライン診療（monshin_online）＋来院受付（intake_forms）。
+  // 隠しレイアウトの .monshin-batch-sheet と .intake-batch-sheet を順に1枚ずつ画像化してA4に載せる。
+  const printAllQuestionnaires = async () => {
+    if (monshinPrinting) return;
+    const monshinEls = monshinBatchRef.current ? [...monshinBatchRef.current.querySelectorAll(".monshin-batch-sheet")] : [];
+    const intakeEls = intakeBatchRef.current ? [...intakeBatchRef.current.querySelectorAll(".intake-batch-sheet")] : [];
+    const els = [...monshinEls, ...intakeEls];
+    if (els.length === 0) return;
+    const iosWindow = IS_IOS ? window.open("", "_blank") : null;
+    setMonshinPrinting(true);
+    try {
+      await printElementsAsPdf(els, iosWindow, `問診票_${dateKey}.pdf`);
       monshinRows.forEach((m) => markMonshinPrinted(m.id));
     } catch (e) {
       if (iosWindow && !iosWindow.closed) iosWindow.close();
@@ -741,11 +821,31 @@ export default function StaffView() {
     load();
     // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
-    const canGrow = tab === "search" ? false : (tab === "bookings" || tab === "pillorder") ? dateKey >= todayKey() : isToday;
+    const canGrow = tab === "search" || tab === "settings" ? false : (tab === "bookings" || tab === "pillorder") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
   }, [dateKey, tab]);
+
+  // 予約の編集・代理予約に使う設定・メニュー・祝日は日付に依らないので一度だけ読む
+  const loadBookingConfig = () => {
+    supabase.from("visit_menus").select("*").order("sort_order")
+      .then(({ data, error }) => { if (!error) setMenusAll(data || []); });
+    supabase.from("visit_settings").select("*").eq("id", "default").single()
+      .then(({ data, error }) => { if (!error && data) setVisitSettings(settingsFromRow(data)); });
+    supabase.from("visit_holiday_dates").select("date")
+      .then(({ data, error }) => { if (!error) setVisitHolidays(new Set((data || []).map((r) => r.date))); });
+  };
+  useEffect(loadBookingConfig, []);
+
+  // 予約の状態を変える（来院済み / キャンセル / 予約中に戻す）。
+  const updateBookingStatus = async (id, status) => {
+    const patch = status === "cancelled" ? { status, cancelled_at: new Date().toISOString() } : { status };
+    const { error } = await supabase.from("visit_bookings").update(patch).eq("id", id);
+    if (error) { setLoadError(`予約の更新に失敗しました: ${error.message}`); return; }
+    setLoadError("");
+    load();
+  };
 
   // 受付行に対応する問診票を探す。QR経由の送信は受付IDで確実に紐付き、
   // IDがない（QRを使わず直接開いた等）場合だけ名前（空白除去の部分一致）で照合する。
@@ -997,6 +1097,14 @@ export default function StaffView() {
     (c) => !(hideChartDone && c.chart_done) && !(hidePaymentDone && c.payment_done)
   );
 
+  // この日の来院受付の問診票（intake_forms）。受付経由(forms)と予約に紐付く事前記入
+  // (bookingForms)を id で重複排除。オンラインと合わせた一括印刷の対象。
+  const dayIntakeForms = (() => {
+    const map = new Map();
+    [...forms, ...bookingForms].forEach((f) => { if (f && !map.has(f.id)) map.set(f.id, f); });
+    return [...map.values()];
+  })();
+
   // 検索結果を1人ぶんにまとめる。
   // カルテ番号が付いていればそれが同一人物の印なので、氏名の書き方が回ごとに
   // 違っていても1人にまとまる。番号がまだ無い方は、氏名（空白を除く）と生年月日が
@@ -1060,7 +1168,9 @@ export default function StaffView() {
                 受付一覧（スタッフ用）
               </div>
               <div className="text-xs" style={{ color: "#B08A90" }}>
-                {tab === "search"
+                {tab === "settings"
+                  ? "メニュー・診療時間・休診日の設定"
+                  : tab === "search"
                   ? "過去の問診票を呼び出す"
                   : tab === "pillorder"
                     ? `${isToday ? "本日" : dateKey} のオンライン診療 ${monshinRows.length}件　`
@@ -1078,7 +1188,7 @@ export default function StaffView() {
                 患者を探すタブは日付で絞らないので出さない */}
             <div
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" ? "none" : undefined }}
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" ? "none" : undefined }}
             >
               <CalendarDays size={15} color="#B08A90" />
               <input
@@ -1158,6 +1268,7 @@ export default function StaffView() {
               { id: "bookings", label: "予約状況", Icon: CalendarCheck },
               { id: "pillorder", label: "pillorder", Icon: Stethoscope },
               { id: "search", label: "患者を探す", Icon: Search },
+              { id: "settings", label: "設定", Icon: Settings },
             ].map(({ id, label, Icon }) => (
               <button
                 key={id}
@@ -1194,17 +1305,31 @@ export default function StaffView() {
               <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
                 {isToday ? "本日の予約" : `${dateKey} の予約`}
               </h2>
-              <a
-                href="https://keicuri-booking.vercel.app/staff"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium"
-                style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378", textDecoration: "none" }}
+              <button
+                onClick={() => setEditingBooking(editingBooking === "new" ? null : "new")}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                style={{ background: "#0F8B8D", color: "#FFFFFF" }}
               >
-                <ExternalLink size={13} />
-                予約の編集・代理予約（予約管理画面）
-              </a>
+                <Plus size={15} />
+                予約を新規登録
+              </button>
             </div>
+
+            {/* 新規/編集フォーム（booking-app から移植した BookingEditor） */}
+            {editingBooking && visitSettings && (
+              <BookingEditor
+                key={editingBooking === "new" ? "new" : editingBooking.id}
+                menus={editingBooking === "new" ? menusAll.filter((m) => m.is_active) : menusAll}
+                settings={visitSettings}
+                holidays={visitHolidays}
+                initial={editingBooking === "new" ? null : editingBooking}
+                showToast={showNotice}
+                onDone={() => { setEditingBooking(null); load(); }}
+                onCancel={() => setEditingBooking(null)}
+              />
+            )}
+            <div className="mb-3" />
+
             {bookings.length === 0 ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>この日の予約はありません。</p>
             ) : (
@@ -1314,6 +1439,45 @@ export default function StaffView() {
                                   {checkingIn === b.id ? "受付中..." : "受付する"}
                                 </button>
                               )}
+                              {/* 予約の編集・状態変更（booking-app から移植） */}
+                              <div className="flex flex-wrap gap-1 mt-1.5">
+                                {b.status !== "cancelled" && (
+                                  <button
+                                    onClick={() => setEditingBooking(editingBooking?.id === b.id ? null : b)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
+                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#127D82" }}
+                                  >
+                                    <Pencil size={11} /> 編集
+                                  </button>
+                                )}
+                                {b.status === "booked" && (
+                                  <>
+                                    <button
+                                      onClick={() => updateBookingStatus(b.id, "done")}
+                                      className="px-2 py-1 rounded-lg text-xs font-medium"
+                                      style={{ background: "#DFF5F3", color: "#127D82" }}
+                                    >
+                                      来院済み
+                                    </button>
+                                    <button
+                                      onClick={() => { if (window.confirm(`${b.time} ${b.patient_name} さんの予約をキャンセルしますか？`)) updateBookingStatus(b.id, "cancelled"); }}
+                                      className="px-2 py-1 rounded-lg text-xs font-medium"
+                                      style={{ color: "#D64550" }}
+                                    >
+                                      キャンセル
+                                    </button>
+                                  </>
+                                )}
+                                {b.status === "done" && (
+                                  <button
+                                    onClick={() => updateBookingStatus(b.id, "booked")}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium"
+                                    style={{ color: "#8A7378" }}
+                                  >
+                                    <RotateCcw size={11} /> 予約中に戻す
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1333,15 +1497,27 @@ export default function StaffView() {
               <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
                 {isToday ? "本日のオンライン診療" : `${dateKey} のオンライン診療`}（{monshinRows.length}件）
               </h2>
-              <button
-                onClick={printMonshinBatch}
-                disabled={monshinRows.length === 0 || monshinPrinting}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
-                style={{ background: monshinRows.length ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
-              >
-                <Printer size={15} />
-                {monshinPrinting ? "PDF作成中..." : `当日分を一括印刷（${monshinRows.length}枚）`}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={printAllQuestionnaires}
+                  disabled={(monshinRows.length + dayIntakeForms.length) === 0 || monshinPrinting}
+                  title="オンライン診療の問診票と、来院受付の問診票をまとめてA4で印刷します"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                  style={{ background: (monshinRows.length + dayIntakeForms.length) ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
+                >
+                  <Printer size={15} />
+                  {monshinPrinting ? "PDF作成中..." : `この日の問診票をまとめて印刷（オンライン${monshinRows.length}＋来院受付${dayIntakeForms.length}）`}
+                </button>
+                <button
+                  onClick={printMonshinBatch}
+                  disabled={monshinRows.length === 0 || monshinPrinting}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium active:opacity-70"
+                  style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#127D82", opacity: monshinPrinting ? 0.5 : 1 }}
+                >
+                  <Printer size={13} />
+                  オンライン分だけ（{monshinRows.length}）
+                </button>
+              </div>
             </div>
             {monshinRows.length === 0 ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>
@@ -1901,7 +2077,27 @@ export default function StaffView() {
           </section>
           </>
           )}
+
+          {tab === "settings" && (
+            /* メニュー / 診療時間・枠 / 休診設定（booking-app から移植） */
+            <section>
+              <h2 className="text-lg font-bold mb-4" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                設定
+              </h2>
+              <SettingsTabs />
+            </section>
+          )}
         </main>
+
+        {/* 予約の保存など、成功メッセージの一時表示 */}
+        {notice && (
+          <div
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg z-50"
+            style={{ background: "#3A2E30", color: "#FFFFFF" }}
+          >
+            {notice}
+          </div>
+        )}
 
         {/* 代理受付モーダル（スマホをお持ちでない患者さんの分をスタッフが入れる） */}
         {proxy && (
@@ -2321,6 +2517,18 @@ export default function StaffView() {
           {monshinRows.map((m) => (
             <div className="monshin-batch-sheet" key={m.id}>
               <MonshinPrintSheet row={m} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 来院受付の問診票 印刷レイアウト（画面外・当日分の一括／1人1枚）。
+          「まとめて印刷」でオンライン分に続けて出す。 */}
+      {tab === "pillorder" && dayIntakeForms.length > 0 && (
+        <div ref={intakeBatchRef} style={{ display: "none", position: "fixed", left: "-10000px", top: 0 }}>
+          {dayIntakeForms.map((f) => (
+            <div className="intake-batch-sheet" key={f.id}>
+              <IntakePrintSheet form={f} />
             </div>
           ))}
         </div>
