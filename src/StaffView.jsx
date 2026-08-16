@@ -2511,11 +2511,14 @@ export default function StaffView() {
         </div>
       )}
 
-      {/* オンライン診療の問診票 印刷レイアウト（画面外・当日分の一括／1人1枚） */}
+      {/* オンライン診療の問診票 印刷レイアウト（画面外・当日分の一括／1人1枚）。
+          親を display:none にすると html2canvas が寸法を取れず白紙になるため、
+          親は画面外に置くだけにして、各シートを display:none で隠す。
+          printElementsAsPdf が1枚ずつ block に戻して画像化する。 */}
       {tab === "pillorder" && monshinRows.length > 0 && (
-        <div ref={monshinBatchRef} style={{ display: "none", position: "fixed", left: "-10000px", top: 0 }}>
+        <div ref={monshinBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
           {monshinRows.map((m) => (
-            <div className="monshin-batch-sheet" key={m.id}>
+            <div className="monshin-batch-sheet" style={{ display: "none" }} key={m.id}>
               <MonshinPrintSheet row={m} />
             </div>
           ))}
@@ -2525,9 +2528,9 @@ export default function StaffView() {
       {/* 来院受付の問診票 印刷レイアウト（画面外・当日分の一括／1人1枚）。
           「まとめて印刷」でオンライン分に続けて出す。 */}
       {tab === "pillorder" && dayIntakeForms.length > 0 && (
-        <div ref={intakeBatchRef} style={{ display: "none", position: "fixed", left: "-10000px", top: 0 }}>
+        <div ref={intakeBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
           {dayIntakeForms.map((f) => (
-            <div className="intake-batch-sheet" key={f.id}>
+            <div className="intake-batch-sheet" style={{ display: "none" }} key={f.id}>
               <IntakePrintSheet form={f} />
             </div>
           ))}
