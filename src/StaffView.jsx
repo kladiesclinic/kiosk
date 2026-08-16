@@ -99,6 +99,64 @@ async function printElementAsPdf(el, iosWindow, fileName) {
   setTimeout(() => iframe.remove(), 120000);
 }
 
+// 作ったPDFを印刷ダイアログに載せる共通処理（printElementAsPdf の後半と同じ）。
+// iPadは共有メニューのプリント、それ以外は非表示iframeで印刷ダイアログを開く。
+function openPdfForPrint(pdf, iosWindow, fileName) {
+  const blobUrl = pdf.output("bloburl");
+  if (IS_IOS) {
+    if (iosWindow && !iosWindow.closed) {
+      iosWindow.location.href = blobUrl;
+      return;
+    }
+    pdf.save(fileName || "問診票.pdf");
+    return;
+  }
+  const iframe = document.createElement("iframe");
+  iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
+  iframe.src = blobUrl;
+  document.body.appendChild(iframe);
+  iframe.onload = () => {
+    setTimeout(() => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch {
+        window.open(blobUrl, "_blank");
+      }
+    }, 200);
+  };
+  setTimeout(() => iframe.remove(), 120000);
+}
+
+// 複数の要素（1人1枚）をA4複数ページのPDFにして印刷する（当日分の一括印刷用）。
+async function printElementsAsPdf(els, iosWindow, fileName) {
+  if (document.fonts && document.fonts.ready) {
+    try { await document.fonts.ready; } catch { /* 待てなくても続行 */ }
+  }
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = 210;
+  const pageH = 297;
+  const margin = 8;
+  for (let i = 0; i < els.length; i++) {
+    const el = els[i];
+    el.style.display = "block";
+    // eslint-disable-next-line no-await-in-loop
+    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#FFFFFF" });
+    el.style.display = "none";
+    const img = canvas.toDataURL("image/jpeg", 0.95);
+    let imgW = pageW - margin * 2;
+    let imgH = (canvas.height * imgW) / canvas.width;
+    const maxH = pageH - margin * 2;
+    if (imgH > maxH) {
+      imgH = maxH;
+      imgW = (canvas.width * imgH) / canvas.height;
+    }
+    if (i > 0) pdf.addPage();
+    pdf.addImage(img, "JPEG", (pageW - imgW) / 2, margin, imgW, imgH);
+  }
+  openPdfForPrint(pdf, iosWindow, fileName);
+}
+
 function todayKey() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -431,6 +489,67 @@ function dobPrefix(input) {
     .join("-");
 }
 
+// オンライン診療（pillorder）の問診票1枚分のA4レイアウト（画面外に隠して画像化する）。
+// answers は表示済みの日英文 [{qid,q_ja,a_ja,flag,...}] で保存されているのでそのまま出す。
+function MonshinPrintSheet({ row }) {
+  const rows = row.answers || [];
+  const half = Math.ceil(rows.length / 2);
+  const cols = [rows.slice(0, half), rows.slice(half)];
+  const flags = rows.filter((a) => a.flag);
+  return (
+    <div
+      style={{
+        width: 1120,
+        background: "#FFFFFF",
+        padding: 28,
+        color: "#000000",
+        fontFamily: "'Noto Sans JP', sans-serif",
+        WebkitTextSizeAdjust: "100%",
+        textSizeAdjust: "100%",
+      }}
+    >
+      <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（オンライン診療）</strong>
+        <span style={{ fontSize: 14 }}>
+          {row.chart_number ? <strong>カルテ {row.chart_number}　</strong> : null}
+          {row.name}
+          {row.dob ? `（${row.dob}${dobAnnotation(row.dob) ? `　${dobAnnotation(row.dob)}` : ""}）` : ""}
+          {row.phone ? `　${row.phone}` : ""}
+          {row.reserve_at ? `　予約 ${String(row.reserve_at).slice(0, 10)} ${hhmm(row.reserve_at)}` : ""}
+        </span>
+      </div>
+      {flags.length > 0 && (
+        <div style={{ border: "2px solid #c0392b", background: "#fdecea", borderRadius: 6, padding: "8px 12px", marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠ 要注意 / Flagged</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {flags.map((a, i) => <li key={i} style={{ fontSize: 13 }}>{a.q_ja} — <b>{a.a_ja}</b></li>)}
+          </ul>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        {cols.map((col, ci) => (
+          <table key={ci} style={{ width: "50%", borderCollapse: "collapse", fontSize: 13 }}>
+            <tbody>
+              {col.map((a, i) => (
+                <tr key={i}>
+                  <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>{a.q_ja}</td>
+                  <td style={{ border: "1px solid #999999", padding: "4px 7px", fontWeight: 600, color: a.flag ? "#c0392b" : "#000000" }}>{a.a_ja}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ))}
+      </div>
+      {row.free_text && (
+        <div style={{ marginTop: 10, fontSize: 13 }}>
+          <div style={{ fontWeight: 700 }}>自由記入 / Notes</div>
+          <div style={{ whiteSpace: "pre-wrap" }}>{row.free_text}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
@@ -467,6 +586,12 @@ export default function StaffView() {
   const [searchError, setSearchError] = useState("");
   // 2回目以降の方のカルテ番号の自動表示: "氏名|生年月日" → 過去の記録に入っていた番号
   const [pastCharts, setPastCharts] = useState(new Map());
+  // pillorderタブ: オンライン診療の問診票（monshin_online）。予約時刻(reserve_at)順の時系列で並べる
+  const [monshinRows, setMonshinRows] = useState([]);
+  const [selectedMonshin, setSelectedMonshin] = useState(null);
+  const [monshinPrinting, setMonshinPrinting] = useState(false);
+  const monshinPrintRef = useRef(null); // 個別印刷用の隠しA4
+  const monshinBatchRef = useRef(null); // 一括印刷用（複数ページ）
 
   const toggleHideChartDone = () => {
     setHideChartDone((v) => {
@@ -502,6 +627,44 @@ export default function StaffView() {
     }
   };
 
+  // オンライン診療の問診票を印刷済みに記録（ベストエフォート）
+  const markMonshinPrinted = (id) => {
+    supabase.rpc("mark_monshin_printed", { p_id: id }).then(({ error }) => error && console.warn("mark_monshin_printed failed:", error));
+  };
+
+  // 個別印刷（開いている1件）
+  const printSelectedMonshin = async () => {
+    if (!monshinPrintRef.current || monshinPrinting) return;
+    const iosWindow = IS_IOS ? window.open("", "_blank") : null;
+    setMonshinPrinting(true);
+    try {
+      await printElementAsPdf(monshinPrintRef.current, iosWindow, `問診票_${selectedMonshin?.name || ""}.pdf`);
+      if (selectedMonshin) markMonshinPrinted(selectedMonshin.id);
+    } catch (e) {
+      if (iosWindow && !iosWindow.closed) iosWindow.close();
+      setLoadError(`問診票のPDFを作れませんでした: ${e.message}`);
+    } finally {
+      setMonshinPrinting(false);
+    }
+  };
+
+  // 当日分を一括印刷（1人1枚A4・複数ページ）
+  const printMonshinBatch = async () => {
+    if (!monshinBatchRef.current || monshinPrinting || monshinRows.length === 0) return;
+    const iosWindow = IS_IOS ? window.open("", "_blank") : null;
+    setMonshinPrinting(true);
+    try {
+      const els = [...monshinBatchRef.current.querySelectorAll(".monshin-batch-sheet")];
+      await printElementsAsPdf(els, iosWindow, `オンライン診療_問診票_${dateKey}.pdf`);
+      monshinRows.forEach((m) => markMonshinPrinted(m.id));
+    } catch (e) {
+      if (iosWindow && !iosWindow.closed) iosWindow.close();
+      setLoadError(`一括印刷のPDFを作れませんでした: ${e.message}`);
+    } finally {
+      setMonshinPrinting(false);
+    }
+  };
+
   const load = async () => {
     const [cRes, fRes, bRes] = await Promise.all([
       supabase.from("reception_checkins").select("*").eq("date_key", dateKey).order("checkin_number", { ascending: true }),
@@ -525,6 +688,26 @@ export default function StaffView() {
     setBookings(bRes.data || []);
     setBookingForms(bForms);
     setLastUpdated(new Date());
+
+    // pillorderタブ: オンライン診療の問診票（monshin_online）。直近300件を取り、選択日
+    // （reserve_at が無ければ created_at）が dateKey の分だけを予約時刻順（時系列）に並べる。
+    // 個人情報＋医療回答なので RLS(is_staff) で守られており、スタッフのみ読める。
+    const { data: mData, error: mErr } = await supabase
+      .from("monshin_online")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(300);
+    if (mErr) {
+      setMonshinRows([]);
+    } else {
+      const eff = (r) => r.reserve_at || r.created_at;
+      const jstDate = (iso) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+      setMonshinRows(
+        (mData || [])
+          .filter((r) => jstDate(eff(r)) === dateKey)
+          .sort((a, b) => new Date(eff(a)) - new Date(eff(b)))
+      );
+    }
 
     // 2回目以降の来院・予約では、過去の受付・問診票に入れたカルテ番号を自動で
     // 引いて見せる（電子カルテと繋がっていないぶん、前回の入力を再利用する）。
@@ -558,7 +741,7 @@ export default function StaffView() {
     load();
     // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
-    const canGrow = tab === "search" ? false : tab === "bookings" ? dateKey >= todayKey() : isToday;
+    const canGrow = tab === "search" ? false : (tab === "bookings" || tab === "pillorder") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
@@ -879,11 +1062,13 @@ export default function StaffView() {
               <div className="text-xs" style={{ color: "#B08A90" }}>
                 {tab === "search"
                   ? "過去の問診票を呼び出す"
-                  : tab === "bookings"
-                    ? `${dateKey} の予約 ${bookings.filter((b) => b.status !== "cancelled").length}件　`
-                    : isToday
-                      ? `待ち ${waiting.length}件　`
-                      : `${dateKey} の記録（過去分）　`}
+                  : tab === "pillorder"
+                    ? `${isToday ? "本日" : dateKey} のオンライン診療 ${monshinRows.length}件　`
+                    : tab === "bookings"
+                      ? `${dateKey} の予約 ${bookings.filter((b) => b.status !== "cancelled").length}件　`
+                      : isToday
+                        ? `待ち ${waiting.length}件　`
+                        : `${dateKey} の記録（過去分）　`}
                 {tab !== "search" && lastUpdated && `最終更新 ${hhmm(lastUpdated.toISOString())}`}
               </div>
             </div>
@@ -899,8 +1084,8 @@ export default function StaffView() {
               <input
                 type="date"
                 value={dateKey}
-                // 受付は過去分のみだが、予約は未来の日付も見られる
-                max={tab === "bookings" ? undefined : todayKey()}
+                // 受付は過去分のみだが、予約・オンライン診療は未来の日付も見られる
+                max={tab === "bookings" || tab === "pillorder" ? undefined : todayKey()}
                 onChange={(e) => { if (e.target.value) setDateKey(e.target.value); }}
                 className="bg-transparent outline-none text-sm"
                 style={{ color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}
@@ -971,6 +1156,7 @@ export default function StaffView() {
             {[
               { id: "checkins", label: "受付一覧", Icon: ClipboardList },
               { id: "bookings", label: "予約状況", Icon: CalendarCheck },
+              { id: "pillorder", label: "pillorder", Icon: Stethoscope },
               { id: "search", label: "患者を探す", Icon: Search },
             ].map(({ id, label, Icon }) => (
               <button
@@ -1128,6 +1314,86 @@ export default function StaffView() {
                                   {checkingIn === b.id ? "受付中..." : "受付する"}
                                 </button>
                               )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+          )}
+
+          {tab === "pillorder" && (
+          /* オンライン診療（pillorder）の問診票を予約時刻順（時系列）で一覧。当日分を一括印刷できる */
+          <section>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                {isToday ? "本日のオンライン診療" : `${dateKey} のオンライン診療`}（{monshinRows.length}件）
+              </h2>
+              <button
+                onClick={printMonshinBatch}
+                disabled={monshinRows.length === 0 || monshinPrinting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                style={{ background: monshinRows.length ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
+              >
+                <Printer size={15} />
+                {monshinPrinting ? "PDF作成中..." : `当日分を一括印刷（${monshinRows.length}枚）`}
+              </button>
+            </div>
+            {monshinRows.length === 0 ? (
+              <p className="text-sm" style={{ color: "#B08A90" }}>
+                この日のオンライン診療の問診票はありません。（pillorder の予約リンクから記入されると、予約時刻順にここへ並びます）
+              </p>
+            ) : (
+              <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 720 }}>
+                    <thead>
+                      <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
+                        <th className="px-3 py-2.5 font-medium">時間</th>
+                        <th className="px-2 py-2.5 font-medium">お名前・生年月日・電話</th>
+                        <th className="px-2 py-2.5 font-medium">注意</th>
+                        <th className="px-2 py-2.5 font-medium">問診票</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monshinRows.map((m) => {
+                        const flagged = (m.answers || []).some((a) => a.flag);
+                        const t = m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at);
+                        const anno = dobAnnotation(m.dob);
+                        return (
+                          <tr key={m.id} style={{ borderTop: "1px solid #FAEEF0" }}>
+                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                              {t}
+                              {!m.reserve_at && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>記入時刻</span>}
+                            </td>
+                            <td className="px-2 py-3 font-medium align-top">
+                              {m.name}
+                              {m.kana && <span className="block text-xs font-normal" style={{ color: "#B08A90" }}>{m.kana}</span>}
+                              <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
+                                {m.dob || "—"}{anno ? `（${anno}）` : ""}　{m.phone || "—"}
+                              </span>
+                            </td>
+                            <td className="px-2 py-3 align-top">
+                              {flagged ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FCE9EA", color: "#B03A44" }}>要注意</span>
+                              ) : (
+                                <span style={{ color: "#C9AEB3" }}>—</span>
+                              )}
+                              {m.printed_at && <span className="block text-[10px] mt-0.5" style={{ color: "#C9AEB3" }}>印刷済</span>}
+                            </td>
+                            <td className="px-2 py-3 align-top">
+                              <button
+                                onClick={() => setSelectedMonshin(m)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                              >
+                                <FileText size={12} />
+                                表示・印刷
+                              </button>
                             </td>
                           </tr>
                         );
@@ -1901,6 +2167,79 @@ export default function StaffView() {
             </div>
           </div>
         )}
+
+        {selectedMonshin && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(58,46,48,0.5)" }}
+            onClick={() => setSelectedMonshin(null)}
+          >
+            <div
+              className="w-full max-w-2xl max-h-[85vh] rounded-2xl flex flex-col overflow-hidden"
+              style={{ background: "#FFFFFF" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F2DFE4" }}>
+                <div>
+                  <div className="text-base font-bold" style={{ color: "#3A2E30" }}>
+                    問診票（オンライン診療）　{selectedMonshin.name}
+                  </div>
+                  <div className="text-xs" style={{ color: "#B08A90" }}>
+                    {selectedMonshin.reserve_at ? `予約 ${String(selectedMonshin.reserve_at).slice(0, 10)} ${hhmm(selectedMonshin.reserve_at)}　` : ""}
+                    記入 {String(selectedMonshin.created_at).slice(0, 10)} {hhmm(selectedMonshin.created_at)}
+                    {selectedMonshin.dob ? `　生年月日 ${selectedMonshin.dob}` : ""}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={printSelectedMonshin}
+                    disabled={monshinPrinting}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                    style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
+                  >
+                    <Printer size={15} />
+                    {monshinPrinting ? "PDF作成中..." : "印刷"}
+                  </button>
+                  <button
+                    onClick={() => setSelectedMonshin(null)}
+                    className="p-2 rounded-xl active:opacity-70"
+                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-y-auto p-5">
+                {(selectedMonshin.answers || []).some((a) => a.flag) && (
+                  <div className="mb-3 p-3 rounded-xl" style={{ background: "#FCE9EA", color: "#B03A44" }}>
+                    <div className="text-xs font-bold mb-1">⚠ 要注意</div>
+                    <ul className="text-xs" style={{ paddingLeft: 16, listStyleType: "disc" }}>
+                      {(selectedMonshin.answers || []).filter((a) => a.flag).map((a, i) => (
+                        <li key={i}>{a.q_ja} — <b>{a.a_ja}</b></li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <table className="w-full text-sm" style={{ color: "#3A2E30" }}>
+                  <tbody>
+                    {(selectedMonshin.answers || []).map((row, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #FAEEF0" }}>
+                        <td className="py-2 pr-4 align-top text-xs" style={{ color: "#8A7378", width: "45%" }}>{row.q_ja}</td>
+                        <td className="py-2 align-top font-medium" style={{ color: row.flag ? "#B03A44" : "#3A2E30" }}>{row.a_ja}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {selectedMonshin.free_text && (
+                  <div className="mt-3">
+                    <div className="text-xs font-bold mb-1" style={{ color: "#8A7378" }}>自由記入</div>
+                    <div className="text-sm whitespace-pre-wrap">{selectedMonshin.free_text}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* PDF化用レイアウト（画面外に隠しておき、印刷時だけ画像化する）。
@@ -1966,6 +2305,24 @@ export default function StaffView() {
               ));
             })()}
           </div>
+        </div>
+      )}
+
+      {/* オンライン診療の問診票 印刷レイアウト（画面外・個別1枚） */}
+      {selectedMonshin && (
+        <div ref={monshinPrintRef} style={{ display: "none", position: "fixed", left: "-10000px", top: 0 }}>
+          <MonshinPrintSheet row={selectedMonshin} />
+        </div>
+      )}
+
+      {/* オンライン診療の問診票 印刷レイアウト（画面外・当日分の一括／1人1枚） */}
+      {tab === "pillorder" && monshinRows.length > 0 && (
+        <div ref={monshinBatchRef} style={{ display: "none", position: "fixed", left: "-10000px", top: 0 }}>
+          {monshinRows.map((m) => (
+            <div className="monshin-batch-sheet" key={m.id}>
+              <MonshinPrintSheet row={m} />
+            </div>
+          ))}
         </div>
       )}
     </div>
