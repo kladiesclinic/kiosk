@@ -510,15 +510,22 @@ function MonshinPrintSheet({ row }) {
         textSizeAdjust: "100%",
       }}
     >
-      <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（オンライン診療）</strong>
-        <span style={{ fontSize: 14 }}>
-          {row.chart_number ? <strong>カルテ {row.chart_number}　</strong> : null}
-          {row.name}
-          {row.dob ? `（${row.dob}${dobAnnotation(row.dob) ? `　${dobAnnotation(row.dob)}` : ""}）` : ""}
-          {row.phone ? `　${row.phone}` : ""}
-          {row.reserve_at ? `　予約 ${String(row.reserve_at).slice(0, 10)} ${hhmm(row.reserve_at)}` : ""}
-        </span>
+      <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div>
+          <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（オンライン診療）</strong>
+          <div style={{ fontSize: 14, marginTop: 4 }}>
+            {row.chart_number ? <strong>カルテ {row.chart_number}　</strong> : null}
+            {row.name}
+            {row.dob ? `（${row.dob}${dobAnnotation(row.dob) ? `　${dobAnnotation(row.dob)}` : ""}）` : ""}
+            {row.phone ? `　${row.phone}` : ""}
+          </div>
+        </div>
+        {/* 予約時間は右上 */}
+        {row.reserve_at ? (
+          <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textAlign: "right" }}>
+            予約 {String(row.reserve_at).slice(0, 10)} {hhmm(row.reserve_at)}
+          </div>
+        ) : null}
       </div>
       {flags.length > 0 && (
         <div style={{ border: "2px solid #c0392b", background: "#fdecea", borderRadius: 6, padding: "8px 12px", marginBottom: 12 }}>
@@ -548,6 +555,10 @@ function MonshinPrintSheet({ row }) {
           <div style={{ whiteSpace: "pre-wrap" }}>{row.free_text}</div>
         </div>
       )}
+      {/* 受信日時は右下 */}
+      <div style={{ marginTop: 14, textAlign: "right", fontSize: 12, color: "#333333" }}>
+        {String(row.created_at).slice(0, 10)} {hhmm(row.created_at)} 受信
+      </div>
     </div>
   );
 }
@@ -572,14 +583,20 @@ function IntakePrintSheet({ form, reserveLabel }) {
         textSizeAdjust: "100%",
       }}
     >
-      <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（来院受付）</strong>
-        <span style={{ fontSize: 14 }}>
-          {form.chart_number ? <strong>カルテ {form.chart_number}　</strong> : null}
-          {form.patient_name}{paren}
-          {reserveLabel ? <>　<strong>予約 {reserveLabel}</strong></> : null}
-          　{form.date_key} {hhmm(form.created_at)} 受信
-        </span>
+      <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
+        <div>
+          <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（来院受付）</strong>
+          <div style={{ fontSize: 14, marginTop: 4 }}>
+            {form.chart_number ? <strong>カルテ {form.chart_number}　</strong> : null}
+            {form.patient_name}{paren}
+          </div>
+        </div>
+        {/* 予約時間は右上 */}
+        {reserveLabel ? (
+          <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textAlign: "right" }}>
+            予約 {reserveLabel}
+          </div>
+        ) : null}
       </div>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         {[rows.slice(0, half), rows.slice(half)].map((col, ci) => (
@@ -598,6 +615,10 @@ function IntakePrintSheet({ form, reserveLabel }) {
             </tbody>
           </table>
         ))}
+      </div>
+      {/* 受信日時は右下 */}
+      <div style={{ marginTop: 14, textAlign: "right", fontSize: 12, color: "#333333" }}>
+        {form.date_key} {hhmm(form.created_at)} 受信
       </div>
     </div>
   );
@@ -2474,8 +2495,7 @@ export default function StaffView() {
             textSizeAdjust: "100%",
           }}
         >
-          <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire</strong>
+          <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
             {(() => {
               // 紙を見た医師がすぐ掴めるように、生年月日のとなりに和暦と満年齢を出す
               const dob = formBirthdate(selectedForm);
@@ -2483,14 +2503,23 @@ export default function StaffView() {
               const paren = dob ? `（${dob}${extra ? `　${extra}` : ""}）` : "";
               const reserveLabel = reserveLabelForForm(selectedForm);
               return (
-                <span style={{ fontSize: 14 }}>
-                  {/* 紙はカルテに綴じるので、番号が入っていれば先頭に出す */}
-                  {selectedForm.chart_number ? <strong>カルテ {selectedForm.chart_number}　</strong> : null}
-                  {selectedForm.patient_name}
-                  {paren}
-                  {reserveLabel ? <>　<strong>予約 {reserveLabel}</strong></> : null}
-                  　{selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
-                </span>
+                <>
+                  <div>
+                    <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire</strong>
+                    <div style={{ fontSize: 14, marginTop: 4 }}>
+                      {/* 紙はカルテに綴じるので、番号が入っていれば先頭に出す */}
+                      {selectedForm.chart_number ? <strong>カルテ {selectedForm.chart_number}　</strong> : null}
+                      {selectedForm.patient_name}
+                      {paren}
+                    </div>
+                  </div>
+                  {/* 予約時間は右上 */}
+                  {reserveLabel ? (
+                    <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textAlign: "right" }}>
+                      予約 {reserveLabel}
+                    </div>
+                  ) : null}
+                </>
               );
             })()}
           </div>
@@ -2518,6 +2547,10 @@ export default function StaffView() {
                 </table>
               ));
             })()}
+          </div>
+          {/* 受信日時は右下 */}
+          <div style={{ marginTop: 14, textAlign: "right", fontSize: 12, color: "#333333" }}>
+            {selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
           </div>
         </div>
       )}
