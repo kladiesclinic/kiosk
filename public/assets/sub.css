@@ -1,14 +1,17 @@
 /* Shared styles for subpages (book / intake / zoom), matches index.html tokens */
+/* pillorder問診票（/monshin）と同じ配色・書体に統一。
+   --serif は名前を残しつつ中身をゴシック（Zen Kaku Gothic New）に差し替えて、
+   既存の var(--serif) 見出しがそのままゴシックの太字見出しになるようにしている。 */
 :root {
-  --paper: #FBF7F4;
-  --ink: #2B2124;
-  --soft: #7A6A66;
-  --faint: #A8968F;
-  --line: #E9DDD6;
+  --paper: #FFF8F7;
+  --ink: #3A2E30;
+  --soft: #8A7378;
+  --faint: #B08A90;
+  --line: #F2DFE4;
   --accent: #ff6766;
   --accent-light: #ff9a99;
-  --serif: 'Newsreader', Georgia, serif;
-  --sans: 'Inter', 'Helvetica Neue', sans-serif;
+  --serif: 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+  --sans: 'Noto Sans JP', 'Inter', 'Helvetica Neue', sans-serif;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -53,7 +56,7 @@ h1.display em { font-style: italic; font-weight: 400; color: var(--accent); }
 
 form .field { margin-bottom: 18px; }
 form label {
-  font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: 12px; font-weight: 600; letter-spacing: normal; text-transform: none;
   color: var(--soft); display: block; margin-bottom: 6px;
 }
 form .hint { font-size: 12px; color: var(--faint); margin-top: 5px; line-height: 1.5; }
@@ -88,7 +91,7 @@ form textarea { min-height: 110px; resize: vertical; }
 .submit-btn {
   font-family: var(--sans); font-size: 15px; font-weight: 600;
   padding: 16px 30px; border-radius: 999px; border: none; cursor: pointer;
-  background: var(--ink); color: var(--paper);
+  background: var(--accent); color: #FFFFFF;
   display: inline-flex; align-items: center; gap: 8px; margin-top: 8px;
 }
 .submit-btn:disabled { opacity: .6; cursor: default; }
@@ -122,7 +125,7 @@ form textarea { min-height: 110px; resize: vertical; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
   font-size: 15px; font-weight: 600; padding: 16px 28px; border-radius: 999px;
-  background: var(--ink); color: var(--paper);
+  background: var(--accent); color: #FFFFFF;
 }
 .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
 
