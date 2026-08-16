@@ -554,7 +554,7 @@ function MonshinPrintSheet({ row }) {
 
 // 来院受付の問診票（intake_forms）1枚分のA4レイアウト（画面外に隠して画像化する）。
 // selectedForm 個別印刷（printAreaRef）と同じ体裁。一括印刷で1人1枚ずつ画像化して使う。
-function IntakePrintSheet({ form }) {
+function IntakePrintSheet({ form, reserveLabel }) {
   const rows = form.answers || [];
   const half = Math.ceil(rows.length / 2);
   const dob = formBirthdate(form);
@@ -576,7 +576,9 @@ function IntakePrintSheet({ form }) {
         <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（来院受付）</strong>
         <span style={{ fontSize: 14 }}>
           {form.chart_number ? <strong>カルテ {form.chart_number}　</strong> : null}
-          {form.patient_name}{paren}　{form.date_key} {hhmm(form.created_at)} 受信
+          {form.patient_name}{paren}
+          {reserveLabel ? <>　<strong>予約 {reserveLabel}</strong></> : null}
+          　{form.date_key} {hhmm(form.created_at)} 受信
         </span>
       </div>
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
@@ -1104,6 +1106,18 @@ export default function StaffView() {
     [...forms, ...bookingForms].forEach((f) => { if (f && !map.has(f.id)) map.set(f.id, f); });
     return [...map.values()];
   })();
+
+  // 来院受付の問診票に載せる「予約時間」。intake_forms → visit_bookings を辿って
+  // 予約日時(HH:MM)を出す。受付(checkin)経由でも、その受付の booking_id から辿る。
+  // 予約なしの飛び込み受付は空（何も出さない）。
+  const reserveLabelForForm = (form) => {
+    let b = form.booking_id ? bookings.find((x) => x.id === form.booking_id) : null;
+    if (!b && form.checkin_id) {
+      const c = checkins.find((x) => x.id === form.checkin_id);
+      if (c && c.booking_id) b = bookings.find((x) => x.id === c.booking_id) || null;
+    }
+    return b ? `${b.date} ${b.time}` : "";
+  };
 
   // 検索結果を1人ぶんにまとめる。
   // カルテ番号が付いていればそれが同一人物の印なので、氏名の書き方が回ごとに
@@ -2313,6 +2327,7 @@ export default function StaffView() {
                     問診票　{selectedForm.patient_name}
                   </div>
                   <div className="text-xs" style={{ color: "#B08A90" }}>
+                    {(() => { const r = reserveLabelForForm(selectedForm); return r ? <span style={{ color: "#0F8B8D", fontWeight: 700 }}>予約 {r}　</span> : null; })()}
                     {String(selectedForm.created_at).slice(0, 10)} {hhmm(selectedForm.created_at)} 受信
                     {selectedForm.date_of_birth ? `　生年月日 ${selectedForm.date_of_birth}` : ""}
                     {!selectedForm.checkin_id && (
@@ -2466,12 +2481,15 @@ export default function StaffView() {
               const dob = formBirthdate(selectedForm);
               const extra = dobAnnotation(dob);
               const paren = dob ? `（${dob}${extra ? `　${extra}` : ""}）` : "";
+              const reserveLabel = reserveLabelForForm(selectedForm);
               return (
                 <span style={{ fontSize: 14 }}>
                   {/* 紙はカルテに綴じるので、番号が入っていれば先頭に出す */}
                   {selectedForm.chart_number ? <strong>カルテ {selectedForm.chart_number}　</strong> : null}
                   {selectedForm.patient_name}
-                  {paren}　{selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
+                  {paren}
+                  {reserveLabel ? <>　<strong>予約 {reserveLabel}</strong></> : null}
+                  　{selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
                 </span>
               );
             })()}
@@ -2531,7 +2549,7 @@ export default function StaffView() {
         <div ref={intakeBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
           {dayIntakeForms.map((f) => (
             <div className="intake-batch-sheet" style={{ display: "none" }} key={f.id}>
-              <IntakePrintSheet form={f} />
+              <IntakePrintSheet form={f} reserveLabel={reserveLabelForForm(f)} />
             </div>
           ))}
         </div>
