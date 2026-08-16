@@ -87,10 +87,13 @@ form textarea { min-height: 110px; resize: vertical; }
 }
 .choice input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
 .choice small { display: block; color: var(--faint); font-size: 12.5px; margin-top: 2px; }
+/* pillorder問診票と同じ「選ぶとカードごとコーラル枠＋薄ピンク背景」。:has 未対応の
+   古い端末でも中のチェックはコーラルのままなので選択は分かる（グレースフル）。 */
+.choice:has(input:checked) { border-color: var(--accent); background: #ffe6e9; }
 
 .submit-btn {
   font-family: var(--sans); font-size: 15px; font-weight: 600;
-  padding: 16px 30px; border-radius: 999px; border: none; cursor: pointer;
+  padding: 15px 28px; border-radius: 10px; border: none; cursor: pointer;
   background: var(--accent); color: #FFFFFF;
   display: inline-flex; align-items: center; gap: 8px; margin-top: 8px;
 }
@@ -124,10 +127,15 @@ form textarea { min-height: 110px; resize: vertical; }
 .page-cta { margin: 44px 0 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px;
-  font-size: 15px; font-weight: 600; padding: 16px 28px; border-radius: 999px;
+  font-size: 15px; font-weight: 600; padding: 15px 26px; border-radius: 10px;
   background: var(--accent); color: #FFFFFF;
 }
 .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+
+/* 印刷（A4）では選択肢のコーラル塗りは不要＝白地に戻す（インク節約・視認性）。 */
+@media print {
+  .choice:has(input:checked) { background: #FFFFFF; border-color: #BBBBBB; }
+}
 
 footer { border-top: 1px solid var(--line); margin-top: 72px; }
 .footer-inner {
