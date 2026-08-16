@@ -624,6 +624,120 @@ function IntakePrintSheet({ form, reserveLabel }) {
   );
 }
 
+// 1日の予定表（A4・1枚）。来院予約とオンライン診療（pillorder）を時刻順に1本の表へ。
+// 朝いちばんに刷って手元に置き、終わった方から「済」に印を付ける使い方を想定している。
+// 行が多い日は28行ずつページを分ける（縮めて詰め込むと読めなくなるため）。
+// 28行でA4・1枚のおよそ9割。長いお名前や内容で行が折り返しても収まる余白を残している。
+const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
+const SCHEDULE_ROWS_PER_PAGE = 28;
+
+// 予定表1ページぶん。画面外に置いて画像化するので、色は白黒印刷でも潰れない濃さにする
+function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount }) {
+  const wd = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
+    ? WEEKDAY_JA[new Date(`${dateKey}T00:00:00`).getDay()]
+    : "";
+  const cell = { border: "1px solid #999999", padding: "5px 7px", verticalAlign: "top" };
+  const head = { ...cell, background: "#EAEAEA", fontWeight: 700, textAlign: "left", fontSize: 12 };
+  return (
+    <div
+      style={{
+        width: 1120,
+        background: "#FFFFFF",
+        padding: 28,
+        color: "#000000",
+        fontFamily: "'Noto Sans JP', sans-serif",
+        WebkitTextSizeAdjust: "100%",
+        textSizeAdjust: "100%",
+      }}
+    >
+      <div
+        style={{
+          borderBottom: "2px solid #000000",
+          paddingBottom: 8,
+          marginBottom: 12,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-end",
+          gap: 16,
+        }}
+      >
+        <div>
+          <strong style={{ fontSize: 20 }}>1日の予定表</strong>
+          <span style={{ fontSize: 16, marginLeft: 10, fontWeight: 700 }}>
+            {dateKey}
+            {wd ? `（${wd}）` : ""}
+          </span>
+        </div>
+        <div style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+          来院 {visitCount}件 ／ オンライン {onlineCount}件
+          {pageCount > 1 ? `　${page} / ${pageCount} ページ` : ""}
+        </div>
+      </div>
+
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+        <colgroup>
+          {[40, 76, 74, 250, 160, 270, 105, 89].map((w, i) => (
+            <col key={i} style={{ width: w }} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            <th style={{ ...head, textAlign: "center" }}>済</th>
+            <th style={head}>時間</th>
+            <th style={head}>区分</th>
+            <th style={head}>お名前</th>
+            <th style={head}>生年月日</th>
+            <th style={head}>内容</th>
+            <th style={head}>保険</th>
+            <th style={head}>カルテ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            // オンラインの行は薄い網掛けにして、来院の列と目で分けられるようにする
+            <tr key={r.key} style={{ background: r.kind === "online" ? "#F3F3F3" : "#FFFFFF" }}>
+              <td style={{ ...cell, textAlign: "center" }}>
+                <div style={{ width: 14, height: 14, border: "1.5px solid #000000", margin: "2px auto" }} />
+              </td>
+              <td style={{ ...cell, fontWeight: 700, fontSize: 15 }}>{r.time || "—"}</td>
+              <td style={{ ...cell, whiteSpace: "nowrap", fontSize: 12 }}>
+                {r.kind === "online" ? "オンライン" : "来院"}
+              </td>
+              <td style={cell}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{r.name || "—"}</div>
+                {r.kana ? <div style={{ fontSize: 11, color: "#333333" }}>{r.kana}</div> : null}
+              </td>
+              <td style={cell}>
+                <div>{r.dob || "—"}</div>
+                {r.dob && dobAnnotation(r.dob) ? (
+                  <div style={{ fontSize: 11, color: "#333333" }}>{dobAnnotation(r.dob)}</div>
+                ) : null}
+              </td>
+              <td style={{ ...cell, fontSize: 12 }}>
+                {/* 72時間の制限があるMAP、問診票で引っかかった方は、紙の上でも先に目に入るようにする */}
+                {r.alert ? <span style={{ fontWeight: 700 }}>{r.alert}　</span> : null}
+                {[r.menu, r.detail].filter(Boolean).join("　") || "—"}
+              </td>
+              <td style={{ ...cell, fontSize: 11 }}>{r.insurance || "—"}</td>
+              <td style={{ ...cell, fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                {r.chart || ""}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {rows.length === 0 && (
+        <div style={{ marginTop: 14, fontSize: 13 }}>この日の予定はありません。</div>
+      )}
+      <div style={{ marginTop: 12, fontSize: 11, color: "#333333", display: "flex", justifyContent: "space-between" }}>
+        <span>※ カルテ番号は過去の受付・問診票から引いたものです。空欄は当日ご記入ください。</span>
+        <span>{todayKey()} 印刷</span>
+      </div>
+    </div>
+  );
+}
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
@@ -667,6 +781,9 @@ export default function StaffView() {
   const monshinPrintRef = useRef(null); // 個別印刷用の隠しA4
   const monshinBatchRef = useRef(null); // 一括印刷用（複数ページ）
   const intakeBatchRef = useRef(null); // 来院受付の問診票 一括印刷用（オンラインと合わせて出す）
+  // 1日の予定表（来院＋オンラインを時刻順に1枚へ）
+  const scheduleRef = useRef(null);
+  const [schedulePrinting, setSchedulePrinting] = useState(false);
   // 予約の編集・代理予約（booking-app から移植）に必要な設定・メニュー・祝日
   const [menusAll, setMenusAll] = useState([]);
   const [visitSettings, setVisitSettings] = useState(null);
@@ -765,6 +882,23 @@ export default function StaffView() {
       setLoadError(`一括印刷のPDFを作れませんでした: ${e.message}`);
     } finally {
       setMonshinPrinting(false);
+    }
+  };
+
+  // 1日の予定表を印刷（A4・時刻順。多い日は複数ページ）
+  const printSchedule = async () => {
+    if (!scheduleRef.current || schedulePrinting) return;
+    const els = [...scheduleRef.current.querySelectorAll(".schedule-sheet")];
+    if (els.length === 0) return;
+    const iosWindow = IS_IOS ? window.open("", "_blank") : null;
+    setSchedulePrinting(true);
+    try {
+      await printElementsAsPdf(els, iosWindow, `予定表_${dateKey}.pdf`);
+    } catch (e) {
+      if (iosWindow && !iosWindow.closed) iosWindow.close();
+      setLoadError(`予定表のPDFを作れませんでした: ${e.message}`);
+    } finally {
+      setSchedulePrinting(false);
     }
   };
 
@@ -1140,6 +1274,64 @@ export default function StaffView() {
     return b ? `${b.date} ${b.time}` : "";
   };
 
+  // 1日の予定表のもとになる一覧。来院予約（visit_bookings）とオンライン診療
+  // （monshin_online）を同じ形に均して時刻順に並べる。
+  // キャンセルされた予約は当日の予定ではないので落とす。
+  const daySchedule = useMemo(() => {
+    const visits = bookings
+      .filter((b) => b.status !== "cancelled")
+      .map((b) => {
+        const menu = b.visit_menus?.name || "";
+        const detail = bookingDetail(b);
+        // 72時間の制限があるので、紙の上でも先に目に入るようにする
+        const map = /アフターピル|モーニングアフター|緊急避妊/i.test(`${menu} ${detail}`);
+        return {
+          key: `b:${b.id}`,
+          kind: "visit",
+          time: b.time || "",
+          name: b.patient_name || "",
+          kana: b.patient_kana || "",
+          dob: b.birthdate || "",
+          // 予約には番号を持たせていないので、過去の受付・問診票から引く
+          chart: pastCharts.get(chartMatchKey(b.patient_name, b.birthdate)) || "",
+          menu,
+          detail: detail === "—" ? "" : detail,
+          insurance: INSURANCE_LABEL[b.insurance] || "",
+          alert: map ? "MAP" : "",
+        };
+      });
+    const online = monshinRows.map((m) => ({
+      key: `m:${m.id}`,
+      kind: "online",
+      // 予約時刻が入っていない記入は受信時刻の位置に置く（一覧と同じ扱い）
+      time: m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at),
+      name: m.name || "",
+      kana: "",
+      dob: m.dob || "",
+      chart: m.chart_number || pastCharts.get(chartMatchKey(m.name, m.dob)) || "",
+      menu: "オンライン診療",
+      detail: "",
+      insurance: "",
+      alert: (m.answers || []).some((a) => a.flag) ? "要注意" : "",
+    }));
+    return [...visits, ...online].sort((a, b) =>
+      a.time < b.time ? -1 : a.time > b.time ? 1 : 0
+    );
+  }, [bookings, monshinRows, pastCharts]);
+
+  const scheduleCounts = {
+    visit: daySchedule.filter((r) => r.kind === "visit").length,
+    online: daySchedule.filter((r) => r.kind === "online").length,
+  };
+
+  const schedulePages = useMemo(() => {
+    const out = [];
+    for (let i = 0; i < daySchedule.length; i += SCHEDULE_ROWS_PER_PAGE) {
+      out.push(daySchedule.slice(i, i + SCHEDULE_ROWS_PER_PAGE));
+    }
+    return out;
+  }, [daySchedule]);
+
   // 検索結果を1人ぶんにまとめる。
   // カルテ番号が付いていればそれが同一人物の印なので、氏名の書き方が回ごとに
   // 違っていても1人にまとまる。番号がまだ無い方は、氏名（空白を除く）と生年月日が
@@ -1271,6 +1463,25 @@ export default function StaffView() {
               >
                 <UserPlus size={15} />
                 代理で受付
+              </button>
+            )}
+            {/* 1日の予定表。来院とオンラインを1枚にまとめて刷る。
+                日付で絞らないタブ（患者を探す・設定）では出さない */}
+            {tab !== "search" && tab !== "settings" && (
+              <button
+                onClick={printSchedule}
+                disabled={daySchedule.length === 0 || schedulePrinting}
+                title="来院予約とオンライン診療を時刻順に並べた1日の予定表をA4で印刷します"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                style={{
+                  background: "#FFFFFF",
+                  border: `1.5px solid ${daySchedule.length ? "#0F8B8D" : "#F2DFE4"}`,
+                  color: daySchedule.length ? "#0F8B8D" : "#C9AEB3",
+                  opacity: schedulePrinting ? 0.5 : 1,
+                }}
+              >
+                <Printer size={15} />
+                {schedulePrinting ? "PDF作成中..." : `1日の予定表（来院${scheduleCounts.visit}＋オンライン${scheduleCounts.online}）`}
               </button>
             )}
             <a
@@ -2571,6 +2782,25 @@ export default function StaffView() {
           {monshinRows.map((m) => (
             <div className="monshin-batch-sheet" style={{ display: "none" }} key={m.id}>
               <MonshinPrintSheet row={m} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 1日の予定表 印刷レイアウト（画面外・時刻順／26行ずつ）。
+          問診票の一括印刷と同じで、親は画面外に置くだけにして各ページを display:none で隠す */}
+      {schedulePages.length > 0 && (
+        <div ref={scheduleRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
+          {schedulePages.map((rows, i) => (
+            <div className="schedule-sheet" style={{ display: "none" }} key={i}>
+              <ScheduleSheet
+                rows={rows}
+                dateKey={dateKey}
+                page={i + 1}
+                pageCount={schedulePages.length}
+                visitCount={scheduleCounts.visit}
+                onlineCount={scheduleCounts.online}
+              />
             </div>
           ))}
         </div>
