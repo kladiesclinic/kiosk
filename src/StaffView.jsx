@@ -363,7 +363,7 @@ function jaPart(v) {
 }
 
 // 予定表の1行に収まる長さに切る（切ったことが分かるように…を付ける）
-function clip(s, max = 54) {
+function clip(s, max = 40) {
   const t = String(s || "").trim();
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
@@ -668,55 +668,77 @@ function IntakePrintSheet({ form, reserveLabel }) {
 // 時間の目盛りとして読めなくなるので、行数からその日の1行の高さを決める。
 // 空き枠には何も書かない — 白いままのほうが空きが見える。
 const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
-// A4（余白8mm）の縦横比。幅1120pxに対する1枚ぶんの高さ
-const SCHEDULE_SHEET_W = 1120;
-const SCHEDULE_SHEET_H = Math.round((SCHEDULE_SHEET_W * 281) / 194); // 1622
+// 用紙の実寸に対して字が何ミリになるかで組む。幅794pxをA4の194mm（左右8mm余白）
+// に印刷するので、1px ≒ 0.244mm ＝ 画面の見た目そのままの大きさで刷られる。
+// 以前は幅1120pxで組んでいて、13pxが6ptほどに縮んでいた（読めない・切れる原因）
+const SCHEDULE_SHEET_W = 794;
+const SCHEDULE_SHEET_H = Math.round((SCHEDULE_SHEET_W * 281) / 194); // 1150
 // 見出し・表の見出し行・欄外の注記を引いた、枠に使える高さ
-const SCHEDULE_BODY_PX = 1454;
-// 1人ぶんに最低限要る高さ（1行に詰めた場合）と、枠の上下の余白。
-// ページ数はこの最小で決め、実際に余裕があれば2行に開く（下の twoLine）
-const SCHEDULE_ENTRY_MIN_PX = 22;
-const SCHEDULE_ROW_PAD_PX = 10;
-// 1人ぶんにこれだけ取れるなら、お名前と診察内容を2行に分ける
-const SCHEDULE_TWO_LINE_PX = 34;
+const SCHEDULE_BODY_PX = 1035;
+// 高さの見積もりに使う実測値。字を小さくして詰めることはしない — 入らない日は
+// ページを分ける。診察内容は折り返すので、列の幅から何行になるかを数えて足す
+const SCHEDULE_NAME_PX = 19; // お名前の行
+const SCHEDULE_LINE_PX = 15; // 診察内容の1行
+const SCHEDULE_ROW_PAD_PX = 8; // 枠の上下の余白
+const SCHEDULE_EMPTY_ROW_PX = 26; // 誰も入っていない枠（時刻だけ）
+const SCHEDULE_COL_W = [58, 396, 300];
+// 診察内容が1行に入る文字数（列の幅 − 余白・チェック欄 ÷ 11px）
+const SCHEDULE_VISIT_CHARS = 33;
+const SCHEDULE_ONLINE_CHARS = 24;
 
-// 予定表の1人ぶん。枠の時刻と違う時刻の方（薬の受け取りなど刻みが細かい予約）は
-// 時刻を頭に出す。診察内容は問診票のご本人の記入を優先し、まだ届いていなければ
-// 予約のメニューを出す。
-// twoLine=false は枠が詰まっている日。1行に畳んで、はみ出す分は「…」で切る
-function ScheduleEntry({ e, showTime, twoLine }) {
-  const detail = [
+// 予定表の2行目に出す文字列。見積もりと表示で同じものを使う
+function scheduleDetail(e) {
+  return [
     e.reason || [e.menu, e.detail].filter(Boolean).join("　"),
     e.insurance,
     e.chart ? `カルテ ${e.chart}` : "",
   ]
     .filter(Boolean)
     .join("／");
-  const nowrap = { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
+}
+
+// 1人ぶんに要る高さ。折り返す行数まで数える
+function scheduleEntryPx(e, charsPerLine) {
+  const detail = scheduleDetail(e);
+  const lines = detail ? Math.max(1, Math.ceil(detail.length / charsPerLine)) : 0;
+  return SCHEDULE_NAME_PX + lines * SCHEDULE_LINE_PX;
+}
+
+// 枠1つに要る高さ。来院とオンラインの高いほうで決まる
+function scheduleRowPx(r) {
+  const sum = (list, chars) => list.reduce((n, e) => n + scheduleEntryPx(e, chars), 0);
+  return Math.max(
+    SCHEDULE_EMPTY_ROW_PX,
+    SCHEDULE_ROW_PAD_PX + Math.max(sum(r.visits, SCHEDULE_VISIT_CHARS), sum(r.onlines, SCHEDULE_ONLINE_CHARS))
+  );
+}
+
+// 予定表の1人ぶん。枠の時刻と違う時刻の方（薬の受け取りなど刻みが細かい予約）は
+// 時刻を頭に出す。診察内容は問診票のご本人の記入を優先し、まだ届いていなければ
+// 予約のメニューを出す
+function ScheduleEntry({ e, showTime }) {
+  const detail = scheduleDetail(e);
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "baseline", padding: twoLine ? "2px 0" : "1px 0" }}>
-      <div style={{ width: 12, height: 12, border: "1.5px solid #000000", flexShrink: 0, marginTop: 2 }} />
+    <div style={{ display: "flex", gap: 5, alignItems: "baseline", padding: "1px 0" }}>
+      <div style={{ width: 11, height: 11, border: "1px solid #000000", flexShrink: 0, marginTop: 2 }} />
       {showTime ? (
-        <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
+        <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
       ) : null}
-      <div style={{ minWidth: 0, flex: 1, lineHeight: 1.35 }}>
-        <div style={nowrap}>
-          <span style={{ fontWeight: 700, fontSize: twoLine ? 13 : 12 }}>{e.name || "—"}</span>
+      <div style={{ minWidth: 0, flex: 1, lineHeight: 1.3 }}>
+        <div style={{ whiteSpace: "nowrap" }}>
+          <span style={{ fontWeight: 700, fontSize: 13 }}>{e.name || "—"}</span>
           {e.dob ? (
-            <span style={{ fontSize: 10.5, color: "#333333", marginLeft: 6 }}>
+            <span style={{ fontSize: 11, color: "#333333", marginLeft: 5 }}>
               {e.dob}
               {ageFrom(e.dob) === null ? "" : `（${ageFrom(e.dob)}）`}
             </span>
           ) : null}
           {/* 72時間の制限があるMAP、問診票で引っかかった方は先に目に入るようにする */}
-          {e.alert ? <span style={{ fontWeight: 700, fontSize: 11.5, marginLeft: 6 }}>{e.alert}</span> : null}
-          {/* 詰まっている日は同じ行の続きに出す */}
-          {!twoLine && detail ? (
-            <span style={{ fontSize: 10.5, color: "#333333", marginLeft: 6 }}>{detail}</span>
-          ) : null}
+          {e.alert ? <span style={{ fontWeight: 700, fontSize: 12, marginLeft: 5 }}>{e.alert}</span> : null}
         </div>
-        {twoLine && detail ? (
-          <div style={{ ...nowrap, fontSize: 10.5, color: "#333333" }}>{detail}</div>
+        {/* 診察内容は折り返して出す。途中で切ると何の診察か分からなくなる */}
+        {detail ? (
+          <div style={{ fontSize: 11, color: "#333333", wordBreak: "break-word" }}>{detail}</div>
         ) : null}
       </div>
     </div>
@@ -728,20 +750,17 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
   const wd = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
     ? WEEKDAY_JA[new Date(`${dateKey}T00:00:00`).getDay()]
     : "";
-  const cell = { border: "1px solid #999999", padding: "4px 7px", verticalAlign: "top" };
-  const head = { ...cell, background: "#EAEAEA", fontWeight: 700, textAlign: "left", fontSize: 12 };
-  // 枠の高さはこのページの枠の数で決める。全部そろえて、A4を使い切る。
-  // 1人あたりに取れる高さから、2行に開くか1行に畳むかを決める
+  const cell = { border: "1px solid #999999", padding: "3px 5px", verticalAlign: "top" };
+  const head = { ...cell, background: "#EAEAEA", fontWeight: 700, textAlign: "left", fontSize: 11 };
+  // 枠の高さはこのページの枠の数で決める。全部そろえて、A4を使い切る
   const rowH = rows.length ? Math.floor(SCHEDULE_BODY_PX / rows.length) : SCHEDULE_BODY_PX;
-  const busiest = rows.reduce((n, r) => Math.max(n, r.visits.length, r.onlines.length), 1);
-  const twoLine = (rowH - SCHEDULE_ROW_PAD_PX) / busiest >= SCHEDULE_TWO_LINE_PX;
   return (
     <div
       style={{
         width: SCHEDULE_SHEET_W,
         height: SCHEDULE_SHEET_H,
         background: "#FFFFFF",
-        padding: 28,
+        padding: 20,
         color: "#000000",
         fontFamily: "'Noto Sans JP', sans-serif",
         WebkitTextSizeAdjust: "100%",
@@ -754,30 +773,30 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
       <div
         style={{
           borderBottom: "2px solid #000000",
-          paddingBottom: 8,
-          marginBottom: 10,
+          paddingBottom: 5,
+          marginBottom: 7,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-end",
-          gap: 16,
+          gap: 12,
         }}
       >
         <div>
-          <strong style={{ fontSize: 20 }}>1日の予定表</strong>
-          <span style={{ fontSize: 16, marginLeft: 10, fontWeight: 700 }}>
+          <strong style={{ fontSize: 16 }}>1日の予定表</strong>
+          <span style={{ fontSize: 14, marginLeft: 8, fontWeight: 700 }}>
             {dateKey}
             {wd ? `（${wd}）` : ""}
           </span>
         </div>
-        <div style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 11, whiteSpace: "nowrap" }}>
           来院 {visitCount}件 ／ オンライン {onlineCount}件
           {pageCount > 1 ? `　${page} / ${pageCount} ページ` : ""}
         </div>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
         <colgroup>
-          {[92, 546, 426].map((w, i) => (
+          {SCHEDULE_COL_W.map((w, i) => (
             <col key={i} style={{ width: w }} />
           ))}
         </colgroup>
@@ -798,7 +817,7 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
                   ...cell,
                   textAlign: "center",
                   fontWeight: 700,
-                  fontSize: 14,
+                  fontSize: 13,
                   fontFamily: "'JetBrains Mono', monospace",
                   background: r.closed ? "#D6D6D6" : "#F5F5F5",
                 }}
@@ -807,12 +826,12 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
               </td>
               <td style={{ ...cell, background: r.closed ? "#EDEDED" : "#FFFFFF" }}>
                 {r.visits.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} twoLine={twoLine} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} />
                 ))}
               </td>
               <td style={{ ...cell, background: "#F7F7F7" }}>
                 {r.onlines.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} twoLine={twoLine} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} />
                 ))}
               </td>
             </tr>
@@ -821,15 +840,15 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
       </table>
 
       {rows.length === 0 && (
-        <div style={{ marginTop: 14, fontSize: 13 }}>この日の予定はありません。</div>
+        <div style={{ marginTop: 12, fontSize: 12 }}>この日の予定はありません。</div>
       )}
       <div
         style={{
           marginTop: "auto",
-          paddingTop: 8,
-          fontSize: 10.5,
+          paddingTop: 6,
+          fontSize: 9.5,
           color: "#333333",
-          lineHeight: 1.6,
+          lineHeight: 1.5,
           display: "flex",
           justifyContent: "space-between",
           gap: 12,
@@ -1493,20 +1512,25 @@ export default function StaffView() {
     return { rows, fromSettings, closedDay };
   }, [daySchedule, dateKey, visitSettings, visitHolidays, visitClosedDates, closedSlotTimes]);
 
-  // ページ分け。枠の高さをそろえるので、いちばん人が多い枠が収まる高さを基準に
-  // 1ページの枠数を決め、ページ間で枠数が偏らないように均す。
+  // ページ分け。枠の高さをそろえるので、いちばん人が多い枠が「字を小さくせずに」
+  // 収まる高さを基準に1ページの枠数を決め、ページ間で枠数が偏らないように均す。
   // 高さ自体は ScheduleSheet がその枠数から出す（＝どのページもA4を使い切る）
   const schedulePages = useMemo(() => {
     const rows = scheduleGrid.rows;
     if (!rows.length) return [];
-    const busiest = rows.reduce((n, r) => Math.max(n, r.visits.length, r.onlines.length), 1);
-    const minRowH = SCHEDULE_ROW_PAD_PX + busiest * SCHEDULE_ENTRY_MIN_PX;
-    const perPage = Math.max(1, Math.floor(SCHEDULE_BODY_PX / minRowH));
-    const pageCount = Math.ceil(rows.length / perPage);
-    const per = Math.ceil(rows.length / pageCount);
-    const pages = [];
-    for (let i = 0; i < rows.length; i += per) pages.push(rows.slice(i, i + per));
-    return pages;
+    // 枠の高さはページ内で共通なので、1枠増やすと全部の枠が低くなる。
+    // 「いちばん高さが要る枠 × 枠数」が1ページに収まるかで判定する
+    const fits = (pages) =>
+      pages.every((p) => p.length * Math.max(...p.map(scheduleRowPx)) <= SCHEDULE_BODY_PX);
+    // 枚数を1枚から増やしていき、最初に収まった分け方を使う。
+    // 均等に割るので、最後のページだけ数枠しかなくて間延びする、ということが起きない
+    for (let count = 1; count <= rows.length; count++) {
+      const per = Math.ceil(rows.length / count);
+      const pages = [];
+      for (let i = 0; i < rows.length; i += per) pages.push(rows.slice(i, i + per));
+      if (fits(pages)) return pages;
+    }
+    return rows.map((r) => [r]);
   }, [scheduleGrid]);
 
   // 検索結果を1人ぶんにまとめる。
