@@ -703,9 +703,18 @@ const SCHEDULE_COL_W = [58, 366, 330];
 const SCHEDULE_VISIT_CHARS = 32;
 const SCHEDULE_ONLINE_CHARS = 29;
 
-// 予定表の2行目。診察内容だけを置く（保険とカルテ番号は1行目の右端へ）
+// 予定表の2行目。区分と診察内容を置く（保険とカルテ番号はその右端へ回り込ませる）
 function scheduleDetail(e) {
   return e.reason || [e.menu, e.detail].filter(Boolean).join("　") || "";
+}
+
+// 右端の保険・カルテ番号が2行目の1行目から奪う幅（全角の文字数に換算）。
+// カルテ番号は等幅の半角なので全角0.62文字ぶんで数える
+function scheduleRightChars(e) {
+  const ins = e.insurance ? e.insurance.length : 0;
+  const chart = e.chart ? e.chart.length * 0.62 : 0;
+  if (!ins && !chart) return 0;
+  return Math.ceil(ins + chart + (ins && chart ? 1 : 0)) + 1;
 }
 
 // 組み方の候補。上から順に試して、A4に収まった最初のものを使う。
@@ -716,13 +725,19 @@ const SCHEDULE_MODES = [
   { compact: true, maxLines: 1 },
 ];
 
-// 2行目の中身。区分（初診・再診）と注意書きを頭に置き、残った文字数だけ診察内容を出す
+// 2行目の中身。区分（初診・再診）と注意書きを頭に置き、残った文字数だけ診察内容を出す。
+// 保険・カルテ番号は右端に回り込ませるので、狭くなるのは1行目だけ
 function scheduleLine2(e, charsPerLine, maxLines) {
   const head = [e.visitKind, e.alert].filter(Boolean).join(" ");
-  const room = charsPerLine * maxLines - (head ? head.length + 1 : 0);
-  const detail = clip(scheduleDetail(e), Math.max(4, room));
-  const len = (head ? head.length + 1 : 0) + detail.length;
-  return { head, detail, lines: len ? Math.min(maxLines, Math.ceil(len / charsPerLine)) : 0 };
+  const headLen = head ? head.length + 1 : 0;
+  const first = Math.max(4, charsPerLine - scheduleRightChars(e) - headLen);
+  const room = first + (maxLines - 1) * charsPerLine;
+  const detail = clip(scheduleDetail(e), room);
+  const over = detail.length - first;
+  // 保険・カルテ番号しか無い人でも、それを置く1行は要る
+  const empty = !headLen && !detail.length && !scheduleRightChars(e);
+  const lines = empty ? 0 : Math.min(maxLines, over > 0 ? 1 + Math.ceil(over / charsPerLine) : 1);
+  return { head, detail, lines };
 }
 
 // 1人ぶんに要る高さ。折り返す行数まで数える。
@@ -780,7 +795,7 @@ function ScheduleEntry({ e, showTime, mode, charsPerLine }) {
       ) : null}
       <div style={{ minWidth: 0, flex: 1 }}>
         {/* 1行目はお名前・カナ・年齢だけ。生年月日は問診票のほうに出ているので、
-            ここは呼び出すときに要るものに絞る。保険とカルテ番号は右端 */}
+            ここは呼び出すときに要るものに絞る */}
         <div style={{ display: "flex", gap: 5, alignItems: "baseline", whiteSpace: "nowrap" }}>
           {/* お名前は縮めない。長いお名前ほど呼び間違えるので、詰まったときに譲るのはカナ */}
           <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{e.name || "—"}</span>
@@ -792,16 +807,17 @@ function ScheduleEntry({ e, showTime, mode, charsPerLine }) {
           {age === null ? null : (
             <span style={{ fontSize: 10.5, color: "#333333", flexShrink: 0 }}>{age}歳</span>
           )}
-          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "#333333", flexShrink: 0 }}>
-            {e.insurance}
-            {e.insurance && e.chart ? "　" : ""}
-            {e.chart ? <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{e.chart}</span> : null}
-          </span>
         </div>
         {/* 2行目は初診・再診と診察内容。枠に余白があるうちは2行使って最後まで出す。
-            72時間の制限があるMAP・問診票で引っかかった方も頭に太字で出す */}
-        {(line2.head || line2.detail) && (
+            72時間の制限があるMAP・問診票で引っかかった方も頭に太字で出す。
+            保険とカルテ番号は右端に浮かせる — 2行に伸びたとき2行目は幅いっぱい使える */}
+        {line2.lines > 0 && (
           <div style={{ fontSize: 10.5, color: "#333333", wordBreak: "break-word" }}>
+            <span style={{ float: "right", paddingLeft: 6, whiteSpace: "nowrap" }}>
+              {e.insurance}
+              {e.insurance && e.chart ? "　" : ""}
+              {e.chart ? <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{e.chart}</span> : null}
+            </span>
             {line2.head ? <span style={{ fontWeight: 700, color: "#000000" }}>{line2.head} </span> : null}
             {line2.detail}
           </div>
