@@ -690,6 +690,11 @@ const SCHEDULE_NAME_PX = 16; // 1行目（お名前・生年月日・保険・�
 const SCHEDULE_LINE_PX = 13; // 2行目（診察内容）の1行
 const SCHEDULE_ROW_PAD_PX = 3; // 枠の上下の余白と罫線
 const SCHEDULE_EMPTY_ROW_PX = 18; // 誰も入っていない枠（時刻だけ）
+// 1つの枠に2人入る日でも1枚に収めるための詰めた組み方。1人1行にして、診察内容は
+// お名前の後ろに続ける（入りきらない分は…で切る）。2人でも 15×2+1 = 31px なので
+// 32枠のA4（1枠あたり32px）に収まる
+const SCHEDULE_COMPACT_PX = 15;
+const SCHEDULE_COMPACT_PAD_PX = 1;
 const SCHEDULE_COL_W = [58, 396, 300];
 // 診察内容が1行に入る文字数（列の幅 − 余白・チェック欄 ÷ 10.5px）
 const SCHEDULE_VISIT_CHARS = 35;
@@ -700,27 +705,58 @@ function scheduleDetail(e) {
   return e.reason || [e.menu, e.detail].filter(Boolean).join("　") || "";
 }
 
-// 1人ぶんに要る高さ。折り返す行数まで数える
-function scheduleEntryPx(e, charsPerLine) {
+// 1人ぶんに要る高さ。折り返す行数まで数える。
+// 詰めた組み方（compact）では診察内容をお名前の後ろに続けて1行にする
+function scheduleEntryPx(e, charsPerLine, compact) {
+  if (compact) return SCHEDULE_COMPACT_PX;
   const detail = [e.alert, scheduleDetail(e)].filter(Boolean).join(" ");
   const lines = detail ? Math.max(1, Math.ceil(detail.length / charsPerLine)) : 0;
   return SCHEDULE_NAME_PX + lines * SCHEDULE_LINE_PX;
 }
 
 // 枠1つに要る高さ。来院とオンラインの高いほうで決まる
-function scheduleRowPx(r) {
-  const sum = (list, chars) => list.reduce((n, e) => n + scheduleEntryPx(e, chars), 0);
+function scheduleRowPx(r, compact) {
+  const sum = (list, chars) => list.reduce((n, e) => n + scheduleEntryPx(e, chars, compact), 0);
   return Math.max(
-    SCHEDULE_EMPTY_ROW_PX,
-    SCHEDULE_ROW_PAD_PX + Math.max(sum(r.visits, SCHEDULE_VISIT_CHARS), sum(r.onlines, SCHEDULE_ONLINE_CHARS))
+    compact ? SCHEDULE_COMPACT_PX : SCHEDULE_EMPTY_ROW_PX,
+    (compact ? SCHEDULE_COMPACT_PAD_PX : SCHEDULE_ROW_PAD_PX) +
+      Math.max(sum(r.visits, SCHEDULE_VISIT_CHARS), sum(r.onlines, SCHEDULE_ONLINE_CHARS))
   );
 }
 
 // 予定表の1人ぶん。枠の時刻と違う時刻の方（薬の受け取りなど刻みが細かい予約）は
 // 時刻を頭に出す。診察内容は問診票のご本人の記入を優先し、まだ届いていなければ
 // 予約のメニューを出す
-function ScheduleEntry({ e, showTime }) {
+function ScheduleEntry({ e, showTime, compact }) {
   const detail = scheduleDetail(e);
+  if (compact) {
+    // 詰めた組み方。1人1行に畳んで、診察内容は残った幅に入るだけ入れる
+    return (
+      <div style={{ display: "flex", gap: 4, alignItems: "baseline", lineHeight: 1.2, whiteSpace: "nowrap" }}>
+        <div style={{ width: 9, height: 9, border: "1px solid #000000", flexShrink: 0 }} />
+        {showTime ? (
+          <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
+        ) : null}
+        <span style={{ fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{e.name || "—"}</span>
+        {e.dob ? (
+          <span style={{ fontSize: 10, color: "#333333", flexShrink: 0 }}>
+            {ageFrom(e.dob) === null ? e.dob : `${ageFrom(e.dob)}歳`}
+          </span>
+        ) : null}
+        <span
+          style={{ fontSize: 10, color: "#333333", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
+        >
+          {e.alert ? <span style={{ fontWeight: 700, color: "#000000" }}>{e.alert} </span> : null}
+          {detail}
+        </span>
+        <span style={{ fontSize: 10, color: "#333333", flexShrink: 0 }}>
+          {e.insurance}
+          {e.insurance && e.chart ? "　" : ""}
+          {e.chart ? <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{e.chart}</span> : null}
+        </span>
+      </div>
+    );
+  }
   return (
     <div style={{ display: "flex", gap: 4, alignItems: "baseline", lineHeight: 1.2 }}>
       <div style={{ width: 10, height: 10, border: "1px solid #000000", flexShrink: 0, marginTop: 2 }} />
@@ -760,11 +796,11 @@ function ScheduleEntry({ e, showTime }) {
 }
 
 // 予定表1ページぶん。画面外に置いて画像化するので、色は白黒印刷でも潰れない濃さにする
-function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, note }) {
+function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, note, compact }) {
   const wd = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
     ? WEEKDAY_JA[new Date(`${dateKey}T00:00:00`).getDay()]
     : "";
-  const cell = { border: "1px solid #999999", padding: "1px 4px", verticalAlign: "top" };
+  const cell = { border: "1px solid #999999", padding: compact ? "0 4px" : "1px 4px", verticalAlign: "top" };
   const head = { ...cell, background: "#EAEAEA", fontWeight: 700, textAlign: "left", fontSize: 11 };
   // 枠の高さはこのページの枠の数で決める。全部そろえて、A4を使い切る
   const rowH = rows.length ? Math.floor(SCHEDULE_BODY_PX / rows.length) : SCHEDULE_BODY_PX;
@@ -840,12 +876,12 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
               </td>
               <td style={{ ...cell, background: r.closed ? "#EDEDED" : "#FFFFFF" }}>
                 {r.visits.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} compact={compact} />
                 ))}
               </td>
               <td style={{ ...cell, background: "#F7F7F7" }}>
                 {r.onlines.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} compact={compact} />
                 ))}
               </td>
             </tr>
@@ -871,6 +907,7 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
         <span>
           ※ 空欄はその時間に予約が入っていないことを表します（灰色の時間は枠を閉じています）。
           カルテ番号は過去の受付・問診票から引いたものです。
+          オンラインは同じ方の最新の問診票のみ（予約を取り直した場合、前の分は出ません）。
         </span>
         <span style={{ whiteSpace: "nowrap" }}>
           {note ? `${note}　` : ""}
@@ -1089,8 +1126,18 @@ export default function StaffView() {
     } else {
       const eff = (r) => r.reserve_at || r.created_at;
       const jstDate = (iso) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
+      // pillorder は予約をキャンセルしても問診票を消さない。取り直すと書き直しになるので、
+      // キャンセルした予約の分が古い時刻に残り続ける（予定表の枠が二重になる原因）。
+      // 同じ方（生年月日＋電話）は最後に書いた1通だけを生かす。消してはいないので、
+      // 古い通は生年月日＋電話の検索から今までどおり引ける
+      const latest = new Map();
+      for (const r of mData || []) {
+        const k = `${r.dob}|${r.phone}`;
+        const prev = latest.get(k);
+        if (!prev || new Date(r.created_at) > new Date(prev.created_at)) latest.set(k, r);
+      }
       setMonshinRows(
-        (mData || [])
+        [...latest.values()]
           .filter((r) => jstDate(eff(r)) === dateKey)
           .sort((a, b) => new Date(eff(a)) - new Date(eff(b)))
       );
@@ -1529,23 +1576,30 @@ export default function StaffView() {
   // ページ分け。枠の高さをそろえるので、いちばん人が多い枠が「字を小さくせずに」
   // 収まる高さを基準に1ページの枠数を決め、ページ間で枠数が偏らないように均す。
   // 高さ自体は ScheduleSheet がその枠数から出す（＝どのページもA4を使い切る）
-  const schedulePages = useMemo(() => {
+  const scheduleLayout = useMemo(() => {
     const rows = scheduleGrid.rows;
-    if (!rows.length) return [];
+    if (!rows.length) return { pages: [], compact: false };
     // 枠の高さはページ内で共通なので、1枠増やすと全部の枠が低くなる。
     // 「いちばん高さが要る枠 × 枠数」が1ページに収まるかで判定する
-    const fits = (pages) =>
-      pages.every((p) => p.length * Math.max(...p.map(scheduleRowPx)) <= SCHEDULE_BODY_PX);
-    // 枚数を1枚から増やしていき、最初に収まった分け方を使う。
-    // 均等に割るので、最後のページだけ数枠しかなくて間延びする、ということが起きない
-    for (let count = 1; count <= rows.length; count++) {
+    const fits = (pages, compact) =>
+      pages.every((p) => p.length * Math.max(...p.map((r) => scheduleRowPx(r, compact))) <= SCHEDULE_BODY_PX);
+    const split = (count) => {
       const per = Math.ceil(rows.length / count);
       const pages = [];
       for (let i = 0; i < rows.length; i += per) pages.push(rows.slice(i, i + per));
-      if (fits(pages)) return pages;
+      return pages;
+    };
+    // 枚数を1枚から増やしていき、最初に収まった分け方を使う。同じ枚数なら
+    // 2行組み（診察内容が折り返せる）を優先し、入らないときだけ1人1行に畳む。
+    // 均等に割るので、最後のページだけ数枠しかなくて間延びする、ということが起きない
+    for (let count = 1; count <= rows.length; count++) {
+      const pages = split(count);
+      if (fits(pages, false)) return { pages, compact: false };
+      if (fits(pages, true)) return { pages, compact: true };
     }
-    return rows.map((r) => [r]);
+    return { pages: rows.map((r) => [r]), compact: true };
   }, [scheduleGrid]);
+  const schedulePages = scheduleLayout.pages;
 
   // 検索結果を1人ぶんにまとめる。
   // カルテ番号が付いていればそれが同一人物の印なので、氏名の書き方が回ごとに
@@ -3002,10 +3056,10 @@ export default function StaffView() {
         </div>
       )}
 
-      {/* 1日の予定表 印刷レイアウト（画面外・時刻順／26行ずつ）。
+      {/* 1日の予定表 印刷レイアウト（画面外・時刻順／A4 1枚に入る枠数ずつ）。
           問診票の一括印刷と同じで、親は画面外に置くだけにして各ページを display:none で隠す */}
       {schedulePages.length > 0 && (
-        <div ref={scheduleRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
+        <div ref={scheduleRef} style={{ position: "fixed", left: "-10000px", top: 0, width: SCHEDULE_SHEET_W }}>
           {schedulePages.map((rows, i) => (
             <div className="schedule-sheet" style={{ display: "none" }} key={i}>
               <ScheduleSheet
@@ -3016,6 +3070,7 @@ export default function StaffView() {
                 visitCount={scheduleCounts.visit}
                 onlineCount={scheduleCounts.online}
                 note={scheduleGrid.fromSettings ? "" : scheduleGrid.closedDay ? "休診日" : "来院の枠設定なし"}
+                compact={scheduleLayout.compact}
               />
             </div>
           ))}
