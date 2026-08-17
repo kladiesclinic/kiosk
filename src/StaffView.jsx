@@ -272,6 +272,14 @@ const INSURANCE_BADGE = {
 const INSURANCE_LABEL = Object.fromEntries(
   Object.entries(INSURANCE_BADGE).map(([id, b]) => [id, b.label])
 );
+// 予定表用の短い表記。1行目の右端に入れるので、長いと生年月日を押し出す
+const INSURANCE_SHORT = {
+  mynumber: "マイナ",
+  hokensho: "資格確認",
+  self_pay: "自費",
+  overseas: "海外保険",
+  forgot: "証忘れ",
+};
 
 function InsuranceTag({ id }) {
   const badge = INSURANCE_BADGE[id];
@@ -363,7 +371,7 @@ function jaPart(v) {
 }
 
 // 予定表の1行に収まる長さに切る（切ったことが分かるように…を付ける）
-function clip(s, max = 40) {
+function clip(s, max = 30) {
   const t = String(s || "").trim();
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
@@ -675,31 +683,26 @@ const SCHEDULE_SHEET_W = 794;
 const SCHEDULE_SHEET_H = Math.round((SCHEDULE_SHEET_W * 281) / 194); // 1150
 // 見出し・表の見出し行・欄外の注記を引いた、枠に使える高さ
 const SCHEDULE_BODY_PX = 1035;
-// 高さの見積もりに使う実測値。字を小さくして詰めることはしない — 入らない日は
-// ページを分ける。診察内容は折り返すので、列の幅から何行になるかを数えて足す
-const SCHEDULE_NAME_PX = 19; // お名前の行
-const SCHEDULE_LINE_PX = 15; // 診察内容の1行
-const SCHEDULE_ROW_PAD_PX = 8; // 枠の上下の余白
-const SCHEDULE_EMPTY_ROW_PX = 26; // 誰も入っていない枠（時刻だけ）
+// 高さの見積もりに使う実測値。字は小さくせず、行間とセルの余白を詰めて枠を低くする。
+// 1行目に保険とカルテ番号を右寄せで入れて、2行目は診察内容だけにした
+// （2行目の右半分が空いていたぶん、枠が1つあたり25pxほど余っていた）
+const SCHEDULE_NAME_PX = 16; // 1行目（お名前・生年月日・保険・カルテ）
+const SCHEDULE_LINE_PX = 13; // 2行目（診察内容）の1行
+const SCHEDULE_ROW_PAD_PX = 3; // 枠の上下の余白と罫線
+const SCHEDULE_EMPTY_ROW_PX = 18; // 誰も入っていない枠（時刻だけ）
 const SCHEDULE_COL_W = [58, 396, 300];
-// 診察内容が1行に入る文字数（列の幅 − 余白・チェック欄 ÷ 11px）
-const SCHEDULE_VISIT_CHARS = 33;
-const SCHEDULE_ONLINE_CHARS = 24;
+// 診察内容が1行に入る文字数（列の幅 − 余白・チェック欄 ÷ 10.5px）
+const SCHEDULE_VISIT_CHARS = 35;
+const SCHEDULE_ONLINE_CHARS = 26;
 
-// 予定表の2行目に出す文字列。見積もりと表示で同じものを使う
+// 予定表の2行目。診察内容だけを置く（保険とカルテ番号は1行目の右端へ）
 function scheduleDetail(e) {
-  return [
-    e.reason || [e.menu, e.detail].filter(Boolean).join("　"),
-    e.insurance,
-    e.chart ? `カルテ ${e.chart}` : "",
-  ]
-    .filter(Boolean)
-    .join("／");
+  return e.reason || [e.menu, e.detail].filter(Boolean).join("　") || "";
 }
 
 // 1人ぶんに要る高さ。折り返す行数まで数える
 function scheduleEntryPx(e, charsPerLine) {
-  const detail = scheduleDetail(e);
+  const detail = [e.alert, scheduleDetail(e)].filter(Boolean).join(" ");
   const lines = detail ? Math.max(1, Math.ceil(detail.length / charsPerLine)) : 0;
   return SCHEDULE_NAME_PX + lines * SCHEDULE_LINE_PX;
 }
@@ -719,27 +722,38 @@ function scheduleRowPx(r) {
 function ScheduleEntry({ e, showTime }) {
   const detail = scheduleDetail(e);
   return (
-    <div style={{ display: "flex", gap: 5, alignItems: "baseline", padding: "1px 0" }}>
-      <div style={{ width: 11, height: 11, border: "1px solid #000000", flexShrink: 0, marginTop: 2 }} />
+    <div style={{ display: "flex", gap: 4, alignItems: "baseline", lineHeight: 1.2 }}>
+      <div style={{ width: 10, height: 10, border: "1px solid #000000", flexShrink: 0, marginTop: 2 }} />
       {showTime ? (
-        <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
+        <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
       ) : null}
-      <div style={{ minWidth: 0, flex: 1, lineHeight: 1.3 }}>
-        <div style={{ whiteSpace: "nowrap" }}>
-          <span style={{ fontWeight: 700, fontSize: 13 }}>{e.name || "—"}</span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        {/* 1行目は右端まで使う。保険とカルテ番号を右寄せにすると、2行目が
+            診察内容だけになって枠が低くて済む */}
+        <div style={{ display: "flex", gap: 5, alignItems: "baseline", whiteSpace: "nowrap" }}>
+          <span style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis" }}>
+            {e.name || "—"}
+          </span>
           {e.dob ? (
-            <span style={{ fontSize: 11, color: "#333333", marginLeft: 5 }}>
+            <span style={{ fontSize: 10.5, color: "#333333", flexShrink: 0 }}>
               {e.dob}
               {ageFrom(e.dob) === null ? "" : `（${ageFrom(e.dob)}）`}
             </span>
           ) : null}
-          {/* 72時間の制限があるMAP、問診票で引っかかった方は先に目に入るようにする */}
-          {e.alert ? <span style={{ fontWeight: 700, fontSize: 12, marginLeft: 5 }}>{e.alert}</span> : null}
+          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "#333333", flexShrink: 0 }}>
+            {e.insurance}
+            {e.insurance && e.chart ? "　" : ""}
+            {e.chart ? <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{e.chart}</span> : null}
+          </span>
         </div>
-        {/* 診察内容は折り返して出す。途中で切ると何の診察か分からなくなる */}
-        {detail ? (
-          <div style={{ fontSize: 11, color: "#333333", wordBreak: "break-word" }}>{detail}</div>
-        ) : null}
+        {/* 2行目は診察内容。途中で切ると何の診察か分からなくなるので折り返す。
+            72時間の制限があるMAP・問診票で引っかかった方はその頭に太字で出す */}
+        {(e.alert || detail) && (
+          <div style={{ fontSize: 10.5, color: "#333333", wordBreak: "break-word" }}>
+            {e.alert ? <span style={{ fontWeight: 700, color: "#000000" }}>{e.alert} </span> : null}
+            {detail}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -750,7 +764,7 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
   const wd = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
     ? WEEKDAY_JA[new Date(`${dateKey}T00:00:00`).getDay()]
     : "";
-  const cell = { border: "1px solid #999999", padding: "3px 5px", verticalAlign: "top" };
+  const cell = { border: "1px solid #999999", padding: "1px 4px", verticalAlign: "top" };
   const head = { ...cell, background: "#EAEAEA", fontWeight: 700, textAlign: "left", fontSize: 11 };
   // 枠の高さはこのページの枠の数で決める。全部そろえて、A4を使い切る
   const rowH = rows.length ? Math.floor(SCHEDULE_BODY_PX / rows.length) : SCHEDULE_BODY_PX;
@@ -1448,7 +1462,7 @@ export default function StaffView() {
           detail: detail === "—" ? "" : detail,
           // ご本人が書いた受診理由。届いていなければ予約のメニューを出す
           reason: reasonFromIntake(form),
-          insurance: INSURANCE_LABEL[b.insurance] || "",
+          insurance: INSURANCE_SHORT[b.insurance] || "",
           alert: map ? "MAP" : "",
         };
       });
