@@ -370,8 +370,9 @@ function jaPart(v) {
   return (i >= 0 ? s.slice(i + 1) : s).trim();
 }
 
-// 予定表の1行に収まる長さに切る（切ったことが分かるように…を付ける）
-function clip(s, max = 30) {
+// 予定表の1行に収まる長さに切る（切ったことが分かるように…を付ける）。
+// 何文字入るかは列の幅と行数で変わるので、切るのは組む直前まで待つ
+function clip(s, max) {
   const t = String(s || "").trim();
   return t.length > max ? `${t.slice(0, max)}…` : t;
 }
@@ -387,14 +388,14 @@ function reasonFromIntake(form) {
     pick(/その他の内容|Other, details/),
     pick(/ご希望のお薬|Refill requested/),
   ].filter((s) => s && !/^未質問/.test(s));
-  return clip([...new Set(parts)].join("　"));
+  return [...new Set(parts)].join("　");
 }
 
 // オンライン診療の問診票から同じもの（回答は日本語のまま入っている）
 function reasonFromMonshin(row) {
   const rows = row?.answers || [];
   const a = rows.find((r) => r?.qid === "reason") || rows.find((r) => /いかがなさいましたか|受診理由/.test(r?.q_ja || ""));
-  return clip(a?.a_ja);
+  return String(a?.a_ja || "").trim();
 }
 
 // 診察の区分表示（初診 / 再診・○○）。
@@ -707,21 +708,36 @@ function scheduleDetail(e) {
   return e.reason || [e.menu, e.detail].filter(Boolean).join("　") || "";
 }
 
+// 組み方の候補。上から順に試して、A4に収まった最初のものを使う。
+// 余白があるうちは2行使って診察内容を最後まで出し、入らなくなってから削る
+const SCHEDULE_MODES = [
+  { compact: false, maxLines: 2 },
+  { compact: false, maxLines: 1 },
+  { compact: true, maxLines: 1 },
+];
+
+// 2行目の中身。区分（初診・再診）と注意書きを頭に置き、残った文字数だけ診察内容を出す
+function scheduleLine2(e, charsPerLine, maxLines) {
+  const head = [e.visitKind, e.alert].filter(Boolean).join(" ");
+  const room = charsPerLine * maxLines - (head ? head.length + 1 : 0);
+  const detail = clip(scheduleDetail(e), Math.max(4, room));
+  const len = (head ? head.length + 1 : 0) + detail.length;
+  return { head, detail, lines: len ? Math.min(maxLines, Math.ceil(len / charsPerLine)) : 0 };
+}
+
 // 1人ぶんに要る高さ。折り返す行数まで数える。
 // 詰めた組み方（compact）では診察内容をお名前の後ろに続けて1行にする
-function scheduleEntryPx(e, charsPerLine, compact) {
-  if (compact) return SCHEDULE_COMPACT_PX;
-  const detail = [e.alert, scheduleDetail(e)].filter(Boolean).join(" ");
-  const lines = detail ? Math.max(1, Math.ceil(detail.length / charsPerLine)) : 0;
-  return SCHEDULE_NAME_PX + lines * SCHEDULE_LINE_PX;
+function scheduleEntryPx(e, charsPerLine, mode) {
+  if (mode.compact) return SCHEDULE_COMPACT_PX;
+  return SCHEDULE_NAME_PX + scheduleLine2(e, charsPerLine, mode.maxLines).lines * SCHEDULE_LINE_PX;
 }
 
 // 枠1つに要る高さ。来院とオンラインの高いほうで決まる
-function scheduleRowPx(r, compact) {
-  const sum = (list, chars) => list.reduce((n, e) => n + scheduleEntryPx(e, chars, compact), 0);
+function scheduleRowPx(r, mode) {
+  const sum = (list, chars) => list.reduce((n, e) => n + scheduleEntryPx(e, chars, mode), 0);
   return Math.max(
-    compact ? SCHEDULE_COMPACT_PX : SCHEDULE_EMPTY_ROW_PX,
-    (compact ? SCHEDULE_COMPACT_PAD_PX : SCHEDULE_ROW_PAD_PX) +
+    mode.compact ? SCHEDULE_COMPACT_PX : SCHEDULE_EMPTY_ROW_PX,
+    (mode.compact ? SCHEDULE_COMPACT_PAD_PX : SCHEDULE_ROW_PAD_PX) +
       Math.max(sum(r.visits, SCHEDULE_VISIT_CHARS), sum(r.onlines, SCHEDULE_ONLINE_CHARS))
   );
 }
@@ -729,9 +745,10 @@ function scheduleRowPx(r, compact) {
 // 予定表の1人ぶん。枠の時刻と違う時刻の方（薬の受け取りなど刻みが細かい予約）は
 // 時刻を頭に出す。診察内容は問診票のご本人の記入を優先し、まだ届いていなければ
 // 予約のメニューを出す
-function ScheduleEntry({ e, showTime, compact }) {
-  const detail = scheduleDetail(e);
-  if (compact) {
+function ScheduleEntry({ e, showTime, mode, charsPerLine }) {
+  const age = ageFrom(e.dob);
+  const line2 = scheduleLine2(e, charsPerLine, mode.maxLines);
+  if (mode.compact) {
     // 詰めた組み方。1人1行に畳んで、診察内容は残った幅に入るだけ入れる
     return (
       <div style={{ display: "flex", gap: 4, alignItems: "baseline", lineHeight: 1.2, whiteSpace: "nowrap" }}>
@@ -740,16 +757,12 @@ function ScheduleEntry({ e, showTime, compact }) {
           <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
         ) : null}
         <span style={{ fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{e.name || "—"}</span>
-        {e.dob ? (
-          <span style={{ fontSize: 10, color: "#333333", flexShrink: 0 }}>
-            {ageFrom(e.dob) === null ? e.dob : `${ageFrom(e.dob)}歳`}
-          </span>
-        ) : null}
+        {age === null ? null : <span style={{ fontSize: 10, color: "#333333", flexShrink: 0 }}>{age}歳</span>}
         <span
           style={{ fontSize: 10, color: "#333333", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
         >
-          {e.alert ? <span style={{ fontWeight: 700, color: "#000000" }}>{e.alert} </span> : null}
-          {detail}
+          {line2.head ? <span style={{ fontWeight: 700, color: "#000000" }}>{line2.head} </span> : null}
+          {line2.detail}
         </span>
         <span style={{ fontSize: 10, color: "#333333", flexShrink: 0 }}>
           {e.insurance}
@@ -766,30 +779,31 @@ function ScheduleEntry({ e, showTime, compact }) {
         <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
       ) : null}
       <div style={{ minWidth: 0, flex: 1 }}>
-        {/* 1行目は右端まで使う。保険とカルテ番号を右寄せにすると、2行目が
-            診察内容だけになって枠が低くて済む */}
+        {/* 1行目はお名前・カナ・年齢だけ。生年月日は問診票のほうに出ているので、
+            ここは呼び出すときに要るものに絞る。保険とカルテ番号は右端 */}
         <div style={{ display: "flex", gap: 5, alignItems: "baseline", whiteSpace: "nowrap" }}>
-          {/* お名前は縮めない。長いお名前ほど呼び間違えるので、詰まったときに
-              譲るのは生年月日のほう（年齢は残る） */}
+          {/* お名前は縮めない。長いお名前ほど呼び間違えるので、詰まったときに譲るのはカナ */}
           <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{e.name || "—"}</span>
-          {e.dob ? (
-            <span style={{ fontSize: 10.5, color: "#333333", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
-              {e.dob}
-              {ageFrom(e.dob) === null ? "" : `（${ageFrom(e.dob)}）`}
+          {e.kana ? (
+            <span style={{ fontSize: 10.5, color: "#555555", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+              {e.kana}
             </span>
           ) : null}
+          {age === null ? null : (
+            <span style={{ fontSize: 10.5, color: "#333333", flexShrink: 0 }}>{age}歳</span>
+          )}
           <span style={{ marginLeft: "auto", fontSize: 10.5, color: "#333333", flexShrink: 0 }}>
             {e.insurance}
             {e.insurance && e.chart ? "　" : ""}
             {e.chart ? <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{e.chart}</span> : null}
           </span>
         </div>
-        {/* 2行目は診察内容。途中で切ると何の診察か分からなくなるので折り返す。
-            72時間の制限があるMAP・問診票で引っかかった方はその頭に太字で出す */}
-        {(e.alert || detail) && (
+        {/* 2行目は初診・再診と診察内容。枠に余白があるうちは2行使って最後まで出す。
+            72時間の制限があるMAP・問診票で引っかかった方も頭に太字で出す */}
+        {(line2.head || line2.detail) && (
           <div style={{ fontSize: 10.5, color: "#333333", wordBreak: "break-word" }}>
-            {e.alert ? <span style={{ fontWeight: 700, color: "#000000" }}>{e.alert} </span> : null}
-            {detail}
+            {line2.head ? <span style={{ fontWeight: 700, color: "#000000" }}>{line2.head} </span> : null}
+            {line2.detail}
           </div>
         )}
       </div>
@@ -798,11 +812,11 @@ function ScheduleEntry({ e, showTime, compact }) {
 }
 
 // 予定表1ページぶん。画面外に置いて画像化するので、色は白黒印刷でも潰れない濃さにする
-function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, note, compact }) {
+function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, note, mode }) {
   const wd = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
     ? WEEKDAY_JA[new Date(`${dateKey}T00:00:00`).getDay()]
     : "";
-  const cell = { border: "1px solid #999999", padding: compact ? "0 4px" : "1px 4px", verticalAlign: "top" };
+  const cell = { border: "1px solid #999999", padding: mode.compact ? "0 4px" : "1px 4px", verticalAlign: "top" };
   const head = { ...cell, background: "#EAEAEA", fontWeight: 700, textAlign: "left", fontSize: 11 };
   // 枠の高さはこのページの枠の数で決める。全部そろえて、A4を使い切る
   const rowH = rows.length ? Math.floor(SCHEDULE_BODY_PX / rows.length) : SCHEDULE_BODY_PX;
@@ -878,12 +892,12 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
               </td>
               <td style={{ ...cell, background: r.closed ? "#EDEDED" : "#FFFFFF" }}>
                 {r.visits.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} compact={compact} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} charsPerLine={SCHEDULE_VISIT_CHARS} />
                 ))}
               </td>
               <td style={{ ...cell, background: "#F7F7F7" }}>
                 {r.onlines.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} compact={compact} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} charsPerLine={SCHEDULE_ONLINE_CHARS} />
                 ))}
               </td>
             </tr>
@@ -909,7 +923,8 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
         <span>
           ※ 空欄はその時間に予約が入っていないことを表します（灰色の時間は枠を閉じています）。
           カルテ番号は過去の受付・問診票から引いたものです。
-          オンラインは同じ方の最新の問診票のみ（予約を取り直した場合、前の分は出ません）。
+          オンラインは問診票が届いた方のみ、同じ日に2通ある方は新しいほうだけを出しています。
+          オンラインの「再診」は当院の受診歴から引いたもので、空欄は歴が見つからなかった方です。
         </span>
         <span style={{ whiteSpace: "nowrap" }}>
           {note ? `${note}　` : ""}
@@ -1129,20 +1144,16 @@ export default function StaffView() {
       const eff = (r) => r.reserve_at || r.created_at;
       const jstDate = (iso) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
       // pillorder は予約をキャンセルしても問診票を消さない。取り直すと書き直しになるので、
-      // キャンセルした予約の分が古い時刻に残り続ける（予定表の枠が二重になる原因）。
-      // 同じ方（生年月日＋電話）は最後に書いた1通だけを生かす。消してはいないので、
-      // 古い通は生年月日＋電話の検索から今までどおり引ける
+      // 同じ日に同じ方（生年月日＋電話）の問診票が2通並ぶ。新しいほうだけを生かす。
+      // 絞るのは同じ日の中だけ — 別の日の予約は取り直しなのか2件目なのか区別が
+      // つかず、日をまたいで消すと生きている予約が予定表から落ちる
       const latest = new Map();
-      for (const r of mData || []) {
+      for (const r of (mData || []).filter((r) => jstDate(eff(r)) === dateKey)) {
         const k = `${r.dob}|${r.phone}`;
         const prev = latest.get(k);
         if (!prev || new Date(r.created_at) > new Date(prev.created_at)) latest.set(k, r);
       }
-      setMonshinRows(
-        [...latest.values()]
-          .filter((r) => jstDate(eff(r)) === dateKey)
-          .sort((a, b) => new Date(eff(a)) - new Date(eff(b)))
-      );
+      setMonshinRows([...latest.values()].sort((a, b) => new Date(eff(a)) - new Date(eff(b))));
     }
 
     // 2回目以降の来院・予約では、過去の受付・問診票に入れたカルテ番号を自動で
@@ -1513,24 +1524,32 @@ export default function StaffView() {
           reason: reasonFromIntake(form),
           insurance: INSURANCE_SHORT[b.insurance] || "",
           alert: map ? "MAP" : "",
+          // ご予約のときに選んでもらった区分。初診はカルテも問診票も新しく作る
+          visitKind: VISIT_KIND_BADGE[b.visit_kind]?.label || "",
         };
       });
-    const online = monshinRows.map((m) => ({
+    const online = monshinRows.map((m) => {
+      const chart = m.chart_number || pastCharts.get(chartMatchKey(m.name, m.dob)) || "";
+      return {
       key: `m:${m.id}`,
       kind: "online",
       // 予約時刻が入っていない記入は受信時刻の位置に置く（一覧と同じ扱い）
       time: m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at),
       name: m.name || "",
-      kana: "",
+      kana: m.kana || "",
       dob: m.dob || "",
-      chart: m.chart_number || pastCharts.get(chartMatchKey(m.name, m.dob)) || "",
+      chart,
       // 列そのものが「オンライン」なので、メニュー名は繰り返さない
       menu: "",
       detail: "",
       reason: reasonFromMonshin(m),
       insurance: "",
       alert: (m.answers || []).some((a) => a.flag) ? "要注意" : "",
-    }));
+      // pillorder は初診・再診をこちらに渡してこない。当院のカルテ番号が引けた方は
+      // 受診歴があるので再診と分かるが、引けないだけでは初診とは言い切れないので空
+      visitKind: chart ? "再診" : "",
+      };
+    });
     return [...visits, ...online].sort((a, b) =>
       a.time < b.time ? -1 : a.time > b.time ? 1 : 0
     );
@@ -1580,11 +1599,11 @@ export default function StaffView() {
   // 高さ自体は ScheduleSheet がその枠数から出す（＝どのページもA4を使い切る）
   const scheduleLayout = useMemo(() => {
     const rows = scheduleGrid.rows;
-    if (!rows.length) return { pages: [], compact: false };
+    if (!rows.length) return { pages: [], mode: SCHEDULE_MODES[0] };
     // 枠の高さはページ内で共通なので、1枠増やすと全部の枠が低くなる。
     // 「いちばん高さが要る枠 × 枠数」が1ページに収まるかで判定する
-    const fits = (pages, compact) =>
-      pages.every((p) => p.length * Math.max(...p.map((r) => scheduleRowPx(r, compact))) <= SCHEDULE_BODY_PX);
+    const fits = (pages, mode) =>
+      pages.every((p) => p.length * Math.max(...p.map((r) => scheduleRowPx(r, mode))) <= SCHEDULE_BODY_PX);
     const split = (count) => {
       const per = Math.ceil(rows.length / count);
       const pages = [];
@@ -1592,14 +1611,13 @@ export default function StaffView() {
       return pages;
     };
     // 枚数を1枚から増やしていき、最初に収まった分け方を使う。同じ枚数なら
-    // 2行組み（診察内容が折り返せる）を優先し、入らないときだけ1人1行に畳む。
+    // 診察内容を多く出せる組み方から試す（2行 → 1行 → 1人1行に畳む）。
     // 均等に割るので、最後のページだけ数枠しかなくて間延びする、ということが起きない
     for (let count = 1; count <= rows.length; count++) {
       const pages = split(count);
-      if (fits(pages, false)) return { pages, compact: false };
-      if (fits(pages, true)) return { pages, compact: true };
+      for (const mode of SCHEDULE_MODES) if (fits(pages, mode)) return { pages, mode };
     }
-    return { pages: rows.map((r) => [r]), compact: true };
+    return { pages: rows.map((r) => [r]), mode: SCHEDULE_MODES[2] };
   }, [scheduleGrid]);
   const schedulePages = scheduleLayout.pages;
 
@@ -3072,7 +3090,7 @@ export default function StaffView() {
                 visitCount={scheduleCounts.visit}
                 onlineCount={scheduleCounts.online}
                 note={scheduleGrid.fromSettings ? "" : scheduleGrid.closedDay ? "休診日" : "来院の枠設定なし"}
-                compact={scheduleLayout.compact}
+                mode={scheduleLayout.mode}
               />
             </div>
           ))}
