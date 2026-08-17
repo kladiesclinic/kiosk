@@ -683,7 +683,7 @@ const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
 const SCHEDULE_SHEET_W = 794;
 const SCHEDULE_SHEET_H = Math.round((SCHEDULE_SHEET_W * 281) / 194); // 1150
 // 見出し・表の見出し行・欄外の注記を引いた、枠に使える高さ
-const SCHEDULE_BODY_PX = 1035;
+const SCHEDULE_BODY_PX = 1044;
 // 高さの見積もりに使う実測値。字は小さくせず、行間とセルの余白を詰めて枠を低くする。
 // 1行目に保険とカルテ番号を右寄せで入れて、2行目は診察内容だけにした
 // （2行目の右半分が空いていたぶん、枠が1つあたり25pxほど余っていた）
@@ -976,13 +976,7 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
           gap: 12,
         }}
       >
-        <span>
-          ※ 空欄はその時間に予約が入っていないことを表します（灰色の時間は枠を閉じています）。
-          カルテ番号は過去の受付・問診票から引いたものです。
-          オンラインは問診票が届いた方のみ、同じ日に2通ある方は新しいほうだけを出しています。
-          オンラインの「再診」は当院の受診歴から引いたもので、空欄は歴が見つからなかった方です。
-        </span>
-        <span style={{ whiteSpace: "nowrap" }}>
+        <span style={{ whiteSpace: "nowrap", marginLeft: "auto" }}>
           {note ? `${note}　` : ""}
           {todayKey()} 印刷
         </span>
