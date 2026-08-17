@@ -695,10 +695,12 @@ const SCHEDULE_EMPTY_ROW_PX = 18; // 誰も入っていない枠（時刻だけ�
 // 32枠のA4（1枠あたり32px）に収まる
 const SCHEDULE_COMPACT_PX = 15;
 const SCHEDULE_COMPACT_PAD_PX = 1;
-const SCHEDULE_COL_W = [58, 396, 300];
+// オンラインは保険の表示が無いぶん狭くしていたが、カタカナのお名前だと
+// 生年月日とカルテ番号に押されて入らなくなるので、来院から30px回す
+const SCHEDULE_COL_W = [58, 366, 330];
 // 診察内容が1行に入る文字数（列の幅 − 余白・チェック欄 ÷ 10.5px）
-const SCHEDULE_VISIT_CHARS = 35;
-const SCHEDULE_ONLINE_CHARS = 26;
+const SCHEDULE_VISIT_CHARS = 32;
+const SCHEDULE_ONLINE_CHARS = 29;
 
 // 予定表の2行目。診察内容だけを置く（保険とカルテ番号は1行目の右端へ）
 function scheduleDetail(e) {
@@ -767,11 +769,11 @@ function ScheduleEntry({ e, showTime, compact }) {
         {/* 1行目は右端まで使う。保険とカルテ番号を右寄せにすると、2行目が
             診察内容だけになって枠が低くて済む */}
         <div style={{ display: "flex", gap: 5, alignItems: "baseline", whiteSpace: "nowrap" }}>
-          <span style={{ fontWeight: 700, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis" }}>
-            {e.name || "—"}
-          </span>
+          {/* お名前は縮めない。長いお名前ほど呼び間違えるので、詰まったときに
+              譲るのは生年月日のほう（年齢は残る） */}
+          <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{e.name || "—"}</span>
           {e.dob ? (
-            <span style={{ fontSize: 10.5, color: "#333333", flexShrink: 0 }}>
+            <span style={{ fontSize: 10.5, color: "#333333", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
               {e.dob}
               {ageFrom(e.dob) === null ? "" : `（${ageFrom(e.dob)}）`}
             </span>
