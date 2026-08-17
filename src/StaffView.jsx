@@ -699,9 +699,27 @@ const SCHEDULE_COMPACT_PAD_PX = 1;
 // オンラインは保険の表示が無いぶん狭くしていたが、カタカナのお名前だと
 // 生年月日とカルテ番号に押されて入らなくなるので、来院から30px回す
 const SCHEDULE_COL_W = [58, 366, 330];
-// 診察内容が1行に入る文字数（列の幅 − 余白・チェック欄 ÷ 10.5px）
-const SCHEDULE_VISIT_CHARS = 32;
-const SCHEDULE_ONLINE_CHARS = 29;
+// 列の中で文字に使える幅（列の幅 − セルの余白8 − チェック欄と間隔14）と、
+// 診察内容が1行に入る全角の文字数（10.5pxで割ったもの）
+const SCHEDULE_VISIT_COL = { px: SCHEDULE_COL_W[1] - 22, chars: 32 };
+const SCHEDULE_ONLINE_COL = { px: SCHEDULE_COL_W[2] - 22, chars: 29 };
+
+// 文字の幅のおよそ。半角（英数記号・半角カナ）は全角のおよそ0.55倍
+function textPx(s, size) {
+  let w = 0;
+  for (const ch of String(s || "")) w += /[\x20-\x7E｡-ﾟ]/.test(ch) ? size * 0.55 : size;
+  return w;
+}
+
+// 1行目（お名前・カナ・年齢）に要る行数。折り返してよい日はカナが次の行へ回る
+function scheduleNameLines(e, col, maxNameLines) {
+  const age = ageFrom(e.dob);
+  const w =
+    textPx(e.name || "—", 13) +
+    (e.kana ? 5 + textPx(e.kana, 10.5) : 0) +
+    (age === null ? 0 : 5 + textPx(`${age}歳`, 10.5));
+  return Math.min(maxNameLines, Math.max(1, Math.ceil(w / col.px)));
+}
 
 // 予定表の2行目。区分と診察内容を置く（保険とカルテ番号はその右端へ回り込ませる）
 function scheduleDetail(e) {
@@ -718,51 +736,57 @@ function scheduleRightChars(e) {
 }
 
 // 組み方の候補。上から順に試して、A4に収まった最初のものを使う。
-// 余白があるうちは2行使って診察内容を最後まで出し、入らなくなってから削る
+// 余白があるうちはお名前・カナを折り返し、診察内容も2行使って最後まで出す。
+// 入らなくなってから、内容 → カナ の順に削る（お名前は最後まで削らない）
 const SCHEDULE_MODES = [
-  { compact: false, maxLines: 2 },
-  { compact: false, maxLines: 1 },
-  { compact: true, maxLines: 1 },
+  { compact: false, maxLines: 2, nameLines: 2 },
+  { compact: false, maxLines: 1, nameLines: 2 },
+  { compact: false, maxLines: 1, nameLines: 1 },
+  { compact: true, maxLines: 1, nameLines: 1 },
 ];
 
 // 2行目の中身。区分（初診・再診）と注意書きを頭に置き、残った文字数だけ診察内容を出す。
 // 保険・カルテ番号は右端に回り込ませるので、狭くなるのは1行目だけ
-function scheduleLine2(e, charsPerLine, maxLines) {
+function scheduleLine2(e, col, maxLines) {
   const head = [e.visitKind, e.alert].filter(Boolean).join(" ");
   const headLen = head ? head.length + 1 : 0;
-  const first = Math.max(4, charsPerLine - scheduleRightChars(e) - headLen);
-  const room = first + (maxLines - 1) * charsPerLine;
+  const first = Math.max(4, col.chars - scheduleRightChars(e) - headLen);
+  const room = first + (maxLines - 1) * col.chars;
   const detail = clip(scheduleDetail(e), room);
   const over = detail.length - first;
   // 保険・カルテ番号しか無い人でも、それを置く1行は要る
   const empty = !headLen && !detail.length && !scheduleRightChars(e);
-  const lines = empty ? 0 : Math.min(maxLines, over > 0 ? 1 + Math.ceil(over / charsPerLine) : 1);
+  const lines = empty ? 0 : Math.min(maxLines, over > 0 ? 1 + Math.ceil(over / col.chars) : 1);
   return { head, detail, lines };
 }
 
 // 1人ぶんに要る高さ。折り返す行数まで数える。
 // 詰めた組み方（compact）では診察内容をお名前の後ろに続けて1行にする
-function scheduleEntryPx(e, charsPerLine, mode) {
+function scheduleEntryPx(e, col, mode) {
   if (mode.compact) return SCHEDULE_COMPACT_PX;
-  return SCHEDULE_NAME_PX + scheduleLine2(e, charsPerLine, mode.maxLines).lines * SCHEDULE_LINE_PX;
+  return (
+    SCHEDULE_NAME_PX * scheduleNameLines(e, col, mode.nameLines) +
+    scheduleLine2(e, col, mode.maxLines).lines * SCHEDULE_LINE_PX
+  );
 }
 
 // 枠1つに要る高さ。来院とオンラインの高いほうで決まる
 function scheduleRowPx(r, mode) {
-  const sum = (list, chars) => list.reduce((n, e) => n + scheduleEntryPx(e, chars, mode), 0);
+  const sum = (list, col) => list.reduce((n, e) => n + scheduleEntryPx(e, col, mode), 0);
   return Math.max(
     mode.compact ? SCHEDULE_COMPACT_PX : SCHEDULE_EMPTY_ROW_PX,
     (mode.compact ? SCHEDULE_COMPACT_PAD_PX : SCHEDULE_ROW_PAD_PX) +
-      Math.max(sum(r.visits, SCHEDULE_VISIT_CHARS), sum(r.onlines, SCHEDULE_ONLINE_CHARS))
+      Math.max(sum(r.visits, SCHEDULE_VISIT_COL), sum(r.onlines, SCHEDULE_ONLINE_COL))
   );
 }
 
 // 予定表の1人ぶん。枠の時刻と違う時刻の方（薬の受け取りなど刻みが細かい予約）は
 // 時刻を頭に出す。診察内容は問診票のご本人の記入を優先し、まだ届いていなければ
 // 予約のメニューを出す
-function ScheduleEntry({ e, showTime, mode, charsPerLine }) {
+function ScheduleEntry({ e, showTime, mode, col }) {
   const age = ageFrom(e.dob);
-  const line2 = scheduleLine2(e, charsPerLine, mode.maxLines);
+  const line2 = scheduleLine2(e, col, mode.maxLines);
+  const wrapName = mode.nameLines > 1;
   if (mode.compact) {
     // 詰めた組み方。1人1行に畳んで、診察内容は残った幅に入るだけ入れる
     return (
@@ -795,12 +819,28 @@ function ScheduleEntry({ e, showTime, mode, charsPerLine }) {
       ) : null}
       <div style={{ minWidth: 0, flex: 1 }}>
         {/* 1行目はお名前・カナ・年齢だけ。生年月日は問診票のほうに出ているので、
-            ここは呼び出すときに要るものに絞る */}
-        <div style={{ display: "flex", gap: 5, alignItems: "baseline", whiteSpace: "nowrap" }}>
+            ここは呼び出すときに要るものに絞る。枠に高さがある日はカナを次の行へ
+            折り返して最後まで出し、詰まっている日だけ…で切る */}
+        <div
+          style={{
+            display: "flex",
+            gap: 5,
+            alignItems: "baseline",
+            flexWrap: wrapName ? "wrap" : "nowrap",
+            whiteSpace: wrapName ? "normal" : "nowrap",
+          }}
+        >
           {/* お名前は縮めない。長いお名前ほど呼び間違えるので、詰まったときに譲るのはカナ */}
-          <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{e.name || "—"}</span>
+          <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0, whiteSpace: "nowrap" }}>{e.name || "—"}</span>
           {e.kana ? (
-            <span style={{ fontSize: 10.5, color: "#555555", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span
+              style={{
+                fontSize: 10.5,
+                color: "#555555",
+                minWidth: 0,
+                ...(wrapName ? {} : { overflow: "hidden", textOverflow: "ellipsis" }),
+              }}
+            >
               {e.kana}
             </span>
           ) : null}
@@ -908,12 +948,12 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
               </td>
               <td style={{ ...cell, background: r.closed ? "#EDEDED" : "#FFFFFF" }}>
                 {r.visits.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} charsPerLine={SCHEDULE_VISIT_CHARS} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} col={SCHEDULE_VISIT_COL} />
                 ))}
               </td>
               <td style={{ ...cell, background: "#F7F7F7" }}>
                 {r.onlines.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} charsPerLine={SCHEDULE_ONLINE_CHARS} />
+                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} col={SCHEDULE_ONLINE_COL} />
                 ))}
               </td>
             </tr>
@@ -1633,7 +1673,7 @@ export default function StaffView() {
       const pages = split(count);
       for (const mode of SCHEDULE_MODES) if (fits(pages, mode)) return { pages, mode };
     }
-    return { pages: rows.map((r) => [r]), mode: SCHEDULE_MODES[2] };
+    return { pages: rows.map((r) => [r]), mode: SCHEDULE_MODES[SCHEDULE_MODES.length - 1] };
   }, [scheduleGrid]);
   const schedulePages = scheduleLayout.pages;
 
