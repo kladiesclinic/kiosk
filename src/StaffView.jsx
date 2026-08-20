@@ -988,8 +988,8 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
 }
 
 // スタッフ → 管理者への要望・報告ボックス（「要望」タブ）。
-// 誰でも投稿・閲覧できるが、対応済みチェックは role='admin' のログインだけ
-// （画面で隠すだけでなく、DB側のRLSでも admin 以外の更新は弾かれる）
+// 投稿・閲覧・対応済みチェックともスタッフのログインで誰でも使える
+// （専用アカウントを作らない運用。誰がチェックしたかは done_by に残る）
 const FEEDBACK_CATEGORY = [
   ["request", "機能を追加してほしい"],
   ["change", "仕様を変えたい"],
@@ -1231,18 +1231,15 @@ export default function StaffView() {
   const [searchError, setSearchError] = useState("");
   // 2回目以降の方のカルテ番号の自動表示: "氏名|生年月日" → 過去の記録に入っていた番号
   const [pastCharts, setPastCharts] = useState(new Map());
-  // 要望タブ: 未対応の件数バッジと、対応済みチェックの権限（role='admin' のログインだけ）
+  // 要望タブ: 未対応の件数バッジと、チェック時に記録する自分の名前
   const [feedbackOpen, setFeedbackOpen] = useState(0);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [myName, setMyName] = useState("");
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const uid = data?.user?.id;
       if (!uid) return;
       supabase.from("staff_profiles").select("name, role").eq("id", uid).single()
-        .then(({ data: p }) => {
-          if (p) { setIsAdmin(p.role === "admin"); setMyName(p.name || ""); }
-        });
+        .then(({ data: p }) => { if (p) setMyName(p.name || ""); });
     });
     const f = () =>
       supabase.from("staff_feedback").select("id").eq("status", "open")
@@ -2428,7 +2425,7 @@ export default function StaffView() {
           )}
 
           {tab === "feedback" && (
-            <FeedbackTab isAdmin={isAdmin} adminName={myName} onCountChange={setFeedbackOpen} />
+            <FeedbackTab isAdmin adminName={myName} onCountChange={setFeedbackOpen} />
           )}
 
           {tab === "search" && (
