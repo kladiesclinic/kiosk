@@ -610,7 +610,7 @@ function MonshinPrintSheet({ row }) {
 
 // 来院受付の問診票（intake_forms）1枚分のA4レイアウト（画面外に隠して画像化する）。
 // selectedForm 個別印刷（printAreaRef）と同じ体裁。一括印刷で1人1枚ずつ画像化して使う。
-function IntakePrintSheet({ form, reserveLabel }) {
+function IntakePrintSheet({ form, reserveLabel, headline }) {
   const rows = form.answers || [];
   const half = Math.ceil(rows.length / 2);
   const dob = formBirthdate(form);
@@ -628,6 +628,8 @@ function IntakePrintSheet({ form, reserveLabel }) {
         textSizeAdjust: "100%",
       }}
     >
+      {/* 区分と時間の特大見出し（紙の仕分け用） */}
+      {headline ? <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, marginBottom: 8 }}>{headline}</div> : null}
       <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
         <div>
           <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（来院受付）</strong>
@@ -1534,6 +1536,21 @@ export default function StaffView() {
       if (c && c.booking_id) b = bookings.find((x) => x.id === c.booking_id) || null;
     }
     return b ? `${b.date} ${b.time}` : "";
+  };
+
+  // 印刷の一番上に特大で出す「初診　16:30」。紙をさばく人が区分と時間を一目で
+  // 掴めるようにする。区分は受付→予約の順に見て、時間は予約時間（予約なしの
+  // 飛び込みは受付時刻）。どちらも分からない問診票では行ごと出さない
+  const printHeadlineForForm = (form) => {
+    const c = form.checkin_id ? checkins.find((x) => x.id === form.checkin_id) : null;
+    const b =
+      (form.booking_id && bookings.find((x) => x.id === form.booking_id)) ||
+      (c?.booking_id && bookings.find((x) => x.id === c.booking_id)) ||
+      null;
+    const kind = c?.visit_kind || b?.visit_kind;
+    const kindLabel = kind === "first" ? "初診" : kind === "return" ? "再診" : "";
+    const time = b?.time ? String(b.time).slice(0, 5) : c ? hhmm(c.created_at) : "";
+    return [kindLabel, time].filter(Boolean).join("　");
   };
 
   // 1日の予定表のもとになる一覧。来院予約（visit_bookings）とオンライン診療
@@ -3045,6 +3062,11 @@ export default function StaffView() {
             textSizeAdjust: "100%",
           }}
         >
+          {/* 区分と時間の特大見出し（紙の仕分け用） */}
+          {(() => {
+            const h = printHeadlineForForm(selectedForm);
+            return h ? <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, marginBottom: 8 }}>{h}</div> : null;
+          })()}
           <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
             {(() => {
               // 紙を見た医師がすぐ掴めるように、生年月日のとなりに和暦と満年齢を出す
@@ -3153,7 +3175,7 @@ export default function StaffView() {
         <div ref={intakeBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
           {dayIntakeForms.map((f) => (
             <div className="intake-batch-sheet" style={{ display: "none" }} key={f.id}>
-              <IntakePrintSheet form={f} reserveLabel={reserveLabelForForm(f)} />
+              <IntakePrintSheet form={f} reserveLabel={reserveLabelForForm(f)} headline={printHeadlineForForm(f)} />
             </div>
           ))}
         </div>
