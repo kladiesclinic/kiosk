@@ -23,7 +23,7 @@ import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
 import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
 import { buildSlotTimes, timeToMinutes } from "./lib/slots.js";
-import { Settings, Plus, Pencil, RotateCcw } from "lucide-react";
+import { Settings, Plus, Pencil, RotateCcw, MessageCircle } from "lucide-react";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -987,6 +987,214 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
   );
 }
 
+// スタッフ → 管理者への要望・報告ボックス（「要望」タブ）。
+// 誰でも投稿・閲覧できるが、対応済みチェックは role='admin' のログインだけ
+// （画面で隠すだけでなく、DB側のRLSでも admin 以外の更新は弾かれる）
+const FEEDBACK_CATEGORY = [
+  ["request", "機能を追加してほしい"],
+  ["change", "仕様を変えたい"],
+  ["bug", "不具合・おかしい"],
+  ["other", "その他"],
+];
+const FEEDBACK_CATEGORY_LABEL = Object.fromEntries(FEEDBACK_CATEGORY);
+
+function FeedbackTab({ isAdmin, adminName, onCountChange }) {
+  const [rows, setRows] = useState(null);
+  // 共有iPadなので記名は自由記入。前回の名前を覚えておく
+  const [author, setAuthor] = useState(() => localStorage.getItem("kiosk-feedback-name") || "");
+  const [category, setCategory] = useState("request");
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [noteFor, setNoteFor] = useState(null); // 対応コメント入力中の行 {id, note}
+
+  const load = () =>
+    supabase.from("staff_feedback").select("*").order("created_at", { ascending: false })
+      .then(({ data, error: e }) => {
+        if (e) { setError(e.message); return; }
+        setRows(data || []);
+        onCountChange?.((data || []).filter((r) => r.status === "open").length);
+      });
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submit = async () => {
+    if (!author.trim() || !body.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    localStorage.setItem("kiosk-feedback-name", author.trim());
+    const { error: e } = await supabase.from("staff_feedback")
+      .insert({ author: author.trim(), category, body: body.trim() });
+    setBusy(false);
+    if (e) { setError(`送信できませんでした: ${e.message}`); return; }
+    setBody("");
+    load();
+  };
+
+  const markDone = async (row) => {
+    const { error: e } = await supabase.from("staff_feedback")
+      .update({ status: "done", done_at: new Date().toISOString(), done_by: adminName || "管理者", done_note: (noteFor?.note || "").trim() || null })
+      .eq("id", row.id);
+    if (e) { setError(`更新できませんでした: ${e.message}`); return; }
+    setNoteFor(null);
+    load();
+  };
+  const reopen = async (row) => {
+    const { error: e } = await supabase.from("staff_feedback")
+      .update({ status: "open", done_at: null, done_by: null, done_note: null })
+      .eq("id", row.id);
+    if (e) { setError(`更新できませんでした: ${e.message}`); return; }
+    load();
+  };
+
+  const dateLabel = (ts) => {
+    const d = new Date(ts);
+    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+  const open = (rows || []).filter((r) => r.status === "open");
+  const done = (rows || []).filter((r) => r.status === "done");
+
+  const card = { background: "#FFFFFF", border: "1px solid #F2DFE4", borderRadius: 16 };
+  const input = { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30" };
+
+  return (
+    <section className="flex flex-col gap-5" style={{ maxWidth: 860 }}>
+      {error && (
+        <div className="p-3 rounded-xl text-sm" style={{ background: "#FCE9EA", color: "#B03A44" }}>{error}</div>
+      )}
+
+      {/* 送信フォーム */}
+      <div className="p-4" style={card}>
+        <h2 className="text-sm font-bold mb-1" style={{ color: "#3A2E30" }}>かねこさんへの要望・報告</h2>
+        <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
+          仕様を変えたい・機能を追加してほしい・おかしい所を見つけた、など何でもどうぞ。対応したらこのページでチェックが付きます。
+        </p>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <input
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+            placeholder="お名前（必須）"
+            className="px-3 py-2 rounded-lg text-sm outline-none"
+            style={{ ...input, width: 160 }}
+          />
+          <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid #F2DFE4" }}>
+            {FEEDBACK_CATEGORY.map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setCategory(id)}
+                className="text-[11px] font-bold px-2.5 py-2"
+                style={category === id ? { background: "#0F8B8D", color: "#FFFFFF" } : { background: "#FFFFFF", color: "#8A7378" }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="内容（例）予約状況の一覧にも電話番号を出してほしい"
+          rows={3}
+          className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+          style={input}
+        />
+        <div className="mt-2 flex justify-end">
+          <button
+            onClick={submit}
+            disabled={!author.trim() || !body.trim() || busy}
+            className="px-5 py-2 rounded-xl text-sm font-bold active:opacity-70"
+            style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: !author.trim() || !body.trim() || busy ? 0.4 : 1 }}
+          >
+            {busy ? "送信中..." : "送信"}
+          </button>
+        </div>
+      </div>
+
+      {/* 未対応 */}
+      <div>
+        <h3 className="text-sm font-bold mb-2" style={{ color: "#3A2E30" }}>
+          未対応 <span style={{ color: "#D64550" }}>{open.length}件</span>
+        </h3>
+        {rows === null ? (
+          <p className="text-xs" style={{ color: "#B08A90" }}>読み込み中...</p>
+        ) : open.length === 0 ? (
+          <p className="text-xs" style={{ color: "#B08A90" }}>未対応の要望はありません。</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {open.map((r) => (
+              <div key={r.id} className="p-3" style={card}>
+                <div className="flex items-center gap-2 text-[11px] mb-1" style={{ color: "#B08A90" }}>
+                  <span className="px-1.5 py-0.5 rounded font-bold" style={{ background: "#FCE9EA", color: "#D64550" }}>
+                    {FEEDBACK_CATEGORY_LABEL[r.category] || r.category}
+                  </span>
+                  <span>{dateLabel(r.created_at)}</span>
+                  <span className="font-bold" style={{ color: "#6B585C" }}>{r.author}</span>
+                </div>
+                <div className="text-sm" style={{ color: "#3A2E30", whiteSpace: "pre-wrap" }}>{r.body}</div>
+                {isAdmin && (
+                  noteFor?.id === r.id ? (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <input
+                        value={noteFor.note}
+                        onChange={(e) => setNoteFor({ id: r.id, note: e.target.value })}
+                        placeholder="対応内容（任意）例）予約状況タブに追加しました"
+                        className="flex-1 px-3 py-1.5 rounded-lg text-xs outline-none"
+                        style={{ ...input, minWidth: 220 }}
+                      />
+                      <button onClick={() => markDone(r)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: "#0F8B8D", color: "#FFFFFF" }}>
+                        対応済みにする
+                      </button>
+                      <button onClick={() => setNoteFor(null)} className="px-2 py-1.5 text-xs" style={{ color: "#8A7378" }}>やめる</button>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <button
+                        onClick={() => setNoteFor({ id: r.id, note: "" })}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold"
+                        style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#0F8B8D" }}
+                      >
+                        <CheckCircle2 size={13} /> 対応済みにする
+                      </button>
+                    </div>
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 対応済み */}
+      {done.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold mb-2" style={{ color: "#3A2E30" }}>対応済み {done.length}件</h3>
+          <div className="flex flex-col gap-2">
+            {done.map((r) => (
+              <div key={r.id} className="p-3" style={{ ...card, opacity: 0.75 }}>
+                <div className="flex items-center gap-2 text-[11px] mb-1" style={{ color: "#B08A90" }}>
+                  <CheckCircle2 size={14} color="#0F8B8D" />
+                  <span>{FEEDBACK_CATEGORY_LABEL[r.category] || r.category}</span>
+                  <span>{dateLabel(r.created_at)}</span>
+                  <span className="font-bold" style={{ color: "#6B585C" }}>{r.author}</span>
+                </div>
+                <div className="text-sm" style={{ color: "#8A7378", textDecoration: "line-through" }}>{r.body}</div>
+                <div className="text-[11px] mt-1" style={{ color: "#0F8B8D" }}>
+                  ✓ {r.done_at ? dateLabel(r.done_at) : ""} 対応済み{r.done_by ? `（${r.done_by}）` : ""}
+                  {r.done_note ? `：${r.done_note}` : ""}
+                </div>
+                {isAdmin && (
+                  <button onClick={() => reopen(r)} className="mt-1 text-[11px] underline" style={{ color: "#8A7378" }}>
+                    未対応に戻す
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
@@ -1023,6 +1231,26 @@ export default function StaffView() {
   const [searchError, setSearchError] = useState("");
   // 2回目以降の方のカルテ番号の自動表示: "氏名|生年月日" → 過去の記録に入っていた番号
   const [pastCharts, setPastCharts] = useState(new Map());
+  // 要望タブ: 未対応の件数バッジと、対応済みチェックの権限（role='admin' のログインだけ）
+  const [feedbackOpen, setFeedbackOpen] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [myName, setMyName] = useState("");
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const uid = data?.user?.id;
+      if (!uid) return;
+      supabase.from("staff_profiles").select("name, role").eq("id", uid).single()
+        .then(({ data: p }) => {
+          if (p) { setIsAdmin(p.role === "admin"); setMyName(p.name || ""); }
+        });
+    });
+    const f = () =>
+      supabase.from("staff_feedback").select("id").eq("status", "open")
+        .then(({ data }) => setFeedbackOpen((data || []).length));
+    f();
+    const t = setInterval(f, 60000);
+    return () => clearInterval(t);
+  }, []);
   // pillorderタブ: オンライン診療の問診票（monshin_online）。予約時刻(reserve_at)順の時系列で並べる
   const [monshinRows, setMonshinRows] = useState([]);
   const [selectedMonshin, setSelectedMonshin] = useState(null);
@@ -1240,7 +1468,7 @@ export default function StaffView() {
     load();
     // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
-    const canGrow = tab === "search" || tab === "settings" ? false : (tab === "bookings" || tab === "pillorder") ? dateKey >= todayKey() : isToday;
+    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" ? false : (tab === "bookings" || tab === "pillorder") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
@@ -1754,6 +1982,8 @@ export default function StaffView() {
                   ? "メニュー・診療時間・休診日の設定"
                   : tab === "search"
                   ? "過去の問診票を呼び出す"
+                  : tab === "feedback"
+                  ? "かねこさんへの要望・報告と対応状況"
                   : tab === "pillorder"
                     ? `${isToday ? "本日" : dateKey} のオンライン診療 ${monshinRows.length}件　`
                     : tab === "bookings"
@@ -1770,7 +2000,7 @@ export default function StaffView() {
                 患者を探すタブは日付で絞らないので出さない */}
             <div
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" ? "none" : undefined }}
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" ? "none" : undefined }}
             >
               <CalendarDays size={15} color="#B08A90" />
               <input
@@ -1822,7 +2052,7 @@ export default function StaffView() {
             )}
             {/* 1日の予定表。来院とオンラインを1枚にまとめて刷る。
                 日付で絞らないタブ（患者を探す・設定）では出さない */}
-            {tab !== "search" && tab !== "settings" && (
+            {tab !== "search" && tab !== "settings" && tab !== "feedback" && (
               <button
                 onClick={printSchedule}
                 disabled={schedulePages.length === 0 || schedulePrinting}
@@ -1869,6 +2099,7 @@ export default function StaffView() {
               { id: "bookings", label: "予約状況", Icon: CalendarCheck },
               { id: "pillorder", label: "pillorder", Icon: Stethoscope },
               { id: "search", label: "患者を探す", Icon: Search },
+              { id: "feedback", label: "要望", Icon: MessageCircle },
               { id: "settings", label: "設定", Icon: Settings },
             ].map(({ id, label, Icon }) => (
               <button
@@ -1887,6 +2118,19 @@ export default function StaffView() {
               >
                 <Icon size={15} />
                 {label}
+                {/* 未対応の要望があるあいだは件数を出す（開かなくても気づけるように） */}
+                {id === "feedback" && feedbackOpen > 0 && (
+                  <span
+                    className="ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
+                    style={{
+                      minWidth: 17, height: 17, padding: "0 4px",
+                      background: tab === id ? "#FFFFFF" : "#D64550",
+                      color: tab === id ? "#0F8B8D" : "#FFFFFF",
+                    }}
+                  >
+                    {feedbackOpen}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -2181,6 +2425,10 @@ export default function StaffView() {
               </div>
             )}
           </section>
+          )}
+
+          {tab === "feedback" && (
+            <FeedbackTab isAdmin={isAdmin} adminName={myName} onCountChange={setFeedbackOpen} />
           )}
 
           {tab === "search" && (
