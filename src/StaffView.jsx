@@ -1965,7 +1965,10 @@ export default function StaffView() {
       <style>{FONT_IMPORT}</style>
 
       <div className="staff-screen min-h-screen" style={{ background: "#FFF8F7" }}>
-        <header className="flex items-center justify-between px-6 py-4 flex-wrap gap-3" style={{ borderBottom: "1px solid #F2DFE4", background: "#FFFFFF" }}>
+        {/* 中身はタブ・本文と同じ幅（max-w-1500・同じ左右余白）に揃える。
+            ヘッダーだけ画面いっぱいだと、広い画面で下の内容とズレて見える */}
+        <header style={{ borderBottom: "1px solid #F2DFE4", background: "#FFFFFF" }}>
+        <div className="flex items-center justify-between px-3 sm:px-6 py-4 flex-wrap gap-3 max-w-[1500px] mx-auto w-full">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#0F8B8D" }}>
               <ClipboardList size={20} color="#DFF5F3" />
@@ -1996,7 +1999,7 @@ export default function StaffView() {
             {/* 表示日の切り替え（過去分も同じ画面で見られる）。
                 患者を探すタブは日付で絞らないので出さない */}
             <div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm"
+              className="h-10 flex items-center gap-2 px-3 rounded-xl text-sm"
               style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" ? "none" : undefined }}
             >
               <CalendarDays size={15} color="#B08A90" />
@@ -2022,14 +2025,14 @@ export default function StaffView() {
             {tab === "checkins" && (
               <>
                 <label
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
+                  className="h-10 flex items-center gap-2 px-3 rounded-xl text-sm font-medium cursor-pointer select-none"
                   style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
                 >
                   <input type="checkbox" checked={hideChartDone} onChange={toggleHideChartDone} className="w-4 h-4" />
                   カルテ済を隠す{chartDoneCount > 0 && `（${chartDoneCount}件）`}
                 </label>
                 <label
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium cursor-pointer select-none"
+                  className="h-10 flex items-center gap-2 px-3 rounded-xl text-sm font-medium cursor-pointer select-none"
                   style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}
                 >
                   <input type="checkbox" checked={hidePaymentDone} onChange={toggleHidePaymentDone} className="w-4 h-4" />
@@ -2040,7 +2043,7 @@ export default function StaffView() {
             {tab === "checkins" && (
               <button
                 onClick={() => { setProxyError(""); setProxy(emptyProxy); }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                className="h-10 flex items-center gap-1.5 px-4 rounded-xl text-sm font-medium active:opacity-70"
                 style={{ background: "#FFFFFF", border: "1.5px solid #0F8B8D", color: "#0F8B8D" }}
               >
                 <UserPlus size={15} />
@@ -2054,7 +2057,7 @@ export default function StaffView() {
                 onClick={printSchedule}
                 disabled={schedulePages.length === 0 || schedulePrinting}
                 title="来院とオンラインを枠ごとに並べた1日の予定表をA4で印刷します（空き枠も出ます）"
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                className="h-10 flex items-center gap-1.5 px-4 rounded-xl text-sm font-medium active:opacity-70"
                 style={{
                   background: "#FFFFFF",
                   border: `1.5px solid ${schedulePages.length ? "#0F8B8D" : "#F2DFE4"}`,
@@ -2069,7 +2072,7 @@ export default function StaffView() {
             <a
               href="#"
               onClick={(e) => { e.preventDefault(); window.location.hash = ""; }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium"
+              className="h-10 flex items-center gap-1.5 px-4 rounded-xl text-sm font-medium"
               style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378", textDecoration: "none" }}
             >
               <ExternalLink size={15} />
@@ -2077,13 +2080,14 @@ export default function StaffView() {
             </a>
             <button
               onClick={load}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+              className="h-10 flex items-center gap-1.5 px-4 rounded-xl text-sm font-medium active:opacity-70"
               style={{ background: "#0F8B8D", color: "#FFFFFF" }}
             >
               <RefreshCw size={15} />
               更新
             </button>
           </div>
+        </div>
         </header>
 
         {/* タブ切り替え: 受付一覧 / 予約状況 */}
