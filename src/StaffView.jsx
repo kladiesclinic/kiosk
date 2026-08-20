@@ -1538,19 +1538,18 @@ export default function StaffView() {
     return b ? `${b.date} ${b.time}` : "";
   };
 
-  // 印刷の一番上に特大で出す「初診　16:30」。紙をさばく人が区分と時間を一目で
-  // 掴めるようにする。区分は受付→予約の順に見て、時間は予約時間（予約なしの
-  // 飛び込みは受付時刻）。どちらも分からない問診票では行ごと出さない
+  // 印刷の一番上に特大で出す「初診　16:30」。紙をさばく人が区分と予約時間を
+  // 一目で掴めるようにする。予約のある方だけ（飛び込み受付では出さない）
   const printHeadlineForForm = (form) => {
     const c = form.checkin_id ? checkins.find((x) => x.id === form.checkin_id) : null;
     const b =
       (form.booking_id && bookings.find((x) => x.id === form.booking_id)) ||
       (c?.booking_id && bookings.find((x) => x.id === c.booking_id)) ||
       null;
-    const kind = c?.visit_kind || b?.visit_kind;
+    if (!b) return "";
+    const kind = c?.visit_kind || b.visit_kind;
     const kindLabel = kind === "first" ? "初診" : kind === "return" ? "再診" : "";
-    const time = b?.time ? String(b.time).slice(0, 5) : c ? hhmm(c.created_at) : "";
-    return [kindLabel, time].filter(Boolean).join("　");
+    return [kindLabel, String(b.time).slice(0, 5)].filter(Boolean).join("　");
   };
 
   // 1日の予定表のもとになる一覧。来院予約（visit_bookings）とオンライン診療
