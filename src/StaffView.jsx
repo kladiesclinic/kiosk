@@ -15,6 +15,7 @@ import {
   CalendarDays,
   CalendarCheck,
   UserPlus,
+  Video,
   QrCode,
   Trash2,
   Search,
@@ -557,12 +558,15 @@ function MonshinPrintSheet({ row }) {
     >
       <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
         <div>
-          <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（オンライン診療）</strong>
+          <strong style={{ fontSize: 20 }}>
+            問診票 ／ Questionnaire（{row.source === "zoom" ? "Zoom診療・英語" : "オンライン診療"}）
+          </strong>
           <div style={{ fontSize: 14, marginTop: 4 }}>
             {row.chart_number ? <strong>カルテ {row.chart_number}　</strong> : null}
             {row.name}
             {row.dob ? `（${row.dob}${dobAnnotation(row.dob) ? `　${dobAnnotation(row.dob)}` : ""}）` : ""}
             {row.phone ? `　${row.phone}` : ""}
+            {row.email ? `　${row.email}` : ""}
           </div>
         </div>
         {/* 予約時間は右上 */}
@@ -1254,6 +1258,9 @@ export default function StaffView() {
   const [monshinPrinting, setMonshinPrinting] = useState(false);
   const monshinPrintRef = useRef(null); // 個別印刷用の隠しA4
   const monshinBatchRef = useRef(null); // 一括印刷用（複数ページ）
+  // zoomタブ: 英語LP（klcs.jp/en/intake.html）のZoom診療の問診票（monshin_online の source='zoom'）
+  const [zoomRows, setZoomRows] = useState([]);
+  const zoomBatchRef = useRef(null); // Zoom分の一括印刷用
   const intakeBatchRef = useRef(null); // 来院受付の問診票 一括印刷用（オンラインと合わせて出す）
   // 1日の予定表（来院＋オンラインを時刻順に1枚へ）
   const scheduleRef = useRef(null);
@@ -1319,6 +1326,23 @@ export default function StaffView() {
     } catch (e) {
       if (iosWindow && !iosWindow.closed) iosWindow.close();
       setLoadError(`問診票のPDFを作れませんでした: ${e.message}`);
+    } finally {
+      setMonshinPrinting(false);
+    }
+  };
+
+  // Zoom英語問診票の一括印刷（1人1枚A4・複数ページ）
+  const printZoomBatch = async () => {
+    if (!zoomBatchRef.current || monshinPrinting || zoomRows.length === 0) return;
+    const iosWindow = IS_IOS ? window.open("", "_blank") : null;
+    setMonshinPrinting(true);
+    try {
+      const els = [...zoomBatchRef.current.querySelectorAll(".monshin-batch-sheet")];
+      await printElementsAsPdf(els, iosWindow, `Zoom診療_問診票_${dateKey}.pdf`);
+      zoomRows.forEach((m) => markMonshinPrinted(m.id));
+    } catch (e) {
+      if (iosWindow && !iosWindow.closed) iosWindow.close();
+      setLoadError(`一括印刷のPDFを作れませんでした: ${e.message}`);
     } finally {
       setMonshinPrinting(false);
     }
@@ -1417,20 +1441,28 @@ export default function StaffView() {
       .limit(300);
     if (mErr) {
       setMonshinRows([]);
+      setZoomRows([]);
     } else {
       const eff = (r) => r.reserve_at || r.created_at;
       const jstDate = (iso) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
-      // pillorder は予約をキャンセルしても問診票を消さない。取り直すと書き直しになるので、
-      // 同じ日に同じ方（生年月日＋電話）の問診票が2通並ぶ。新しいほうだけを生かす。
-      // 絞るのは同じ日の中だけ — 別の日の予約は取り直しなのか2件目なのか区別が
-      // つかず、日をまたいで消すと生きている予約が予定表から落ちる
-      const latest = new Map();
-      for (const r of (mData || []).filter((r) => jstDate(eff(r)) === dateKey)) {
-        const k = `${r.dob}|${r.phone}`;
-        const prev = latest.get(k);
-        if (!prev || new Date(r.created_at) > new Date(prev.created_at)) latest.set(k, r);
-      }
-      setMonshinRows([...latest.values()].sort((a, b) => new Date(eff(a)) - new Date(eff(b))));
+      // 同じ monshin_online に source 列で2種類が入っている:
+      //   pillorder（既定・列が無い旧行も含む）… オンライン診療タブ
+      //   zoom … 英語LP（klcs.jp/en/intake.html）のZoom診療タブ
+      const dayRows = (src) => {
+        // pillorder は予約をキャンセルしても問診票を消さない。取り直すと書き直しになるので、
+        // 同じ日に同じ方（生年月日＋電話）の問診票が2通並ぶ。新しいほうだけを生かす。
+        // 絞るのは同じ日の中だけ — 別の日の予約は取り直しなのか2件目なのか区別が
+        // つかず、日をまたいで消すと生きている予約が予定表から落ちる
+        const latest = new Map();
+        for (const r of (mData || []).filter((r) => ((r.source || "pillorder") === src) && jstDate(eff(r)) === dateKey)) {
+          const k = `${r.dob}|${r.phone}`;
+          const prev = latest.get(k);
+          if (!prev || new Date(r.created_at) > new Date(prev.created_at)) latest.set(k, r);
+        }
+        return [...latest.values()].sort((a, b) => new Date(eff(a)) - new Date(eff(b)));
+      };
+      setMonshinRows(dayRows("pillorder"));
+      setZoomRows(dayRows("zoom"));
     }
 
     // 2回目以降の来院・予約では、過去の受付・問診票に入れたカルテ番号を自動で
@@ -1465,7 +1497,7 @@ export default function StaffView() {
     load();
     // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
-    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" ? false : (tab === "bookings" || tab === "pillorder") ? dateKey >= todayKey() : isToday;
+    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     const t = setInterval(load, 10000);
     return () => clearInterval(t);
@@ -1986,6 +2018,8 @@ export default function StaffView() {
                   ? "かねこさんへの要望・報告と対応状況"
                   : tab === "pillorder"
                     ? `${isToday ? "本日" : dateKey} のオンライン診療 ${monshinRows.length}件　`
+                    : tab === "zoom"
+                    ? `${isToday ? "本日" : dateKey} のZoom診療（英語） ${zoomRows.length}件　`
                     : tab === "bookings"
                       ? `${dateKey} の予約 ${bookings.filter((b) => b.status !== "cancelled").length}件　`
                       : isToday
@@ -2007,7 +2041,7 @@ export default function StaffView() {
                 type="date"
                 value={dateKey}
                 // 受付は過去分のみだが、予約・オンライン診療は未来の日付も見られる
-                max={tab === "bookings" || tab === "pillorder" ? undefined : todayKey()}
+                max={tab === "bookings" || tab === "pillorder" || tab === "zoom" ? undefined : todayKey()}
                 onChange={(e) => { if (e.target.value) setDateKey(e.target.value); }}
                 className="bg-transparent outline-none text-sm"
                 style={{ color: "#3A2E30", fontFamily: "'JetBrains Mono', monospace" }}
@@ -2099,6 +2133,7 @@ export default function StaffView() {
               { id: "checkins", label: "受付一覧", Icon: ClipboardList },
               { id: "bookings", label: "予約状況", Icon: CalendarCheck },
               { id: "pillorder", label: "pillorder", Icon: Stethoscope },
+              { id: "zoom", label: "Zoom英語", Icon: Video },
               { id: "search", label: "患者を探す", Icon: Search },
               { id: "feedback", label: "要望", Icon: MessageCircle },
               { id: "settings", label: "設定", Icon: Settings },
@@ -2398,6 +2433,89 @@ export default function StaffView() {
                               <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
                                 {m.dob || "—"}{anno ? `（${anno}）` : ""}　{m.phone || "—"}
                               </span>
+                            </td>
+                            <td className="px-2 py-3 align-top">
+                              {flagged ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FCE9EA", color: "#B03A44" }}>要注意</span>
+                              ) : (
+                                <span style={{ color: "#C9AEB3" }}>—</span>
+                              )}
+                              {m.printed_at && <span className="block text-[10px] mt-0.5" style={{ color: "#C9AEB3" }}>印刷済</span>}
+                            </td>
+                            <td className="px-2 py-3 align-top">
+                              <button
+                                onClick={() => setSelectedMonshin(m)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                              >
+                                <FileText size={12} />
+                                表示・印刷
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+          )}
+
+          {tab === "zoom" && (
+          /* 英語LP（klcs.jp/en/intake.html）のZoom診療の問診票を予約時刻順で一覧。表示・印刷はpillorderタブと同じ */
+          <section>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                {isToday ? "本日のZoom診療（英語）" : `${dateKey} のZoom診療（英語）`}（{zoomRows.length}件）
+              </h2>
+              <button
+                onClick={printZoomBatch}
+                disabled={zoomRows.length === 0 || monshinPrinting}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                style={{ background: zoomRows.length ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
+              >
+                <Printer size={15} />
+                {monshinPrinting ? "PDF作成中..." : `この日の分をまとめて印刷（${zoomRows.length}）`}
+              </button>
+            </div>
+            {zoomRows.length === 0 ? (
+              <p className="text-sm" style={{ color: "#B08A90" }}>
+                この日のZoom診療の問診票はありません。（英語LPの問診票で予約日時が入力されると、予約時刻順にここへ並びます。
+                日時未入力の分は記入した日の欄に出ます）
+              </p>
+            ) : (
+              <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 720 }}>
+                    <thead>
+                      <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
+                        <th className="px-3 py-2.5 font-medium">時間</th>
+                        <th className="px-2 py-2.5 font-medium">お名前・生年月日・電話</th>
+                        <th className="px-2 py-2.5 font-medium">注意</th>
+                        <th className="px-2 py-2.5 font-medium">問診票</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {zoomRows.map((m) => {
+                        const flagged = (m.answers || []).some((a) => a.flag);
+                        const t = m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at);
+                        const anno = dobAnnotation(m.dob);
+                        return (
+                          <tr key={m.id} style={{ borderTop: "1px solid #FAEEF0" }}>
+                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                              {t}
+                              {!m.reserve_at && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>記入時刻</span>}
+                            </td>
+                            <td className="px-2 py-3 font-medium align-top">
+                              {m.name}
+                              <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
+                                {m.dob || "—"}{anno ? `（${anno}）` : ""}　{m.phone || "—"}
+                              </span>
+                              {m.email && (
+                                <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90" }}>{m.email}</span>
+                              )}
                             </td>
                             <td className="px-2 py-3 align-top">
                               {flagged ? (
@@ -3229,7 +3347,7 @@ export default function StaffView() {
               <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F2DFE4" }}>
                 <div>
                   <div className="text-base font-bold" style={{ color: "#3A2E30" }}>
-                    問診票（オンライン診療）　{selectedMonshin.name}
+                    問診票（{selectedMonshin.source === "zoom" ? "Zoom診療・英語" : "オンライン診療"}）　{selectedMonshin.name}
                   </div>
                   <div className="text-xs" style={{ color: "#B08A90" }}>
                     {selectedMonshin.reserve_at ? `予約 ${String(selectedMonshin.reserve_at).slice(0, 10)} ${hhmm(selectedMonshin.reserve_at)}　` : ""}
@@ -3389,6 +3507,17 @@ export default function StaffView() {
       {tab === "pillorder" && monshinRows.length > 0 && (
         <div ref={monshinBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
           {monshinRows.map((m) => (
+            <div className="monshin-batch-sheet" style={{ display: "none" }} key={m.id}>
+              <MonshinPrintSheet row={m} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Zoom診療（英語）の問診票 一括印刷レイアウト（画面外・pillorder分と同じ方式） */}
+      {tab === "zoom" && zoomRows.length > 0 && (
+        <div ref={zoomBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
+          {zoomRows.map((m) => (
             <div className="monshin-batch-sheet" style={{ display: "none" }} key={m.id}>
               <MonshinPrintSheet row={m} />
             </div>
