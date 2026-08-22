@@ -1,0 +1,2102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>In-Clinic Questionnaire ／ 問診票, K Ladies Clinic Shinjuku</title>
+<meta name="description" content="Fill in your medical questionnaire before your consultation at K Ladies Clinic Shinjuku." />
+<meta name="robots" content="noindex, follow" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23FF6766'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' font-weight='bold' fill='%23FFFFFF'%3EK%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/sub.css" />
+<style>
+  .q-block { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 20px; }
+  .yn-row { display: flex; gap: 10px; }
+  .yn-row .choice { flex: 1; justify-content: flex-start; }
+  /* Below ~369px the longest pair ("Regular / Irregular") is wider than its
+     row, and the spill pushed the whole page 2px sideways. Let those buttons
+     shrink and drop the Japanese onto a second line. Scoped to narrow screens
+     because unscoping it wraps every Yes/No row too, adding 14px to each. */
+  @media (max-width: 374px) {
+    .yn-row .choice { min-width: 0; flex-wrap: wrap; }
+  }
+  .cond-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  @media (min-width: 560px) { .cond-grid { grid-template-columns: 1fr 1fr; } }
+  /* Long checklist labels: keep English on one line and Japanese on its own,
+     instead of letting flex squeeze both into narrow columns. */
+  .cond-grid .choice { flex-wrap: wrap; }
+  .cond-grid .choice .ja { flex-basis: 100%; margin-left: 24px; margin-top: 1px; }
+
+  /* A reason that needs a follow-up question lives in its own cell, so the
+     question opens directly under that reason rather than at the foot of the
+     section. Cells start at the top of their row so an open one doesn't
+     stretch the box next to it. */
+  .cond-grid { align-items: start; }
+  .reason-cell { display: flex; flex-direction: column; }
+  .reason-sub {
+    max-height: 0; opacity: 0; overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+  }
+  /* The cap only has to clear a label, one input and a hint. The tallest panel
+     measures 223px at 320px wide, so this leaves room for a bigger default
+     font without ever clipping the way an open-ended block would. */
+  .reason-cell.open .reason-sub { max-height: 420px; opacity: 1; }
+  .reason-sub > div { padding: 10px 0 2px 24px; }
+  .reason-sub .field { margin-bottom: 0; }
+  /* pillorder問診票に合わせてゴシック太字・小さめの見出しに。 */
+  .section-label {
+    font-family: var(--serif); font-size: 15px; font-weight: 700;
+    margin: 30px 0 14px; color: var(--ink);
+  }
+  /* 言語切替はヘッダー右上に pill 型で置く（pillorderのENトグルと同じ位置）。 */
+  .lang-toggle {
+    font-size: 12px; font-weight: 700; color: var(--accent);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 12px; background: #FFFFFF; text-decoration: none;
+    white-space: nowrap; flex: 0 0 auto;
+  }
+  .section-label:first-child { margin-top: 0; }
+  .section-label .ja { font-family: 'Noto Sans JP', var(--sans); font-size: 12px; color: var(--faint); display: block; margin-top: 1px; }
+
+  /* bilingual bits */
+  .ja { font-family: 'Noto Sans JP', var(--sans); }
+  form label .ja {
+    display: block; font-size: 11.5px; color: var(--faint);
+    text-transform: none; letter-spacing: normal; font-weight: 400; margin-top: 2px; line-height: 1.5;
+  }
+  .choice .ja { color: var(--faint); font-size: 12px; margin-left: 5px; }
+  .sub-field { margin-top: 8px; margin-left: 2px; }
+  .visit-note {
+    margin-top: 12px; padding: 13px 16px;
+    background: #FCF1F0; border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0;
+    font-size: 12.5px; line-height: 1.65; color: var(--soft);
+  }
+  .visit-note strong { color: var(--ink); font-weight: 600; }
+  /* Shown only once the refill box is ticked, so the form doesn't shift on load. */
+  .refill-note { display: none; }
+  .refill-note.show { display: block; }
+  /* Marks a whole section as skippable for a refill. */
+  .skip-tag {
+    display: none; font-family: 'Noto Sans JP', var(--sans);
+    font-size: 11px; font-weight: 500; color: var(--accent); background: #FCF1F0;
+    border-radius: 999px; padding: 3px 10px; margin-left: 8px; vertical-align: middle;
+  }
+  .section-label.skippable .skip-tag { display: inline-block; }
+  .visit-note a { color: var(--accent); font-weight: 600; }
+  .visit-note .ja { display: block; margin-top: 4px; font-size: 11.5px; color: var(--faint); }
+
+  /* metric / imperial pairs, each input carries its unit inside the box */
+  .unit-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .unit-cell { position: relative; flex: 1 1 0; min-width: 72px; display: block; }
+  .unit-cell input[type="text"] { width: 100%; padding-right: 38px; }
+  .unit-cell .unit {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 12.5px; color: var(--faint); pointer-events: none;
+  }
+  .unit-or { font-size: 12.5px; color: var(--faint); flex: 0 0 auto; }
+  form .hint .ja { display: block; margin-top: 2px; }
+
+  /* 住所: 郵便番号で検索 → 都道府県・市区町村・町名を自動で入れ、番地と建物名は手入力。
+     全体で1つの .field にしてあるので、ウィザードでは1問として出る。 */
+  /* 生年月日は年・月・日を別々に打ってもらう。1つの日付入力だと、スマホでは
+     カレンダーが今日から開き、何十年もさかのぼる操作になる。そこで止まる方が多い */
+  .dob-row { display: flex; gap: 8px; align-items: flex-start; }
+  .dob-cell { flex: 1 1 0; min-width: 0; }
+  .dob-cell.wide { flex: 1.6 1 0; }
+  .dob-cell input { width: 100%; text-align: center; }
+  .dob-unit { display: block; text-align: center; font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+  .dob-unit .ja { margin-left: 4px; }
+
+  .postal-row { display: flex; gap: 8px; align-items: stretch; }
+  .postal-row input { flex: 0 1 200px; min-width: 0; }
+  .postal-btn {
+    flex: 0 0 auto; padding: 0 16px; border: 1px solid var(--accent); border-radius: 10px;
+    background: #FFFFFF; color: var(--accent); font-family: inherit; font-size: 13px;
+    font-weight: 600; line-height: 1.25; cursor: pointer;
+  }
+  .postal-btn:active { opacity: 0.7; }
+  .postal-btn .ja { display: block; font-size: 10.5px; font-weight: 400; }
+  .postal-msg { font-size: 12px; line-height: 1.5; margin-top: 6px; color: var(--faint); min-height: 1.2em; }
+  .postal-msg.err { color: #C0392B; }
+  .postal-msg.ok { color: #1E7A4A; }
+  .addr-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+  @media (min-width: 560px) { .addr-grid { grid-template-columns: 1fr 1fr; } }
+  .addr-cell.full { grid-column: 1 / -1; }
+  .addr-cell label { display: block; }
+
+  /* Replaces the one-line green status once the form is in. The answers stay on
+     screen so the PDF button still has something to save. */
+  .done-panel {
+    display: none; background: #E8F5EC; border: 1px solid #BFE3CC;
+    border-radius: 16px; padding: 22px; margin-bottom: 28px;
+  }
+  .done-panel.show { display: block; }
+  .done-head { display: flex; align-items: center; gap: 12px; }
+  .done-tick {
+    width: 34px; height: 34px; border-radius: 50%; background: #2E7D4F; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .done-tick svg { width: 18px; height: 18px; color: #FFFFFF; }
+  .done-panel h2 { font-family: var(--serif); font-size: 20px; font-weight: 700; color: #1F5B37; }
+  .done-panel h2 .ja {
+    display: block; font-family: 'Noto Sans JP', var(--sans);
+    font-size: 12px; color: #4C7A5E; margin-top: 2px;
+  }
+  .done-panel p { font-size: 14px; line-height: 1.75; color: #2E5C41; margin-top: 14px; }
+  .done-panel p .ja { display: block; font-size: 12.5px; color: #4C7A5E; margin-top: 3px; }
+  /* Locked after submitting, but the PDF button has to stay clickable. */
+  .form-locked { pointer-events: none; }
+  .form-locked .print-btn { pointer-events: auto; }
+
+  .print-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 600; padding: 12px 22px; border-radius: 10px;
+    background: transparent; color: var(--ink); border: 1.5px solid var(--ink);
+    cursor: pointer; font-family: var(--sans); margin: 8px 0 0 12px;
+  }
+  .print-header { display: none; }
+
+  /* ---- 1問ずつ表示（ウィザード形式） ----
+     画面では現在の質問だけを表示し、次へ/もどるで進む。送信・印刷時は
+     従来どおり全問が並ぶ（印刷CSSで .wz-hide を解除する）。 */
+  .wz-hide { display: none !important; }
+  /* ピル（OC/LEP）の禁忌スクリーニングにしか使わない質問。受診理由にピル系が
+     1つもないときは外す。.wz-hide と違い、印刷でも出さない — 聞いていない質問が
+     空欄で並ぶと、答えなかったのか聞かなかったのか区別がつかなくなる */
+  .oc-hide { display: none !important; }
+  .wz-progress { margin-bottom: 20px; }
+  .wz-progress .wz-count {
+    font-family: 'Noto Sans JP', var(--sans); font-size: 12.5px; font-weight: 700;
+    color: var(--accent); margin-bottom: 7px;
+  }
+  .wz-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .wz-bar span {
+    display: block; height: 100%; width: 0; background: var(--accent);
+    border-radius: 999px; transition: width 0.25s ease;
+  }
+  .wz-nav { display: flex; gap: 10px; margin-top: 26px; }
+  .wz-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 15px; font-weight: 600; padding: 14px 18px; border-radius: 10px;
+    cursor: pointer; font-family: var(--sans);
+  }
+  .wz-next { flex: 1; background: var(--accent); color: #FFFFFF; border: none; }
+  .wz-back { flex: 0 0 auto; min-width: 108px; background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .wz-back:disabled { opacity: 0.35; cursor: default; }
+  #wz-final { font-size: 14.5px; line-height: 1.75; color: var(--soft); }
+  #wz-final .ja { display: block; font-size: 12.5px; color: var(--faint); margin-top: 4px; }
+
+  @media print {
+    @page { size: A4; margin: 12mm 10mm; }
+    body { background: #FFFFFF; color: #000000; font-size: 10px; }
+    header, footer, .page-head, .note-box, .submit-btn, .print-btn,
+    .form-status, .hp-field, .hint, .visit-note, .skip-tag,
+    .done-panel { display: none !important; }
+    .wrap { max-width: none; padding: 0; }
+    .print-header {
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 2px solid #000000; padding-bottom: 6px; margin-bottom: 10px;
+    }
+    .print-header img { height: 26px; }
+    .print-header .ph-title { text-align: right; }
+    .print-header .ph-title strong { font-size: 12px; display: block; }
+    .print-header .ph-title span { font-size: 9px; color: #444444; }
+    .card { border: none; border-radius: 0; padding: 0; margin-top: 0; background: #FFFFFF; }
+    .section-label {
+      font-size: 11.5px; font-weight: 600; margin: 10px 0 5px;
+      border-bottom: 1px solid #999999; padding-bottom: 2px; break-after: avoid;
+    }
+    .section-label .ja { display: inline; font-size: 9px; margin-left: 6px; }
+    form .field { margin-bottom: 6px; break-inside: avoid; }
+    form label { font-size: 8.5px; letter-spacing: 0.03em; color: #222222; margin-bottom: 2px; }
+    form label .ja { display: inline; font-size: 8px; margin-left: 5px; }
+    form input[type="text"], form input[type="email"], form input[type="tel"],
+    form input[type="date"], form select, form textarea {
+      font-size: 10px; padding: 3px 6px; border: 1px solid #AAAAAA; border-radius: 3px;
+      background: #FFFFFF; min-height: 0;
+    }
+    form textarea { min-height: 34px; }
+    .dob-row { gap: 4px; }
+    .dob-unit { font-size: 8px; margin-top: 1px; }
+    .field-row { grid-template-columns: 1fr 1fr; gap: 5px 8px; }
+    .field-row + .field, .field-row + .field-row { margin-top: 6px; }
+    .unit-row { gap: 4px; flex-wrap: nowrap; }
+    /* 紙の上では検索ボタンは意味がないので消し、住所欄は2段組で詰める */
+    .postal-btn, .postal-msg { display: none !important; }
+    .postal-row input { flex: 0 1 120px; }
+    .addr-grid { grid-template-columns: 1fr 1fr; gap: 4px 8px; margin-top: 5px; }
+    .unit-cell input[type="text"] { padding-right: 22px; }
+    .unit-cell .unit { right: 5px; font-size: 8px; color: #444444; }
+    .unit-or { font-size: 8px; color: #444444; }
+    .q-block { border-top: none; padding-top: 0; margin-top: 0; }
+    .choice-group { gap: 2px; }
+    .yn-row { gap: 5px; }
+    .choice {
+      padding: 2px 6px; border: 1px solid #BBBBBB; border-radius: 3px;
+      background: #FFFFFF; font-size: 9px; gap: 4px;
+    }
+    .choice .ja { font-size: 8px; }
+    .choice input { margin-top: 1px; transform: scale(0.8); }
+    /* Two columns, not three: on paper every follow-up question has to be
+       visible, because ticking a box with a pen can't open anything. */
+    .cond-grid { grid-template-columns: 1fr 1fr; gap: 2px; }
+    .reason-sub { max-height: none; opacity: 1; }
+    .reason-sub > div { padding: 2px 0 3px 14px; }
+    .reason-sub label { margin-bottom: 1px; }
+    /* ウィザードで隠している質問も、紙の上では全問並べる */
+    .wz-progress, .wz-nav, #wz-final { display: none !important; }
+    form .field.wz-hide, .q-block.wz-hide, .section-label.wz-hide { display: block !important; }
+    form .field-row.wz-hide { display: grid !important; }
+    /* ただしピル問診を外した回では、その質問は紙にも出さない */
+    form .field.oc-hide, form .field-row.oc-hide,
+    .q-block.oc-hide, .section-label.oc-hide { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <img src="assets/logo_ja.png" alt="K Ladies Clinic Shinjuku, Gynecology Clinic" class="brand-logo" />
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- 冒頭の案内文は撤去（pillorder問診票に合わせてすぐ本題へ）。
+       言語切替リンクは JS がヘッダー右上（.header-inner）に挿入する。 -->
+
+  <div class="print-header">
+    <img src="assets/logo_ja.png" alt="K Ladies Clinic Shinjuku" />
+    <div class="ph-title">
+      <strong>Questionnaire ／ 問診票</strong>
+      <span>K Ladies Clinic Shinjuku (Gynecology) ／ ケイ・レディースクリニック新宿</span>
+    </div>
+  </div>
+
+  <div class="card">
+
+    <div class="done-panel" id="if-done">
+      <div class="done-head">
+        <div class="done-tick">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <h2>Questionnaire received<span class="ja">問診票を受け付けました</span></h2>
+      </div>
+      <p>Thank you. Your answers have been sent to the reception desk, and the doctor
+      will read them before your consultation. Please take a seat.
+      <span class="ja">ありがとうございます。回答は受付に送信され、診察前に医師が確認します。お掛けになってお待ちください。</span></p>
+      <p>Your answers are also still shown below. If you'd like to keep a copy, use the
+      <strong>Print / save as PDF</strong> button at the bottom of the form.
+      <span class="ja">回答は下に表示されたままです。控えが必要な場合は、フォーム下部のボタンからPDF保存できます。</span></p>
+    </div>
+
+    <form id="intake-form" novalidate>
+
+      <div class="section-label">About you<span class="ja">患者情報</span></div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="if-name">Full name<span class="ja">氏名</span></label>
+          <input id="if-name" type="text" autocomplete="name" required />
+        </div>
+        <div class="field">
+          <label for="if-kana">Name in katakana<span class="ja">カタカナ表記</span></label>
+          <input id="if-kana" type="text" required />
+          <div class="hint">Auto-filled as a guess from your name — please correct it if it looks wrong.<span class="ja">お名前から自動で推測が入ります。違っていたら直してください。</span></div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Date of birth<span class="ja">生年月日</span></label>
+          <div class="dob-row">
+            <div class="dob-cell wide">
+              <input id="if-dob-y" type="text" inputmode="numeric" maxlength="4" placeholder="1990" aria-label="Year" required />
+              <span class="dob-unit">Year<span class="ja">年</span></span>
+            </div>
+            <div class="dob-cell">
+              <input id="if-dob-m" type="text" inputmode="numeric" maxlength="2" placeholder="5" aria-label="Month" required />
+              <span class="dob-unit">Month<span class="ja">月</span></span>
+            </div>
+            <div class="dob-cell">
+              <input id="if-dob-d" type="text" inputmode="numeric" maxlength="2" placeholder="10" aria-label="Day" required />
+              <span class="dob-unit">Day<span class="ja">日</span></span>
+            </div>
+          </div>
+          <!-- 送信も受付も従来どおり YYYY-MM-DD の1項目で扱う。3つ揃ったときだけ入る -->
+          <input id="if-dob" type="hidden" />
+        </div>
+        <div class="field">
+          <label for="if-email">Email address<span class="ja">メールアドレス</span></label>
+          <input id="if-email" type="email" autocomplete="email" required />
+        </div>
+      </div>
+
+      <!-- 来院受付をこの問診票で兼ねるとき（?selfcheckin=1）だけ表示する質問。
+           ここまで（氏名・カナ・生年月日・保険）に答えた時点で受付が成立する。
+           受付を経由しない記入（LP・予約からの事前記入）では下のスクリプトが
+           この要素ごと削除するので、ウィザードのステップにも現れない。 -->
+      <div class="field" id="if-checkin-block">
+        <label>Insurance<span class="ja">保険証について</span></label>
+        <div class="hint">Please choose what applies to your visit today.<span class="ja">本日のご来院について、当てはまるものをお選びください。</span></div>
+        <div class="cond-grid">
+          <label class="choice"><input type="radio" name="checkin_insurance" value="mynumber" required /> I used the My Number card reader at reception<span class="ja">受付のリーダーでマイナ保険証の手続きをした</span></label>
+          <label class="choice"><input type="radio" name="checkin_insurance" value="hokensho" /> I have my insurance card with me<span class="ja">保険証を持っている（受付の保険証入れにお入れください）</span></label>
+          <label class="choice"><input type="radio" name="checkin_insurance" value="self_pay" /> No insurance card (self-pay)<span class="ja">保険証なし（自費）</span></label>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="if-phone">Phone number<span class="ja">電話番号</span></label>
+          <input id="if-phone" type="tel" autocomplete="tel" required />
+        </div>
+        <div class="field">
+          <label for="if-nationality">Nationality<span class="ja">国籍</span></label>
+          <input id="if-nationality" type="text" required />
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="if-postal">Address in Japan<span class="ja">日本国内の住所</span></label>
+        <div class="hint">Home, hotel or wherever you're staying. Enter your postal code and we'll fill in the rest.<span class="ja">ホテル等の滞在先でも構いません。郵便番号を入れると、都道府県・市区町村・町名が自動で入ります。</span></div>
+        <div class="postal-row">
+          <input id="if-postal" type="text" inputmode="numeric" autocomplete="postal-code"
+                 placeholder="160-0023" maxlength="8" aria-label="Postal code / 郵便番号" />
+          <button type="button" class="postal-btn" id="if-postal-btn">Find address<span class="ja">住所を検索</span></button>
+        </div>
+        <div class="postal-msg" id="if-postal-msg" role="status" aria-live="polite"></div>
+        <div class="addr-grid">
+          <div class="addr-cell">
+            <label for="if-pref">Prefecture<span class="ja">都道府県</span></label>
+            <input id="if-pref" type="text" autocomplete="address-level1" required />
+          </div>
+          <div class="addr-cell">
+            <label for="if-city">City / ward<span class="ja">市区町村</span></label>
+            <input id="if-city" type="text" autocomplete="address-level2" required />
+          </div>
+          <div class="addr-cell full">
+            <label for="if-town">Town and street number<span class="ja">町名・番地</span></label>
+            <input id="if-town" type="text" autocomplete="address-line1" required />
+          </div>
+          <div class="addr-cell full">
+            <label for="if-building">Building and room number<span class="ja">建物名・部屋番号（任意）</span></label>
+            <input id="if-building" type="text" autocomplete="address-line2" />
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="if-height">Height<span class="ja">身長</span></label>
+          <div class="unit-row">
+            <span class="unit-cell">
+              <input id="if-height" type="text" inputmode="decimal" placeholder="165" required />
+              <span class="unit">cm</span>
+            </span>
+            <span class="unit-or">or</span>
+            <span class="unit-cell">
+              <input id="if-height-ft" type="text" inputmode="numeric" placeholder="5" aria-label="Height, feet" />
+              <span class="unit">ft</span>
+            </span>
+            <span class="unit-cell">
+              <input id="if-height-in" type="text" inputmode="decimal" placeholder="5" aria-label="Height, inches" />
+              <span class="unit">in</span>
+            </span>
+          </div>
+          <div class="hint">Fill in either one, the other fills itself.<span class="ja">どちらかを入力すると、もう一方は自動で入ります。</span></div>
+        </div>
+        <div class="field">
+          <label for="if-weight">Weight<span class="ja">体重</span></label>
+          <div class="unit-row">
+            <span class="unit-cell">
+              <input id="if-weight" type="text" inputmode="decimal" placeholder="55" required />
+              <span class="unit">kg</span>
+            </span>
+            <span class="unit-or">or</span>
+            <span class="unit-cell">
+              <input id="if-weight-lb" type="text" inputmode="decimal" placeholder="121" aria-label="Weight, pounds" />
+              <span class="unit">lb</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="if-bp">Blood pressure (if you know it)<span class="ja">血圧（わかる場合）</span></label>
+        <input id="if-bp" type="text" placeholder="e.g. 118 / 76" />
+      </div>
+
+      <div class="section-label">Reason for your visit<span class="ja">本日の受診理由</span></div>
+
+      <div class="field">
+        <label>What would you like to see us about? (check all that apply)<span class="ja">どのようなご相談ですか（複数選択可）</span></label>
+        <div class="cond-grid">
+          <label class="choice"><input type="checkbox" name="reason" value="Birth control pills" /> Birth control pills<span class="ja">低用量ピル</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="Mini-pill (progestogen-only)" /> Mini-pill (progestogen-only)<span class="ja">ミニピル（プロゲステロン単体）</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="reason" value="Morning-after pill / Plan B" /> Morning-after pill<span class="ja">アフターピル</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-ec-timing">When did the intercourse happen?<span class="ja">性交渉の日時</span></label>
+                <input id="if-ec-timing" type="text" placeholder="e.g. 28 July, around 11pm" />
+              </div>
+            </div>
+          </div>
+          <label class="choice"><input type="checkbox" name="reason" value="Menstrual pain" /> Menstrual pain<span class="ja">生理痛</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="Irregular period" /> Irregular period<span class="ja">生理不順</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="reason" value="Period shifting" /> Moving my period<span class="ja">月経移動</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-period-shift-date">When is the trip or event?<span class="ja">ずらしたいご予定はいつですか</span></label>
+                <input id="if-period-shift-date" type="text" placeholder="e.g. trip on 20-23 September" />
+                <div class="hint">The medication has to be started at a set time before the
+                date, so please tell us as early as you can.<span class="ja">お薬を始める時期が決まっているため、できるだけ早めにお知らせください。</span></div>
+              </div>
+            </div>
+          </div>
+          <label class="choice"><input type="checkbox" name="reason" value="Acne / skin" /> Acne / skin<span class="ja">ニキビ・肌荒れ</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="PMS / mood" /> PMS / mood<span class="ja">PMS・気分の不調</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="Menopause" /> Menopause<span class="ja">更年期</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="Bleeding outside my period" /> Bleeding outside my period<span class="ja">不正出血</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="Discharge / itching" /> Discharge / itching<span class="ja">おりもの・かゆみ</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="STD testing" /> STD testing<span class="ja">性感染症検査</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="Pap smear (cervical cancer screening)" /> Pap smear<span class="ja">子宮頸がん検診</span></label>
+          <label class="choice"><input type="checkbox" name="reason" value="Bladder infection (cystitis)" /> Bladder infection<span class="ja">膀胱炎</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="reason" value="Refill of a medication prescribed here before" /> Refill of a medication prescribed here before<span class="ja">当院で処方されたことのある薬の追加</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-refill-name">Is there a specific medication you would like?<span class="ja">ご希望のお薬があればご記入ください</span></label>
+                <input id="if-refill-name" type="text" placeholder="e.g. herpes medication" />
+                <div class="hint">If you're not sure, leave this blank, the doctor will talk
+                you through the options.<span class="ja">お決まりでなければ空欄で構いません。診察時に医師がご説明します。</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="reason" value="Other" /> Other<span class="ja">その他</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-other-detail">Please describe<span class="ja">内容をご記入ください</span></label>
+                <input id="if-other-detail" type="text" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="visit-note refill-note" id="refill-skip-note">
+          <strong>Just topping up something we've prescribed before?</strong> Then you can
+          leave the marked sections below blank, we already have those answers on file.
+          Please still tell us about anything that has changed since your last visit.
+          <span class="ja">当院で処方したお薬の追加のみの場合、下の印がついたセクションは記入不要です。前回受診時から変わったことがあれば、最後の自由記入欄にご記入ください。</span>
+        </div>
+      </div>
+
+      <div class="section-label" data-skippable>Your period<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">月経について</span></div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="if-lmp">When did your last period start?<span class="ja">最終月経の開始日</span></label>
+          <input id="if-lmp" type="date" required />
+        </div>
+        <div class="field">
+          <label for="if-lmp-days">How many days did it last?<span class="ja">月経の日数</span></label>
+          <input id="if-lmp-days" type="text" inputmode="numeric" placeholder="e.g. 5" required />
+        </div>
+      </div>
+
+      <div class="q-block">
+        <div class="field">
+          <label>Is your menstrual cycle regular?<span class="ja">月経周期は順調ですか</span></label>
+          <div class="yn-row">
+            <label class="choice"><input type="radio" name="cycle" value="Regular" required /> Regular<span class="ja">順調</span></label>
+            <label class="choice"><input type="radio" name="cycle" value="Irregular" /> Irregular<span class="ja">不順</span></label>
+          </div>
+          <div class="sub-field">
+            <label for="if-cycle-detail">If regular, how long is your cycle? If irregular, how often does it come?<span class="ja">順調な場合は周期の日数／不順な場合はどのくらいの頻度か</span></label>
+            <input id="if-cycle-detail" type="text" placeholder="e.g. 28 days / every 2–3 months" required />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Do you have spotting or bleeding outside of your period?<span class="ja">不正性器出血がありますか</span></label>
+          <div class="yn-row">
+            <label class="choice"><input type="radio" name="bleeding" value="Yes" required /> Yes<span class="ja">はい</span></label>
+            <label class="choice"><input type="radio" name="bleeding" value="No" /> No<span class="ja">いいえ</span></label>
+          </div>
+          <div class="sub-field">
+            <label for="if-bleeding-since">If yes, since when?<span class="ja">はいの場合、いつから</span></label>
+            <input id="if-bleeding-since" type="text" />
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label">Pregnancy &amp; sexual health<span class="ja">妊娠・性交渉について</span></div>
+
+      <div class="field">
+        <label>Are you pregnant, or possibly pregnant?<span class="ja">妊娠中または妊娠の可能性がありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="pregnant" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="pregnant" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Are you currently breastfeeding?<span class="ja">授乳中ですか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="breastfeeding" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="breastfeeding" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Have you ever been pregnant?<span class="ja">妊娠したことがありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="ever_pregnant" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="ever_pregnant" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+        <div class="sub-field field-row">
+          <div class="field">
+            <label for="if-preg-times">If yes, how many times?<span class="ja">妊娠回数</span></label>
+            <input id="if-preg-times" type="text" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label for="if-birth-times">Given birth how many times?<span class="ja">出産回数</span></label>
+            <input id="if-birth-times" type="text" inputmode="numeric" />
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Have you ever had sexual intercourse?<span class="ja">性交渉の経験がありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="intercourse" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="intercourse" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="section-label" data-skippable data-oclep>Lifestyle &amp; symptoms<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">生活習慣・症状</span></div>
+
+      <div class="field">
+        <label>Do you smoke?<span class="ja">喫煙しますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="smoke" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="smoke" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+        <div class="sub-field field-row">
+          <div class="field">
+            <label for="if-smoke-count">If yes, cigarettes per day<span class="ja">1日の本数</span></label>
+            <input id="if-smoke-count" type="text" inputmode="numeric" placeholder="e.g. 10" />
+          </div>
+          <div class="field">
+            <label for="if-smoke-years">For how many years?<span class="ja">喫煙年数</span></label>
+            <input id="if-smoke-years" type="text" inputmode="numeric" placeholder="e.g. 5" />
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Do you get severe headaches or migraines, or episodes of blurred vision?<span class="ja">激しい頭痛・片頭痛、目のかすみがありますか</span></label>
+        <div class="choice-group">
+          <label class="choice"><input type="radio" name="migraine" value="No" required /> No<span class="ja">いいえ</span></label>
+          <label class="choice"><input type="radio" name="migraine" value="Yes, without aura" /> Yes, without aura<span class="ja">はい（前兆なし）</span></label>
+          <label class="choice"><input type="radio" name="migraine" value="Yes, with aura" /> Yes, with aura (flashing lights before the headache)<span class="ja">はい（前兆あり：目がチカチカする等）</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Right now, do you have any of these: calf pain or swelling, sudden shortness of breath, chest pain, severe headache, fainting, blurred vision, slurred speech?<span class="ja">現在、ふくらはぎの痛み・むくみ、突然の息切れ、胸の痛み、激しい頭痛、失神、目のかすみ、舌のもつれがありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="aches" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="aches" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="section-label" data-skippable>Medical history<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">既往歴</span></div>
+
+      <div class="field">
+        <label>Are you currently being treated by a doctor for anything?<span class="ja">現在治療中の疾患がありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="in_treatment" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="in_treatment" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+        <div class="sub-field">
+          <label for="if-treatment-detail">If yes, for what condition?<span class="ja">病名</span></label>
+          <input id="if-treatment-detail" type="text" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Have you ever had an operation, or an illness needing hospitalization?<span class="ja">手術、または入院を要する病気の既往がありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="hospitalized" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="hospitalized" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+        <div class="sub-field">
+          <label for="if-hosp-detail">If yes, what was it?<span class="ja">その内容</span></label>
+          <input id="if-hosp-detail" type="text" />
+        </div>
+      </div>
+
+      <!-- 既往歴のうち、ここから下の3問はピルの禁忌スクリーニング。上の
+           「治療中の疾患」「手術・入院歴」はどの受診理由でも要るので残す -->
+      <div class="field" data-oclep>
+        <label>Have you ever been told you have any of the following? (check all that apply)<span class="ja">以下の病気といわれたことがありますか（複数選択可）</span></label>
+        <div class="cond-grid">
+          <label class="choice"><input type="checkbox" name="cond" value="Deep vein thrombosis" /> Deep vein thrombosis<span class="ja">深部静脈血栓</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Pulmonary embolism" /> Pulmonary embolism<span class="ja">肺塞栓症</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="SLE (lupus)" /> SLE (lupus)<span class="ja">SLE</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Antiphospholipid syndrome" /> Antiphospholipid syndrome<span class="ja">抗リン脂質抗体症候群</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Thrombophilia" /> Thrombophilia<span class="ja">血栓性素因</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Stroke / cerebrovascular disease" /> Stroke<span class="ja">脳血管障害</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Coronary artery disease" /> Coronary artery disease<span class="ja">冠動脈疾患</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Heart valve disease" /> Heart valve disease<span class="ja">心臓弁膜症</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Arrhythmia" /> Arrhythmia<span class="ja">不整脈</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Kidney disease" /> Kidney disease<span class="ja">腎機能障害</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="High blood pressure" /> High blood pressure<span class="ja">高血圧</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Diabetes" /> Diabetes<span class="ja">糖尿病</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="High cholesterol" /> High cholesterol<span class="ja">脂質代謝異常</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Liver disease / liver tumor" /> Liver disease<span class="ja">肝機能障害・肝腫瘍</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Gallbladder disease" /> Gallbladder disease<span class="ja">胆嚢疾患</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Cervical cancer" /> Cervical cancer<span class="ja">子宮頸がん</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Uterine cancer" /> Uterine cancer<span class="ja">子宮体がん</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Breast cancer" /> Breast cancer<span class="ja">乳がん</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Porphyria" /> Porphyria<span class="ja">ポルフィリン症</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Epilepsy" /> Epilepsy<span class="ja">てんかん</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Tetany" /> Tetany<span class="ja">テタニー</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Crohn's disease" /> Crohn's disease<span class="ja">クローン病</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="Ulcerative colitis" /> Ulcerative colitis<span class="ja">潰瘍性大腸炎</span></label>
+          <label class="choice"><input type="checkbox" name="cond" value="None of the above" /> None of the above<span class="ja">該当なし</span></label>
+        </div>
+      </div>
+
+      <div class="field" data-oclep>
+        <label>Have you had repeated miscarriages or stillbirths?<span class="ja">流産・死産を繰り返したことがありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="miscarriage" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="miscarriage" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="field" data-oclep>
+        <label>During a pregnancy, were you ever told you had pre-eclampsia (toxemia)?<span class="ja">妊娠高血圧症候群（妊娠中毒症）といわれたことがありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="preeclampsia" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="preeclampsia" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="section-label">Medications &amp; allergies<span class="ja">服薬・アレルギー</span></div>
+
+      <div class="field">
+        <label>Are you taking any medications or supplements?<span class="ja">服用中の薬・サプリメントがありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="meds" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="meds" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+        <div class="sub-field">
+          <label for="if-meds-detail">If yes, which ones?<span class="ja">薬剤名</span></label>
+          <input id="if-meds-detail" type="text" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Do you, or have you ever, taken birth control pills?<span class="ja">OC・LEP（ピル）の服用歴がありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="oc_history" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="oc_history" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+        <div class="sub-field">
+          <label for="if-oc-detail">If yes, name of the pill and for how long?<span class="ja">薬剤名と服用期間</span></label>
+          <input id="if-oc-detail" type="text" placeholder="e.g. Marvelon 28, 2 years" />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Have you ever had an allergic reaction to a medication or food?<span class="ja">薬や食べ物でアレルギー症状が出たことがありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="allergy" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="allergy" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+        <div class="sub-field">
+          <label for="if-allergy-detail">If yes, to what?<span class="ja">その薬剤名・食品名</span></label>
+          <input id="if-allergy-detail" type="text" />
+        </div>
+      </div>
+
+      <div class="section-label" data-skippable data-oclep>Surgery &amp; family history<span class="skip-tag">Skip for a refill ／ 追加処方のみの方は記入不要</span><span class="ja">手術予定・家族歴</span></div>
+
+      <div class="field">
+        <label>Have you had surgery in the past 2 weeks, or is surgery planned within 4 weeks?<span class="ja">過去2週間以内の手術、または4週間以内の手術予定がありますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="surgery" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="surgery" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Has anyone in your family had blood clots (thrombosis)?<span class="ja">ご家族に血栓症の方はいますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="family_clots" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="family_clots" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Has anyone in your family had breast cancer?<span class="ja">ご家族に乳がんの方はいますか</span></label>
+        <div class="yn-row">
+          <label class="choice"><input type="radio" name="family_breast_cancer" value="Yes" required /> Yes<span class="ja">はい</span></label>
+          <label class="choice"><input type="radio" name="family_breast_cancer" value="No" /> No<span class="ja">いいえ</span></label>
+        </div>
+      </div>
+
+      <div class="section-label">How did you find us? (select all that apply)<span class="ja">当院を知ったきっかけ（当てはまるものを全て）</span></div>
+
+      <!-- 追記の欄は選んだ項目のすぐ下に開く。選択肢の下にまとめて置いていた
+           ときは、離れているせいでほとんど書いてもらえなかった。 -->
+      <div class="field">
+        <div class="choice-group">
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="found_us" value="Internet search" required /> Internet search<span class="ja">インターネット検索</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-search">What words did you search for?<span class="ja">検索した言葉</span></label>
+                <input id="if-found-search" type="text" placeholder="e.g. Shinjuku pill prescription" />
+              </div>
+            </div>
+          </div>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="found_us" value="AI assistant" /> AI (ChatGPT, Gemini)<span class="ja">AIに聞いた（ChatGPTなど）</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-ai">What did you ask it?<span class="ja">どのように聞きましたか</span></label>
+                <input id="if-found-ai" type="text" placeholder="e.g. clinic in Shinjuku that prescribes the pill" />
+              </div>
+            </div>
+          </div>
+          <label class="choice"><input type="checkbox" name="found_us" value="Google Maps" /> Google Maps<span class="ja">Googleマップ</span></label>
+          <label class="choice"><input type="checkbox" name="found_us" value="Instagram" /> Instagram<span class="ja">インスタグラム</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="found_us" value="Other social media" /> Other social media<span class="ja">その他SNS</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-sns">Which one?<span class="ja">どのSNSですか</span></label>
+                <input id="if-found-sns" type="text" placeholder="e.g. X, TikTok, YouTube" />
+              </div>
+            </div>
+          </div>
+          <label class="choice"><input type="checkbox" name="found_us" value="From a friend" /> From a friend<span class="ja">知人の紹介</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="found_us" value="Referred by another clinic" /> Referred by another clinic<span class="ja">他院からの紹介</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-clinic">Which clinic?<span class="ja">医院名</span></label>
+                <input id="if-found-clinic" type="text" />
+              </div>
+            </div>
+          </div>
+          <label class="choice"><input type="checkbox" name="found_us" value="Saw the clinic / signage" /> Saw the clinic or its sign<span class="ja">通りがかり・看板</span></label>
+          <div class="reason-cell">
+            <label class="choice"><input type="checkbox" name="found_us" value="Other" /> Other<span class="ja">その他</span></label>
+            <div class="reason-sub">
+              <div class="field">
+                <label for="if-found-other">Please describe<span class="ja">内容</span></label>
+                <input id="if-found-other" type="text" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="if-notes">Anything else you'd like to ask or tell us?<span class="ja">その他、ご心配なことやご質問</span></label>
+        <textarea id="if-notes"></textarea>
+      </div>
+
+      <div class="hp-field" aria-hidden="true">
+        <label for="if-company">Company</label>
+        <input id="if-company" type="text" tabindex="-1" autocomplete="off" />
+      </div>
+
+      <button type="submit" class="submit-btn" id="if-submit">
+        Submit my questionnaire
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      <button type="button" class="print-btn" id="if-print">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+        Print / save as PDF
+      </button>
+      <p class="form-status" id="if-status" role="status"></p>
+    </form>
+  </div>
+
+  <div class="note-box">
+    Screening questions follow the official Japanese OC/LEP prescribing guideline
+    (JSOG, ver. 2020). Your answers are treated as confidential medical information.
+    This form is not for emergencies, if you need urgent care, call
+    <strong>119</strong> (ambulance) or visit the nearest emergency department.
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <span>&copy; 2026 K Ladies Clinic Shinjuku</span>
+  </div>
+</footer>
+
+<script>
+  // Answers go straight to the clinic's Supabase (staging) and appear on the
+  // kiosk app's staff reception view (#staff), where they can be printed.
+  // The anon key is a public client key; RLS only allows inserting, never reading.
+  var SUPABASE_URL = "https://dfkylexozstecjpgvnxg.supabase.co";
+  var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRma3lsZXhvenN0ZWNqcGd2bnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzAxODAsImV4cCI6MjA5ODkwNjE4MH0.7gtNcTLeiISvEJRCxIaHpOwafbLyTAVnYFE2wvqi8Wc";
+
+  // 受付機のQR経由で開くとURLに ?checkin=<受付ID> が付いていて、送信時に一緒に保存される。
+  // これで受付一覧の行と問診票が名前の表記に関係なく確実に紐付く。直接開いた場合は空。
+  var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
+  // 受付票QRに含まれる送信トークン。DB側で受付IDと照合され、合わない送信は
+  // 受付への紐付けを拒否される（なりすまし防止）
+  var SUBMIT_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
+  // ネット/LINE予約から事前記入する場合は ?booking=<予約ID> が付く。両方保存して
+  // 予約・受付どちらの画面からでも問診票を引けるようにする
+  var BOOKING_ID = new URLSearchParams(window.location.search).get("booking") || "";
+
+  /* ---- 来院受付を兼ねるモード（?selfcheckin=1） ----
+     受付機を置かず患者さんのスマホで受付する運用（booking-app の /checkin から来る）。
+     受付側では氏名・生年月日を聞かず、この問診票の冒頭
+     （氏名・カナ・生年月日・保険）を答えた時点で受付を1件作る。
+     残りの設問は待合室で記入してもらえばよく、途中でやめても受付は成立している。 */
+  var SELF_CHECKIN = new URLSearchParams(window.location.search).get("selfcheckin") === "1";
+  var SELF_VISIT = new URLSearchParams(window.location.search).get("visit") === "pickup" ? "pickup" : "consult";
+  var SELF_KIND = new URLSearchParams(window.location.search).get("kind") || "";
+  var SELF_REASON = new URLSearchParams(window.location.search).get("reason") || "";
+  var SELF_LINE = new URLSearchParams(window.location.search).get("line") || "";
+  // 受付画面で先に選んでもらった保険。渡ってきていれば問診票では聞き直さない
+  var SELF_INS = new URLSearchParams(window.location.search).get("ins") || "";
+  if (["mynumber", "hokensho", "self_pay", "forgot"].indexOf(SELF_INS) < 0) SELF_INS = "";
+  var CHECKIN_STORE = "keicuri-intake-checkin";
+
+  // 受付を経由しない記入（LP・予約からの事前記入）と、受付画面で保険を
+  // 選び終えている場合は、保険の質問を出さない
+  if (!SELF_CHECKIN || SELF_INS) {
+    (function () {
+      var block = document.getElementById("if-checkin-block");
+      if (block && block.parentNode) block.parentNode.removeChild(block);
+    })();
+  } else {
+    // 同じ端末で今日すでに受付していれば、それを引き継ぐ（読み込み直し・戻る対策）
+    try {
+      var savedRaw = localStorage.getItem(CHECKIN_STORE);
+      var saved = savedRaw ? JSON.parse(savedRaw) : null;
+      var d = new Date();
+      var today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      if (saved && saved.dateKey === today && saved.id) {
+        CHECKIN_ID = saved.id;
+        SUBMIT_TOKEN = saved.submitToken || "";
+        // 読み込み直しても「受付は済んでいる」ことが分かるように出し直す
+        document.addEventListener("DOMContentLoaded", function () {
+          showCheckinBanner(saved.number, null);
+        });
+      }
+    } catch (e) { /* プライベートブラウズ等。受付し直しになるだけで害はない */ }
+  }
+
+  // 冒頭の設問がそろったら受付を1件作る。何度呼んでも受付は1件（DB側でも
+  // 同じ日・同じ氏名の未対応の受付があればそれを返すようになっている）。
+  var checkinPending = false;
+  function ensureSelfCheckin() {
+    if (!SELF_CHECKIN || CHECKIN_ID || checkinPending) return Promise.resolve(false);
+    var nameEl = document.getElementById("if-name");
+    var dobEl = document.getElementById("if-dob");
+    var ins = document.querySelector('input[name="checkin_insurance"]:checked');
+    var insValue = SELF_INS || (ins && ins.value) || "";
+    var name = nameEl ? nameEl.value.trim() : "";
+    if (!name || !dobEl || !dobEl.value || !insValue) return Promise.resolve(false);
+
+    checkinPending = true;
+    return fetch(SUPABASE_URL + "/rest/v1/rpc/create_self_checkin", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({
+        p_visit_type: SELF_VISIT,
+        p_patient_name: name,
+        p_patient_kana: (document.getElementById("if-kana") || {}).value || null,
+        p_date_of_birth: dobEl.value,
+        p_insurance: insValue,
+        p_visit_kind: SELF_KIND || null,
+        p_return_reason: SELF_REASON || null,
+        p_line_user_id: SELF_LINE || null,
+        p_source: "phone",
+      }),
+    })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (data) {
+        checkinPending = false;
+        if (!data || !data.id) return false;
+        CHECKIN_ID = data.id;
+        SUBMIT_TOKEN = data.submitToken || "";
+        try {
+          var d = new Date();
+          localStorage.setItem(CHECKIN_STORE, JSON.stringify({
+            id: data.id,
+            submitToken: data.submitToken,
+            number: data.number,
+            dateKey: d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"),
+          }));
+        } catch (e) { /* no-op */ }
+        showCheckinBanner(data.number, insValue);
+        return true;
+      })
+      .catch(function (e) {
+        // 受付に失敗しても問診票の記入は続けられる。スタッフが画面で拾える
+        checkinPending = false;
+        console.warn("self check-in failed", e);
+        return false;
+      });
+  }
+
+  // 何問目まで進んだかを受付行に書いておく。スタッフ画面が「記入中 18/31」と
+  // 出せるようにするためで、回答そのものは一切送らない。
+  // 連打しても負荷にならないよう間引き、最後の1問だけは必ず送る。
+  var progressTimer = null;
+  var lastProgressSent = "";
+  function reportProgress(step, total, immediate) {
+    if (!CHECKIN_ID || !SUBMIT_TOKEN) return;
+    var key = step + "/" + total;
+    if (key === lastProgressSent) return;
+    if (progressTimer) { clearTimeout(progressTimer); progressTimer = null; }
+    var send = function () {
+      lastProgressSent = key;
+      fetch(SUPABASE_URL + "/rest/v1/rpc/set_intake_progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
+        body: JSON.stringify({ p_id: CHECKIN_ID, p_token: SUBMIT_TOKEN, p_step: step, p_total: total }),
+        keepalive: true,
+      }).catch(function () { /* 進捗表示のためだけなので、失敗しても何もしない */ });
+    };
+    if (immediate) send();
+    else progressTimer = setTimeout(send, 1200);
+  }
+
+  // 受付が済んだことを問診票の上に出しておく（紙の受付票を出さない運用のため、
+  // 患者さんが「受付できたのか」を確かめられる唯一の表示になる）
+  function showCheckinBanner(number, insurance) {
+    if (document.getElementById("if-checkin-banner")) return;
+    var isEn = PAGE_LANG === "en";
+    var box = document.createElement("div");
+    box.id = "if-checkin-banner";
+    box.style.cssText =
+      "margin:0 0 22px;padding:14px 16px;border-radius:12px;background:#EAF7EF;" +
+      "border:1px solid #BFE3CD;color:#1F5B37;font-size:14px;line-height:1.7;";
+    box.innerHTML =
+      "<strong>" + (isEn ? "You are checked in." : "受付が完了しました。") + "</strong>" +
+      (number != null ? " " + (isEn ? "Reception number " : "受付番号 ") + number : "") +
+      "<br>" +
+      (isEn
+        ? "Please take a seat and finish the questionnaire. We will call you by name."
+        : "このまま問診票のご記入をお続けください。お名前でお呼びします。") +
+      (insurance === "hokensho"
+        ? "<br>" + (isEn
+            ? "Please put your insurance card in the box at reception."
+            : "保険証は受付の保険証入れにお入れください。")
+        : "") +
+      (insurance === "forgot"
+        ? "<br>" + (isEn
+            ? "Today's visit is paid without insurance. Bring your card and today's receipt back within this month for a refund of the difference."
+            : "本日は自費でのお会計になります。今月中に保険証と本日の領収書をお持ちいただければ差額を返金します。")
+        : "");
+    var form = document.getElementById("intake-form");
+    if (form && form.parentNode) form.parentNode.insertBefore(box, form);
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /* ---- 表示言語（日本語ファースト） ----
+     HTMLは「英語が主・日本語(.ja)が従」で書かれているが、既定では日本語を主に
+     入れ替えて表示する。?lang=en のときだけ英語主体のまま。受付機のQRは選択中の
+     言語を付けてくるので、英語で受付した患者には英語ファーストで開く。 */
+  var PAGE_LANG = (new URLSearchParams(window.location.search).get("lang") || "ja").toLowerCase() === "en" ? "en" : "ja";
+
+  (function () {
+    // 言語切り替えトグル（ヘッダー右上・checkin等のパラメータは維持する）
+    var head = document.querySelector(".header-inner");
+    if (head) {
+      var sw = document.createElement("a");
+      var p = new URLSearchParams(window.location.search);
+      p.set("lang", PAGE_LANG === "ja" ? "en" : "ja");
+      sw.href = window.location.pathname + "?" + p.toString();
+      sw.textContent = PAGE_LANG === "ja" ? "English" : "日本語";
+      sw.className = "lang-toggle";
+      head.appendChild(sw);
+    }
+    if (PAGE_LANG === "en") return;
+
+    document.documentElement.lang = "ja";
+    document.title = "問診票 ／ Questionnaire, ケイ・レディースクリニック新宿";
+
+    // 「英語テキスト＋<span class=ja>日本語</span>」の組を汎用的に入れ替える。
+    // input類・「追加処方は記入不要」タグは動かさない。
+    [].forEach.call(document.querySelectorAll(".ja"), function (jaSpan) {
+      var parent = jaSpan.parentNode;
+      if (!parent) return;
+      var engNodes = [].filter.call(parent.childNodes, function (n) {
+        if (n === jaSpan) return false;
+        if (n.nodeType === 1) {
+          var tag = n.tagName.toUpperCase();
+          if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA" || tag === "SVG") return false;
+          if (n.classList && (n.classList.contains("skip-tag") || n.classList.contains("ja"))) return false;
+        }
+        return true;
+      });
+      var engText = engNodes.map(function (n) { return n.textContent; }).join(" ").replace(/\s+/g, " ").trim();
+      var jaText = jaSpan.textContent.trim();
+      if (!engText || !jaText) return;
+      parent.insertBefore(document.createTextNode(jaText), engNodes[0]);
+      engNodes.forEach(function (n) { parent.removeChild(n); });
+      jaSpan.textContent = engText;
+    });
+
+    // 見出し・ボタンなど個別の差し替え
+    var eyebrow = document.querySelector(".eyebrow");
+    if (eyebrow) eyebrow.textContent = "診察の前に ／ Before your consultation";
+    var display = document.querySelector("h1.display");
+    if (display) display.innerHTML = "問診票<em> Your questionnaire.</em>";
+    function setButtonText(el, text) {
+      if (!el) return;
+      for (var i = 0; i < el.childNodes.length; i++) {
+        var n = el.childNodes[i];
+        if (n.nodeType === 3 && n.textContent.trim()) { n.textContent = text; return; }
+      }
+    }
+    setButtonText(document.getElementById("if-submit"), "問診票を送信する ");
+    setButtonText(document.getElementById("if-print"), " 印刷・PDF保存");
+    [].forEach.call(document.querySelectorAll(".unit-or"), function (el) { el.textContent = "または"; });
+    var note = document.querySelector(".note-box");
+    if (note) {
+      note.innerHTML = "問診項目はOC・LEPガイドライン（日本産科婦人科学会 2020年版）に基づいています。回答は医療情報として厳重に管理されます。緊急の場合はこのフォームではなく<strong>119</strong>番（救急）または最寄りの救急外来をご利用ください。";
+    }
+    var PLACEHOLDERS_JA = {
+      "if-ec-timing": "例）7月28日 23時ごろ",
+      "if-period-shift-date": "例）9月20〜23日の旅行",
+      "if-cycle-detail": "例）28日周期 ／ 2〜3ヶ月に1回",
+      "if-refill-name": "例）ヘルペスのお薬",
+      "if-oc-detail": "例）マーベロン28を2年",
+      "if-found-search": "例）新宿 ピル 処方",
+      "if-found-ai": "例）新宿でピルを出してくれるクリニック",
+      "if-found-sns": "例）X・TikTok・YouTube",
+    };
+    [].forEach.call(document.querySelectorAll("input[placeholder], textarea[placeholder]"), function (el) {
+      if (PLACEHOLDERS_JA[el.id]) el.placeholder = PLACEHOLDERS_JA[el.id];
+      else el.placeholder = el.placeholder.replace(/^e\.g\.\s*/, "例）");
+    });
+  })();
+
+  /* ---- カタカナ表記の自動推測 ----
+     名前欄の入力からカタカナ欄を自動で埋める。よくある各国の名前は辞書で、
+     それ以外のラテン文字は英語風の読みの音節変換で近似する。あくまで「推測」で、
+     患者が手で直した後は上書きしない。漢字は読みが特定できないので推測しない。 */
+
+  var NAME_KANA_DICT = {
+    // 英語圏
+    james:"ジェームズ", john:"ジョン", robert:"ロバート", michael:"マイケル", william:"ウィリアム",
+    david:"デイビッド", richard:"リチャード", joseph:"ジョセフ", thomas:"トーマス", charles:"チャールズ",
+    christopher:"クリストファー", daniel:"ダニエル", matthew:"マシュー", anthony:"アンソニー", mark:"マーク",
+    steven:"スティーブン", stephen:"スティーブン", andrew:"アンドリュー", peter:"ピーター", george:"ジョージ",
+    henry:"ヘンリー", jack:"ジャック", harry:"ハリー", jacob:"ジェイコブ", ryan:"ライアン", kevin:"ケビン",
+    brian:"ブライアン", eric:"エリック", adam:"アダム", simon:"サイモン", paul:"ポール", oliver:"オリバー",
+    liam:"リアム", noah:"ノア", ethan:"イーサン", alexander:"アレクサンダー", nicholas:"ニコラス",
+    mary:"メアリー", patricia:"パトリシア", jennifer:"ジェニファー", linda:"リンダ", elizabeth:"エリザベス",
+    susan:"スーザン", jessica:"ジェシカ", sarah:"サラ", sara:"サラ", karen:"カレン", nancy:"ナンシー",
+    lisa:"リサ", margaret:"マーガレット", sandra:"サンドラ", ashley:"アシュリー", emily:"エミリー",
+    michelle:"ミシェル", amanda:"アマンダ", stephanie:"ステファニー", rachel:"レイチェル",
+    catherine:"キャサリン", katherine:"キャサリン", kate:"ケイト", anne:"アン", ann:"アン", hannah:"ハンナ",
+    grace:"グレース", emma:"エマ", olivia:"オリビア", sophia:"ソフィア", chloe:"クロエ", lucy:"ルーシー",
+    alice:"アリス", charlotte:"シャーロット", amelia:"アメリア", isabella:"イザベラ", victoria:"ビクトリア",
+    nicole:"ニコール", natalie:"ナタリー", julia:"ジュリア", laura:"ローラ", anna:"アンナ", eva:"エヴァ",
+    monica:"モニカ", angela:"アンジェラ", diana:"ダイアナ", christina:"クリスティーナ",
+    smith:"スミス", johnson:"ジョンソン", williams:"ウィリアムズ", brown:"ブラウン", jones:"ジョーンズ",
+    miller:"ミラー", davis:"デイビス", wilson:"ウィルソン", taylor:"テイラー", white:"ホワイト",
+    martin:"マーティン", thompson:"トンプソン", moore:"ムーア", young:"ヤング", walker:"ウォーカー",
+    wright:"ライト", green:"グリーン", baker:"ベイカー", scott:"スコット", adams:"アダムズ",
+    campbell:"キャンベル", mitchell:"ミッチェル", carter:"カーター", phillips:"フィリップス",
+    evans:"エバンス", turner:"ターナー", parker:"パーカー", edwards:"エドワーズ", collins:"コリンズ",
+    stewart:"スチュワート", morris:"モリス", murphy:"マーフィー", cook:"クック", rogers:"ロジャース",
+    reed:"リード", bailey:"ベイリー", cooper:"クーパー", howard:"ハワード", brooks:"ブルックス",
+    gray:"グレイ", watson:"ワトソン", russell:"ラッセル", hughes:"ヒューズ",
+    // スペイン語圏・ポルトガル語圏
+    maria:"マリア", jose:"ホセ", juan:"フアン", carlos:"カルロス", luis:"ルイス", miguel:"ミゲル",
+    pedro:"ペドロ", ana:"アナ", carmen:"カルメン", garcia:"ガルシア", rodriguez:"ロドリゲス",
+    martinez:"マルティネス", hernandez:"エルナンデス", lopez:"ロペス", gonzalez:"ゴンサレス",
+    perez:"ペレス", sanchez:"サンチェス", ramirez:"ラミレス", torres:"トレス", fernandez:"フェルナンデス",
+    diaz:"ディアス", silva:"シルバ", santos:"サントス", oliveira:"オリベイラ", souza:"ソウザ",
+    costa:"コスタ", pereira:"ペレイラ", joao:"ジョアン", paulo:"パウロ", lucas:"ルーカス",
+    gabriel:"ガブリエル", ferreira:"フェレイラ", almeida:"アルメイダ", reyes:"レイエス", cruz:"クルス",
+    ramos:"ラモス", mendoza:"メンドーサ", flores:"フローレス", gomez:"ゴメス", morales:"モラレス",
+    bautista:"バウティスタ",
+    // フランス語圏・ドイツ語圏
+    pierre:"ピエール", jean:"ジャン", marie:"マリー", sophie:"ソフィー", camille:"カミーユ",
+    louis:"ルイ", claire:"クレール", francois:"フランソワ", dubois:"デュボワ", bernard:"ベルナール",
+    laurent:"ローラン", hans:"ハンス", klaus:"クラウス", muller:"ミュラー", schmidt:"シュミット",
+    schneider:"シュナイダー", fischer:"フィッシャー", weber:"ウェーバー", wagner:"ワーグナー",
+    becker:"ベッカー", hoffmann:"ホフマン",
+    // 中国語圏（ピンイン）
+    wang:"ワン", li:"リー", zhang:"ジャン", liu:"リウ", chen:"チェン", yang:"ヤン", zhao:"チャオ",
+    huang:"ホアン", wu:"ウー", zhou:"チョウ", xu:"シュー", sun:"スン", ma:"マー", zhu:"チュー",
+    hu:"フー", guo:"グオ", lin:"リン", gao:"ガオ", luo:"ルオ", xie:"シエ", tang:"タン",
+    feng:"フォン", wei:"ウェイ", jing:"ジン", xin:"シン", mei:"メイ", yu:"ユー", jia:"ジア",
+    // 韓国
+    kim:"キム", lee:"リー", park:"パク", choi:"チェ", jung:"チョン", jeong:"チョン", kang:"カン",
+    cho:"チョ", yoon:"ユン", jang:"チャン", han:"ハン", shin:"シン", seo:"ソ", kwon:"クォン",
+    hwang:"ファン", ahn:"アン", song:"ソン", jin:"ジン", min:"ミン",
+    // ベトナム
+    nguyen:"グエン", tran:"チャン", le:"レ", pham:"ファム", hoang:"ホアン", phan:"ファン",
+    vu:"ヴー", dang:"ダン", bui:"ブイ", ho:"ホー", ngo:"ゴー", duong:"ズオン", linh:"リン",
+    minh:"ミン", thi:"ティ", van:"ヴァン", anh:"アイン", huong:"フオン", thanh:"タイン", mai:"マイ",
+    // 南アジア・中東
+    singh:"シン", kumar:"クマール", sharma:"シャルマ", patel:"パテル", gupta:"グプタ", khan:"カーン",
+    ali:"アリ", priya:"プリヤ", ravi:"ラヴィ", rahul:"ラフル", amit:"アミット", anita:"アニタ",
+    mohammed:"ムハンマド", muhammad:"ムハンマド", mohamed:"モハメド", ahmed:"アフメド", ahmad:"アフマド",
+    hassan:"ハサン", hussein:"フセイン", omar:"オマル", fatima:"ファティマ", aisha:"アイシャ",
+    yusuf:"ユスフ", ibrahim:"イブラヒム", mustafa:"ムスタファ", abdullah:"アブドゥラ",
+    // ロシア語圏
+    ivan:"イワン", dmitri:"ドミトリ", sergei:"セルゲイ", olga:"オリガ", natasha:"ナターシャ",
+    tatiana:"タチアナ", anastasia:"アナスタシア", vladimir:"ウラジーミル", ivanov:"イワノフ",
+    petrov:"ペトロフ", smirnov:"スミルノフ", elena:"エレナ", irina:"イリーナ", svetlana:"スベトラーナ",
+    // 東南アジアその他
+    siti:"シティ", budi:"ブディ", dewi:"デウィ", putri:"プトリ", sari:"サリ",
+  };
+
+  var KANA_PLAIN_V = { a: "ア", i: "イ", u: "ウ", e: "エ", o: "オ" };
+  // 特殊母音トークン: [子音と組む段, 後ろに付く音]
+  var KANA_SPECIALS = { A: ["e", "イ"], I: ["i", "ー"], O: ["o", "ー"], U: ["u", "ー"], Y: ["a", "イ"] };
+  var KANA_TABLE = {
+    k: { a: "カ", i: "キ", u: "ク", e: "ケ", o: "コ", def: "ク" },
+    g: { a: "ガ", i: "ギ", u: "グ", e: "ゲ", o: "ゴ", def: "グ" },
+    s: { a: "サ", i: "シ", u: "ス", e: "セ", o: "ソ", def: "ス" },
+    z: { a: "ザ", i: "ジ", u: "ズ", e: "ゼ", o: "ゾ", def: "ズ" },
+    j: { a: "ジャ", i: "ジ", u: "ジュ", e: "ジェ", o: "ジョ", def: "ジュ" },
+    t: { a: "タ", i: "ティ", u: "トゥ", e: "テ", o: "ト", def: "ト" },
+    d: { a: "ダ", i: "ディ", u: "ドゥ", e: "デ", o: "ド", def: "ド" },
+    n: { a: "ナ", i: "ニ", u: "ヌ", e: "ネ", o: "ノ", def: "ン" },
+    h: { a: "ハ", i: "ヒ", u: "フ", e: "ヘ", o: "ホ", def: "フ" },
+    f: { a: "ファ", i: "フィ", u: "フ", e: "フェ", o: "フォ", def: "フ" },
+    b: { a: "バ", i: "ビ", u: "ブ", e: "ベ", o: "ボ", def: "ブ" },
+    p: { a: "パ", i: "ピ", u: "プ", e: "ペ", o: "ポ", def: "プ" },
+    m: { a: "マ", i: "ミ", u: "ム", e: "メ", o: "モ", def: "ム" },
+    r: { a: "ラ", i: "リ", u: "ル", e: "レ", o: "ロ", def: "ル" },
+    l: { a: "ラ", i: "リ", u: "ル", e: "レ", o: "ロ", def: "ル" },
+    w: { a: "ワ", i: "ウィ", u: "ウ", e: "ウェ", o: "ウォ", def: "ウ" },
+    v: { a: "ヴァ", i: "ヴィ", u: "ヴ", e: "ヴェ", o: "ヴォ", def: "ヴ" },
+    y: { a: "ヤ", i: "イ", u: "ユ", e: "イェ", o: "ヨ", def: "イ" },
+    C: { a: "チャ", i: "チ", u: "チュ", e: "チェ", o: "チョ", def: "チ" }, // ch
+    S: { a: "シャ", i: "シ", u: "シュ", e: "シェ", o: "ショ", def: "シュ" }, // sh
+    Z: { a: "ツァ", i: "ツィ", u: "ツ", e: "ツェ", o: "ツォ", def: "ツ" }, // ts
+  };
+
+  function hiraToKata(s) {
+    return s.replace(/[ぁ-ゖ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) + 0x60); });
+  }
+
+  function latinToKana(raw) {
+    // アクセント記号を除去（José→jose）
+    var w = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+    if (!w) return "";
+    w = w
+      // 子音の綴りを整理
+      .replace(/tch/g, "C").replace(/ch/g, "C").replace(/sh/g, "S")
+      .replace(/ts/g, "Z").replace(/th/g, "s").replace(/ph/g, "f")
+      .replace(/wh/g, "w").replace(/kh/g, "k")
+      .replace(/eigh/g, "A").replace(/igh/g, "Y").replace(/gh$/, "").replace(/gh/g, "g")
+      .replace(/ck/g, "k").replace(/x/g, "ks").replace(/qu/g, "ku").replace(/q/g, "k")
+      .replace(/c(?=[eiy])/g, "s").replace(/c/g, "k")
+      // 語末の -se は濁る（rose→ローズ）＋マジックe（kate→ケイト, mike→マイク）
+      .replace(/ase$/, "Az").replace(/ise$/, "Yz").replace(/ose$/, "Oz").replace(/use$/, "Uz").replace(/ese$/, "Iz")
+      .replace(/a([bdfgjklmnprstvz])e$/, "A$1").replace(/i([bdfgjklmnprstvz])e$/, "Y$1")
+      .replace(/o([bdfgjklmnprstvz])e$/, "O$1").replace(/u([bdfgjklmnprstvz])e$/, "U$1")
+      .replace(/e([bdfgjklmnprstvz])e$/, "I$1")
+      // 母音の連なり
+      .replace(/ee/g, "I").replace(/oo/g, "U").replace(/ou/g, "U")
+      .replace(/au|aw/g, "O").replace(/oa/g, "O")
+      .replace(/ai|ay/g, "A").replace(/ei|ey/g, "A").replace(/ea/g, "I")
+      .replace(/ie$/, "I").replace(/y$/, "I").replace(/y(?![aeiouAIOU])/g, "i")
+      // 子音の前・語末の er はアー音（anderson→アンダーソン）
+      .replace(/er(?![aeiouAIOUY])/g, "ar");
+
+    var out = "";
+    var prevVowel = false;
+    for (var i = 0; i < w.length; i++) {
+      var c = w.charAt(i);
+      var next = w.charAt(i + 1);
+      var isVowel = !!(KANA_PLAIN_V[c] || KANA_SPECIALS[c]);
+      if (isVowel) {
+        if (KANA_SPECIALS[c]) out += KANA_PLAIN_V[KANA_SPECIALS[c][0]] + KANA_SPECIALS[c][1];
+        else out += KANA_PLAIN_V[c];
+        prevVowel = true;
+        continue;
+      }
+      var nextIsVowel = !!(KANA_PLAIN_V[next] || KANA_SPECIALS[next]);
+      if (c === "n" && !nextIsVowel && next !== "y") { out += "ン"; prevVowel = false; continue; }
+      if (c === "m" && (next === "b" || next === "p")) { out += "ン"; prevVowel = false; continue; }
+      if (next === c) { out += c === "n" ? "ン" : "ッ"; prevVowel = false; continue; }
+      if (c === "r" && prevVowel && !nextIsVowel) { out += "ー"; prevVowel = false; continue; }
+      var row = KANA_TABLE[c];
+      if (!row) { prevVowel = false; continue; }
+      // 拗音（ryo→リョ, kyu→キュ など）
+      if (next === "y") {
+        var v2 = w.charAt(i + 2);
+        var base2 = KANA_SPECIALS[v2] ? KANA_SPECIALS[v2][0] : v2;
+        var small = { a: "ャ", u: "ュ", o: "ョ", e: "ェ", i: "ィ" }[base2];
+        if (small) {
+          out += row.i + small + (KANA_SPECIALS[v2] ? KANA_SPECIALS[v2][1] : "");
+          i += 2;
+          prevVowel = true;
+          continue;
+        }
+      }
+      if (nextIsVowel) {
+        var base = KANA_SPECIALS[next] ? KANA_SPECIALS[next][0] : next;
+        out += row[base] + (KANA_SPECIALS[next] ? KANA_SPECIALS[next][1] : "");
+        i++;
+        prevVowel = true;
+      } else {
+        out += row.def;
+        prevVowel = false;
+      }
+    }
+    return out;
+  }
+
+  function guessKana(name) {
+    var tokens = (name || "").trim().split(/[\s　]+/);
+    var parts = [];
+    for (var i = 0; i < tokens.length; i++) {
+      var t = tokens[i].replace(/[.,]/g, "");
+      if (!t) continue;
+      if (/^[ぁ-ゖー]+$/.test(t)) { parts.push({ kana: hiraToKata(t), latin: false }); continue; }
+      if (/^[ァ-ヶー・]+$/.test(t)) { parts.push({ kana: t, latin: false }); continue; }
+      if (/^[a-zA-Z'’\-À-ɏ]+$/.test(t)) {
+        var subs = t.split(/[-'’]/);
+        var kana = "";
+        for (var j = 0; j < subs.length; j++) {
+          if (!subs[j]) continue;
+          var key = subs[j].toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+          kana += NAME_KANA_DICT[key] || latinToKana(subs[j]);
+        }
+        if (kana) parts.push({ kana: kana, latin: true });
+        continue;
+      }
+      // 漢字などは読みが特定できないので推測しない
+      return "";
+    }
+    if (!parts.length) return "";
+    var s = "";
+    for (var k = 0; k < parts.length; k++) {
+      if (k > 0) s += parts[k].latin && parts[k - 1].latin ? "・" : "　";
+      s += parts[k].kana;
+    }
+    return s;
+  }
+
+  (function () {
+    var nameField = document.getElementById("if-name");
+    var kanaField = document.getElementById("if-kana");
+    var kanaEdited = false;
+    kanaField.addEventListener("input", function () { kanaEdited = kanaField.value.trim() !== ""; });
+    nameField.addEventListener("input", function () {
+      if (kanaEdited) return;
+      kanaField.value = guessKana(nameField.value);
+    });
+  })();
+  // 生年月日: 年・月・日の3欄から YYYY-MM-DD を組み立て、隠しの if-dob に入れる。
+  // 送信も受付（ensureSelfCheckin）もこの1項目しか見ないので、扱いは今までどおり。
+  // ありえない日付はブラウザの検証で止める（ウィザードは checkValidity を見ている）
+  (function () {
+    var y = document.getElementById("if-dob-y");
+    var m = document.getElementById("if-dob-m");
+    var d = document.getElementById("if-dob-d");
+    var out = document.getElementById("if-dob");
+    if (!y || !m || !d || !out) return;
+    var isEnPage = document.documentElement.lang !== "ja";
+    var MSG = {
+      year: isEnPage ? "Please enter the year of birth as four digits." : "生まれた年を4桁で入れてください。",
+      month: isEnPage ? "Please enter a month between 1 and 12." : "月は1〜12で入れてください。",
+      day: isEnPage ? "Please enter a day between 1 and 31." : "日は1〜31で入れてください。",
+    };
+    function sync() {
+      [y, m, d].forEach(function (el) {
+        var cleaned = el.value.replace(/\D/g, "");
+        if (cleaned !== el.value) el.value = cleaned;
+      });
+      var okY = /^\d{4}$/.test(y.value) && +y.value >= 1900 && +y.value <= new Date().getFullYear();
+      var okM = m.value !== "" && +m.value >= 1 && +m.value <= 12;
+      var okD = d.value !== "" && +d.value >= 1 && +d.value <= 31;
+      // 空欄は required に任せる（打ち始める前から赤くしない）
+      y.setCustomValidity(y.value && !okY ? MSG.year : "");
+      m.setCustomValidity(m.value && !okM ? MSG.month : "");
+      d.setCustomValidity(d.value && !okD ? MSG.day : "");
+      out.value = okY && okM && okD
+        ? y.value + "-" + ("0" + m.value).slice(-2) + "-" + ("0" + d.value).slice(-2)
+        : "";
+    }
+    [y, m, d].forEach(function (el) { el.addEventListener("input", sync); el.addEventListener("blur", sync); });
+    sync();
+  })();
+
+  var form = document.getElementById("intake-form");
+  var statusEl = document.getElementById("if-status");
+  var submitBtn = document.getElementById("if-submit");
+
+  document.getElementById("if-print").addEventListener("click", function () { window.print(); });
+
+  // Each reason that has a follow-up question opens it directly underneath.
+  // Unticking clears the answer, so an abandoned box never reaches the doctor.
+  [].forEach.call(document.querySelectorAll(".reason-cell"), function (cell) {
+    var box = cell.querySelector('input[type="checkbox"], input[type="radio"]');
+    var field = cell.querySelector(".reason-sub input");
+    if (!box || !field) return;
+    function sync(focus) {
+      cell.classList.toggle("open", box.checked);
+      if (box.checked) { if (focus) field.focus(); } else { field.value = ""; }
+    }
+    if (box.type === "radio") {
+      // ラジオは他を選んでも自分には change が飛ばないので、同じグループ全体を聞く。
+      // そうしないと、選び直したあとも前の欄が開いたまま残る
+      [].forEach.call(document.querySelectorAll('input[name="' + box.name + '"]'), function (other) {
+        other.addEventListener("change", function () { sync(other === box); });
+      });
+    } else {
+      box.addEventListener("change", function () { sync(true); });
+    }
+  });
+
+  // 「当院を知ったきっかけ」は複数選択だが最低1つは選んでもらう。ブラウザの
+  // required はチェックボックスのグループを見ないので、先頭の1つに代表させて
+  // どれかが選ばれたら外す
+  (function () {
+    var boxes = document.querySelectorAll('input[name="found_us"]');
+    if (!boxes.length) return;
+    function sync() {
+      var any = [].some.call(boxes, function (b) { return b.checked; });
+      boxes[0].required = !any;
+    }
+    [].forEach.call(boxes, function (b) { b.addEventListener("change", sync); });
+    sync();
+  })();
+
+  // 受診理由によって質問を減らす。判定は独立した2つ。
+  //
+  //   ① 追加処方のみ … data-skippable のセクションを任意にする（表示は残す）
+  //   ② ピル系の受診理由が1つもない … data-oclep の質問を画面から外す
+  //
+  // The sections tagged data-skippable exist to screen for OC/LEP contraindications.
+  // A patient topping up a medication we have already prescribed has been through
+  // that screening, and their answers are on file, so those sections become optional.
+  // Only when the refill is the *sole* reason, though: ticking anything else means
+  // there is something new to prescribe, which has to be screened.
+  //
+  // ②で外すのは、そのスクリーニングにしか使わない質問（喫煙本数・片頭痛の前兆・
+  // 24疾患のチェックリスト・家族の血栓症など）。膀胱炎や性感染症検査だけで
+  // 来られた方には要らない。最終月経・妊娠の可能性・服薬とアレルギー・治療中の
+  // 疾患は誰にでも要るので残す。更年期はHRTの禁忌がピルとほぼ同じなので
+  // 「ピル系」に入れている。
+  //
+  // アフターピルはここに入れない。毎日飲む薬ではないので血栓症のスクリーニングが
+  // 当てはまらないうえ、急いで来られている場面で書く量を増やしたくない。
+  // ほかにピル系の理由も選べば、そちらの判定で詳しい質問は出る。
+  var OC_REASONS = [
+    "Birth control pills",
+    "Mini-pill (progestogen-only)",
+    "Menstrual pain",
+    "Irregular period",
+    "Period shifting",
+    "Acne / skin",
+    "PMS / mood",
+    "Menopause",
+  ];
+  // 送信データの組み立てとウィザードから見る（下のIIFEで中身が入る）
+  var ocSkipped = function () { return false; };
+
+  (function () {
+    var boxes = document.querySelectorAll('input[name="reason"]');
+    var refill = document.querySelector(
+      'input[name="reason"][value="Refill of a medication prescribed here before"]');
+    var labels = document.querySelectorAll(".section-label[data-skippable]");
+    var note = document.getElementById("refill-skip-note");
+    if (!boxes.length) return;
+
+    // required は切り替えのたびに付け外しするので、まだ何も触っていないこの時点で
+    // 「元から必須だった項目」を控えておく
+    function requiredUnder(el) {
+      var out = [];
+      if (el.hasAttribute && el.hasAttribute("required")) out.push(el);
+      [].forEach.call(el.querySelectorAll("[required]"), function (f) { out.push(f); });
+      return out;
+    }
+    // 見出しから次の見出しまでが、そのセクションの中身
+    function sectionBody(label) {
+      var out = [], n = label.nextElementSibling;
+      while (n && !n.classList.contains("section-label")) { out.push(n); n = n.nextElementSibling; }
+      return out;
+    }
+
+    var skippableFields = [];
+    [].forEach.call(labels, function (lab) {
+      sectionBody(lab).forEach(function (n) {
+        requiredUnder(n).forEach(function (f) { skippableFields.push(f); });
+      });
+    });
+
+    // ピル専用の質問。セクションごと外すもの（見出しに data-oclep）と、
+    // セクションの一部だけ外すもの（質問に data-oclep）の両方がある
+    var ocEls = [];
+    [].forEach.call(document.querySelectorAll("[data-oclep]"), function (el) {
+      ocEls.push(el);
+      if (el.classList.contains("section-label")) {
+        sectionBody(el).forEach(function (n) { ocEls.push(n); });
+      }
+    });
+    var ocFields = [];
+    ocEls.forEach(function (el) { requiredUnder(el).forEach(function (f) { ocFields.push(f); }); });
+
+    function ticked() { return [].filter.call(boxes, function (b) { return b.checked; }); }
+
+    ocSkipped = function () {
+      var t = ticked();
+      // まだ何も選んでいないうちは全問出す（白紙で印刷したときに質問が欠けないように）
+      if (!t.length) return false;
+      return !t.some(function (b) { return OC_REASONS.indexOf(b.value) !== -1; });
+    };
+
+    function apply() {
+      var t = ticked();
+      var refillSkip = !!refill && t.length === 1 && t[0] === refill;
+      var ocSkip = ocSkipped();
+      ocEls.forEach(function (el) { el.classList.toggle("oc-hide", ocSkip); });
+      // 順番が大事。先に①で戻してから②で外す（②の質問は①のセクションの中にある）
+      skippableFields.forEach(function (f) {
+        if (refillSkip) { f.removeAttribute("required"); } else { f.setAttribute("required", ""); }
+      });
+      if (ocSkip) ocFields.forEach(function (f) { f.removeAttribute("required"); });
+      [].forEach.call(labels, function (l) { l.classList.toggle("skippable", refillSkip); });
+      if (note) note.classList.toggle("show", refillSkip);
+    }
+    [].forEach.call(boxes, function (b) { b.addEventListener("change", apply); });
+    apply();
+  })();
+
+  function radioVal(name) {
+    var el = document.querySelector('input[name="' + name + '"]:checked');
+    return el ? el.value : "";
+  }
+  function checkVals(name) {
+    return [].map.call(document.querySelectorAll('input[name="' + name + '"]:checked'),
+      function (c) { return c.value; }).join("; ");
+  }
+  function val(id) { return document.getElementById(id).value.trim(); }
+
+  /* 郵便番号から住所を引く（zipcloud の公開API。CORS対応・キー不要）。
+     引けなかった場合も下の欄に直接書けるので、検索は「入れば楽になる」補助に留める。
+     町名は自動で入れるが、患者が触った後は上書きしない（番地まで書いた分が消えないように）。 */
+  (function () {
+    var pc = document.getElementById("if-postal");
+    if (!pc) return;
+    var btn = document.getElementById("if-postal-btn");
+    var msg = document.getElementById("if-postal-msg");
+    var town = document.getElementById("if-town");
+    var isEn = PAGE_LANG === "en";
+    var lastLooked = "";
+
+    function say(text, cls) {
+      msg.textContent = text;
+      msg.className = "postal-msg" + (cls ? " " + cls : "");
+    }
+    function lookup() {
+      var z = (pc.value || "").replace(/[^0-9]/g, "");
+      if (z.length !== 7) {
+        say(isEn ? "Please enter the 7 digits of your postal code." : "郵便番号は7桁の数字でご入力ください。", "err");
+        return;
+      }
+      lastLooked = z;
+      say(isEn ? "Looking up…" : "検索しています…");
+      fetch("https://zipcloud.ibsnet.co.jp/api/search?zipcode=" + z)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var r = d && d.results && d.results[0];
+          if (!r) {
+            say(isEn ? "We couldn't find that postal code. Please type your address in the boxes below."
+                     : "その郵便番号は見つかりませんでした。下の欄に直接ご記入ください。", "err");
+            return;
+          }
+          document.getElementById("if-pref").value = r.address1 || "";
+          document.getElementById("if-city").value = r.address2 || "";
+          if (!town.value.trim() || town.dataset.auto === "1") {
+            town.value = r.address3 || "";
+            town.dataset.auto = "1";
+          }
+          say(isEn ? "Address filled in — please add your street number."
+                   : "住所が入りました。続けて番地・建物名をご記入ください。", "ok");
+          town.focus();
+        })
+        .catch(function () {
+          say(isEn ? "We couldn't look that up just now. Please type your address in the boxes below."
+                   : "住所を検索できませんでした。下の欄に直接ご記入ください。", "err");
+        });
+    }
+
+    btn.addEventListener("click", lookup);
+    // 7桁そろった時点で自動検索（同じ番号は繰り返し引かない）
+    pc.addEventListener("input", function () {
+      var z = (pc.value || "").replace(/[^0-9]/g, "");
+      if (z.length === 7 && z !== lastLooked) lookup();
+    });
+    // 郵便番号欄のEnterは「次の質問へ」ではなく住所検索にする
+    pc.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      e.stopPropagation();
+      lookup();
+    });
+    // 患者が町名を書き換えたら、以後は自動で上書きしない
+    town.addEventListener("input", function () { town.dataset.auto = ""; });
+  })();
+
+  // Height and weight can be filled in either system. Typing in one side fills
+  // the other, so the doctor always gets metric and the patient always sees the
+  // units she thinks in. `syncing` stops the two sides updating each other
+  // in a loop.
+  (function () {
+    var cm = document.getElementById("if-height");
+    var ft = document.getElementById("if-height-ft");
+    var inch = document.getElementById("if-height-in");
+    var kg = document.getElementById("if-weight");
+    var lb = document.getElementById("if-weight-lb");
+    var syncing = false;
+
+    function num(el) {
+      var n = parseFloat(el.value.replace(/[^\d.]/g, ""));
+      return isFinite(n) ? n : NaN;
+    }
+    function set(el, v) { el.value = v; }
+    function tidy(n, dp) {
+      return String(parseFloat(n.toFixed(dp)));
+    }
+    function on(el, fn) {
+      el.addEventListener("input", function () {
+        if (syncing) return;
+        syncing = true;
+        fn();
+        syncing = false;
+      });
+    }
+
+    on(cm, function () {
+      var v = num(cm);
+      if (!(v > 0)) { set(ft, ""); set(inch, ""); return; }
+      var totalIn = Math.round(v / 2.54);
+      var f = Math.floor(totalIn / 12);
+      set(ft, String(f));
+      set(inch, String(totalIn - f * 12));
+    });
+
+    function imperialToCm() {
+      var f = num(ft), i = num(inch);
+      if (!isFinite(f) && !isFinite(i)) { set(cm, ""); return; }
+      var totalIn = (isFinite(f) ? f : 0) * 12 + (isFinite(i) ? i : 0);
+      if (!(totalIn > 0)) { set(cm, ""); return; }
+      set(cm, tidy(totalIn * 2.54, 1));
+    }
+    on(ft, imperialToCm);
+    on(inch, imperialToCm);
+
+    on(kg, function () {
+      var v = num(kg);
+      set(lb, v > 0 ? tidy(v * 2.2046226, 1) : "");
+    });
+    on(lb, function () {
+      var v = num(lb);
+      set(kg, v > 0 ? tidy(v / 2.2046226, 1) : "");
+    });
+  })();
+
+  // The email carries both systems so the doctor reads metric and staff can
+  // check it back against whatever the patient typed.
+  function heightForEmail() {
+    var cm = val("if-height"), f = val("if-height-ft"), i = val("if-height-in");
+    if (!cm) return "";
+    var imp = (f ? f + " ft " : "") + (i ? i + " in" : "");
+    return imp ? cm + " cm (" + imp.trim() + ")" : cm + " cm";
+  }
+  function weightForEmail() {
+    var kg = val("if-weight"), lb = val("if-weight-lb");
+    if (!kg) return "";
+    return lb ? kg + " kg (" + lb + " lb)" : kg + " kg";
+  }
+
+  // [payload key, English label, Japanese label], the email shows both so the
+  // doctor and the English speaking staff read the same sheet.
+  var FIELDS = [
+    ["name", "Full name", "氏名"],
+    ["name_katakana", "Name in katakana", "カタカナ表記"],
+    ["date_of_birth", "Date of birth", "生年月日"],
+    ["email", "Email", "メールアドレス"],
+    ["phone", "Phone", "電話番号"],
+    ["nationality", "Nationality", "国籍"],
+    ["postal_code", "Postal code", "郵便番号"],
+    ["address", "Address in Japan", "日本国内の住所"],
+    ["height_cm", "Height", "身長"],
+    ["weight_kg", "Weight", "体重"],
+    ["bmi", "BMI", "BMI"],
+    ["blood_pressure", "Blood pressure", "血圧"],
+    ["reason_for_visit", "Reason for visit", "受診理由"],
+    ["morning_after_timing", "Intercourse date / time", "性交渉の日時（アフターピル）"],
+    ["period_shift_date", "Date to move the period around", "ずらしたいご予定（月経移動）"],
+    ["refill_requested", "Refill requested", "ご希望のお薬（追加処方）"],
+    ["reason_other_detail", "Other, details", "その他の内容"],
+    ["last_period_start", "Last period started", "最終月経の開始日"],
+    ["last_period_days", "Period length (days)", "月経の日数"],
+    ["cycle", "Menstrual cycle", "月経周期"],
+    ["cycle_detail", "Cycle length / frequency", "周期の日数・頻度"],
+    ["abnormal_bleeding", "Bleeding outside period", "不正性器出血"],
+    ["bleeding_since", "Bleeding since", "出血はいつから"],
+    ["pregnant_or_possibly", "Pregnant / possibly pregnant", "妊娠中または妊娠の可能性"],
+    ["breastfeeding", "Breastfeeding", "授乳中"],
+    ["ever_pregnant", "Ever been pregnant", "妊娠歴"],
+    ["pregnancy_times", "Number of pregnancies", "妊娠回数"],
+    ["birth_times", "Number of births", "出産回数"],
+    ["intercourse", "Ever had intercourse", "性交渉の経験"],
+    ["smoking", "Smokes", "喫煙"],
+    ["cigarettes_per_day", "Cigarettes per day", "1日の本数"],
+    ["smoking_years", "Years smoking", "喫煙年数"],
+    ["migraine_or_blurred_vision", "Migraine / blurred vision", "激しい頭痛・片頭痛・目のかすみ"],
+    ["current_acute_symptoms", "Acute symptoms now (ACHES)", "現在の急性症状(ACHES)"],
+    ["currently_in_treatment", "Currently in treatment", "現在治療中の疾患"],
+    ["treatment_detail", "Condition", "病名"],
+    ["past_surgery_or_hospitalization", "Past operation / hospitalization", "手術・入院の既往"],
+    ["hospitalization_detail", "Details", "その内容"],
+    ["diagnosed_conditions", "Diagnosed conditions", "既往・診断歴"],
+    ["repeated_miscarriage_stillbirth", "Repeated miscarriage / stillbirth", "流産・死産の反復"],
+    ["hypertensive_disorder_of_pregnancy", "Pre-eclampsia history", "妊娠高血圧症候群の既往"],
+    ["taking_medications", "Taking medications", "服用中の薬・サプリメント"],
+    ["medications_detail", "Medication names", "薬剤名"],
+    ["previous_oc_lep_use", "Birth control pill history", "OC・LEPの服用歴"],
+    ["previous_pill_detail", "Pill name and duration", "薬剤名と服用期間"],
+    ["allergy", "Medication / food allergy", "薬剤・食物アレルギー"],
+    ["allergy_detail", "Allergic to", "その薬剤名・食品名"],
+    ["recent_or_planned_surgery", "Surgery within 2 wks / planned 4 wks", "2週間以内の手術・4週間以内の手術予定"],
+    ["family_history_thrombosis", "Family history: thrombosis", "家族の血栓症歴"],
+    ["family_history_breast_cancer", "Family history: breast cancer", "家族の乳がん歴"],
+    ["found_us", "How they found us", "当院を知ったきっかけ"],
+    ["found_us_detail", "Search words / details", "検索ワード・詳細"],
+    ["notes", "Patient notes", "その他・自由記入"],
+  ];
+
+  var JA_ANSWERS = {
+    "Yes": "はい", "No": "いいえ",
+    "Regular": "順調", "Irregular": "不順",
+    "Yes, without aura": "はい（前兆なし）",
+    "Yes, with aura": "はい（前兆あり）",
+    "None of the above": "該当なし",
+    "Birth control pills": "低用量ピル",
+    "Mini-pill (progestogen-only)": "ミニピル（プロゲステロン単体）",
+    "Morning-after pill / Plan B": "アフターピル",
+    "Menstrual pain": "生理痛",
+    "Irregular period": "生理不順",
+    "Period shifting": "月経移動",
+    "Acne / skin": "ニキビ・肌荒れ",
+    "PMS / mood": "PMS・気分の不調",
+    "Menopause": "更年期",
+    "Refill of a medication prescribed here before": "当院で処方されたことのある薬の追加",
+    "Bleeding outside my period": "不正出血",
+    "Discharge / itching": "おりもの・かゆみ",
+    "STD testing": "性感染症検査",
+    "Pap smear (cervical cancer screening)": "子宮頸がん検診",
+    "Bladder infection (cystitis)": "膀胱炎",
+    "Other": "その他",
+    "Deep vein thrombosis": "深部静脈血栓",
+    "Pulmonary embolism": "肺塞栓症",
+    "SLE (lupus)": "SLE",
+    "Antiphospholipid syndrome": "抗リン脂質抗体症候群",
+    "Thrombophilia": "血栓性素因",
+    "Stroke / cerebrovascular disease": "脳血管障害",
+    "Coronary artery disease": "冠動脈疾患",
+    "Heart valve disease": "心臓弁膜症",
+    "Arrhythmia": "不整脈",
+    "Kidney disease": "腎機能障害",
+    "High blood pressure": "高血圧",
+    "Diabetes": "糖尿病",
+    "High cholesterol": "脂質代謝異常",
+    "Liver disease / liver tumor": "肝機能障害・肝腫瘍",
+    "Gallbladder disease": "胆嚢疾患",
+    "Cervical cancer": "子宮頸がん",
+    "Uterine cancer": "子宮体がん",
+    "Breast cancer": "乳がん",
+    "Porphyria": "ポルフィリン症",
+    "Epilepsy": "てんかん",
+    "Tetany": "テタニー",
+    "Crohn's disease": "クローン病",
+    "Ulcerative colitis": "潰瘍性大腸炎",
+    "Internet search": "インターネット検索",
+    "AI assistant": "AIに聞いた",
+    "Instagram": "インスタグラム",
+    "Other social media": "その他SNS",
+    "Google Maps": "Googleマップ",
+    "From a friend": "知人の紹介",
+    "Referred by another clinic": "他院からの紹介",
+    "Saw the clinic / signage": "通りがかり・看板",
+  };
+
+  function toJa(v) {
+    if (!v) return "";
+    if (JA_ANSWERS[v]) return JA_ANSWERS[v];
+    if (v.indexOf(";") !== -1) {
+      return v.split(";").map(function (p) {
+        p = p.trim();
+        return JA_ANSWERS[p] || p;
+      }).join("、");
+    }
+    return v; // free text stays as written
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    statusEl.className = "form-status";
+    statusEl.textContent = "";
+    if (!form.reportValidity()) {
+      // 未入力の項目があるとブラウザの小さな吹き出しが出るだけで気づきにくいので、
+      // 送信ボタンの近くにもはっきり表示する
+      statusEl.textContent = PAGE_LANG === "en"
+        ? "Some required fields are still empty — please check the highlighted field above."
+        : "未入力の項目があります。表示された項目をご確認ください（お名前が漢字の場合、カタカナ表記は手で入力してください）。";
+      statusEl.className = "form-status err";
+      return;
+    }
+    if (document.getElementById("if-company").value) return; // honeypot
+
+    var h = parseFloat(val("if-height"));
+    var w = parseFloat(val("if-weight"));
+    var bmi = h > 0 && w > 0 ? (w / Math.pow(h / 100, 2)).toFixed(1) : "";
+
+    var data = {
+      name: val("if-name"),
+      name_katakana: val("if-kana"),
+      date_of_birth: val("if-dob"),
+      email: val("if-email"),
+      phone: val("if-phone"),
+      nationality: val("if-nationality"),
+      postal_code: val("if-postal"),
+      // 分割入力した住所は、スタッフ画面・PDFでこれまでどおり1行で読めるようつなげて保存する
+      address: [val("if-pref"), val("if-city"), val("if-town"), val("if-building")]
+        .filter(function (s) { return s; }).join(" "),
+      height_cm: heightForEmail(),
+      weight_kg: weightForEmail(),
+      bmi: bmi,
+      blood_pressure: val("if-bp"),
+      reason_for_visit: checkVals("reason") || "None checked",
+      morning_after_timing: val("if-ec-timing"),
+      period_shift_date: val("if-period-shift-date"),
+      refill_requested: val("if-refill-name"),
+      reason_other_detail: val("if-other-detail"),
+      last_period_start: val("if-lmp"),
+      last_period_days: val("if-lmp-days"),
+      cycle: radioVal("cycle"),
+      cycle_detail: val("if-cycle-detail"),
+      abnormal_bleeding: radioVal("bleeding"),
+      bleeding_since: val("if-bleeding-since"),
+      pregnant_or_possibly: radioVal("pregnant"),
+      breastfeeding: radioVal("breastfeeding"),
+      ever_pregnant: radioVal("ever_pregnant"),
+      pregnancy_times: val("if-preg-times"),
+      birth_times: val("if-birth-times"),
+      intercourse: radioVal("intercourse"),
+      smoking: radioVal("smoke"),
+      cigarettes_per_day: val("if-smoke-count"),
+      smoking_years: val("if-smoke-years"),
+      migraine_or_blurred_vision: radioVal("migraine"),
+      current_acute_symptoms: radioVal("aches"),
+      currently_in_treatment: radioVal("in_treatment"),
+      treatment_detail: val("if-treatment-detail"),
+      past_surgery_or_hospitalization: radioVal("hospitalized"),
+      hospitalization_detail: val("if-hosp-detail"),
+      diagnosed_conditions: checkVals("cond") || "None checked",
+      repeated_miscarriage_stillbirth: radioVal("miscarriage"),
+      hypertensive_disorder_of_pregnancy: radioVal("preeclampsia"),
+      taking_medications: radioVal("meds"),
+      medications_detail: val("if-meds-detail"),
+      previous_oc_lep_use: radioVal("oc_history"),
+      previous_pill_detail: val("if-oc-detail"),
+      allergy: radioVal("allergy"),
+      allergy_detail: val("if-allergy-detail"),
+      recent_or_planned_surgery: radioVal("surgery"),
+      family_history_thrombosis: radioVal("family_clots"),
+      family_history_breast_cancer: radioVal("family_breast_cancer"),
+      found_us: checkVals("found_us"),
+      // 複数選択なので追記欄も複数埋まりうる。まとめて1項目で送る
+      found_us_detail: ["if-found-search", "if-found-ai", "if-found-sns", "if-found-clinic", "if-found-other"]
+        .map(val).filter(Boolean).join(" / "),
+      notes: val("if-notes"),
+    };
+
+    // ピル問診を外した回は、その項目を空欄のまま送らない。空欄だと「答えなかった」
+    // のか「聞かなかった」のか、あとから見て区別がつかない
+    var OC_ONLY_KEYS = [
+      "smoking", "cigarettes_per_day", "smoking_years",
+      "migraine_or_blurred_vision", "current_acute_symptoms",
+      "diagnosed_conditions", "repeated_miscarriage_stillbirth",
+      "hypertensive_disorder_of_pregnancy",
+      "recent_or_planned_surgery", "family_history_thrombosis", "family_history_breast_cancer",
+    ];
+    var ocWasSkipped = ocSkipped();
+
+    // Bilingual answer rows, in questionnaire order:
+    // { label: "English label ／ 日本語ラベル", value: "English answer ／ 日本語" }
+    var rows = FIELDS.map(function (f) {
+      if (ocWasSkipped && OC_ONLY_KEYS.indexOf(f[0]) !== -1) {
+        return {
+          label: f[1] + " ／ " + f[2],
+          value: "Not asked (no pill-related reason) ／ 未質問（ピル関連の受診理由なし）",
+        };
+      }
+      var raw = String(data[f[0]] || "");
+      var ja = toJa(raw);
+      return {
+        label: f[1] + " ／ " + f[2],
+        value: !raw ? "—" : (ja && ja !== raw ? raw + " ／ " + ja : raw),
+      };
+    });
+
+    submitBtn.disabled = true;
+    function postIntake(withCheckin) {
+      return fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          id: "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          patient_name: data.name,
+          date_of_birth: data.date_of_birth,
+          checkin_id: withCheckin ? CHECKIN_ID || null : null,
+          submit_token: withCheckin ? SUBMIT_TOKEN || null : null,
+          booking_id: BOOKING_ID || null,
+          answers: rows,
+        }),
+      });
+    }
+    // 受付を兼ねるモードで、ウィザードを使わず一気に書いた場合の保険。
+    // まだ受付が作られていなければここで作ってから送る
+    ensureSelfCheckin()
+      .then(function () { return postIntake(true); })
+      .then(function (res) {
+        // トークンなし・不一致（旧受付票のQR等）はRLSに弾かれる（PostgRESTは
+        // anonキーだと401、認証済みだと403を返す）ので、受付IDなしで送り直す。
+        // スタッフ画面では名前で照合され「未確認」と表示される
+        if ((res.status === 401 || res.status === 403) && CHECKIN_ID) return postIntake(false);
+        return res;
+      })
+      .then(function (res) {
+        if (!res.ok) { throw new Error("HTTP " + res.status); }
+        // The answers deliberately stay on screen rather than being reset: the
+        // PDF button needs them, and it's the only record the patient gets.
+        form.classList.add("form-locked");
+        submitBtn.style.display = "none";
+        statusEl.className = "form-status";
+        var done = document.getElementById("if-done");
+        // 予約から事前に記入した人（受付とはまだ紐付いていない）は、これで
+        // 手続きが終わったと思い込みやすい。実際に受付されないまま帰りかけた
+        // 例が出たので、来院時にQRで受付が要ることをここで強く出しておく。
+        if (!CHECKIN_ID) {
+          var isEn = PAGE_LANG === "en";
+          var warn = document.createElement("p");
+          warn.style.cssText =
+            "margin-top:14px;padding:12px 14px;border-radius:10px;background:#FFF4E5;" +
+            "border:1px solid #F0D2A0;color:#8A5A11;font-weight:600;";
+          warn.innerHTML = isEn
+            ? "This is not a check-in. When you arrive, please scan the check-in QR code at the reception counter."
+            : "これで受付は完了していません。ご来院時に、受付カウンターのQRコードを読み取って受付をお願いします。";
+          done.appendChild(warn);
+        }
+        done.classList.add("show");
+        done.scrollIntoView({ behavior: "smooth", block: "center" });
+      })
+      .catch(function () {
+        statusEl.textContent = "We couldn't send your answers. Please show this screen to our reception staff. ／ 送信できませんでした。お手数ですがこの画面を受付スタッフにお見せください。";
+        statusEl.className = "form-status err";
+      })
+      .finally(function () { submitBtn.disabled = false; });
+  });
+</script>
+
+<script>
+  /* ---- 1問ずつ表示するウィザード形式 ----
+     既存のフォームDOMはそのまま使い、表示だけを1問ずつに切り替える。
+     ・各 .field / .field-row（q-block内は個々の .field）を1ステップとする
+     ・「追加処方のみ」のときは記入不要セクションのステップを飛ばす
+     ・最後に送信ステップ。送信成功後は全問を再表示（PDF保存のため） */
+  (function () {
+    var isEn = PAGE_LANG === "en";
+    var printBtn = document.getElementById("if-print");
+    var refillBox = document.querySelector(
+      'input[name="reason"][value="Refill of a medication prescribed here before"]');
+    var reasonBoxes = document.querySelectorAll('input[name="reason"]');
+
+    // ステップ収集: form直下の .field / .field-row、q-block内の .field。
+    // それぞれに属するセクション見出しと（q-blockの場合）親要素も控えておく
+    var steps = [];
+    var curSection = null;
+    [].forEach.call(form.children, function (node) {
+      if (!node.classList) return;
+      if (node.classList.contains("section-label")) { curSection = node; return; }
+      if (node.classList.contains("q-block")) {
+        [].forEach.call(node.children, function (f) {
+          if (f.classList && f.classList.contains("field")) {
+            steps.push({ el: f, section: curSection, wrap: node });
+          }
+        });
+        return;
+      }
+      if (node.classList.contains("field") || node.classList.contains("field-row")) {
+        steps.push({ el: node, section: curSection, wrap: null });
+      }
+    });
+    if (!steps.length) return;
+
+    // 進行UI（進捗バー＋次へ/もどる）と送信ステップの案内文
+    var progress = document.createElement("div");
+    progress.className = "wz-progress";
+    progress.innerHTML = '<div class="wz-count"></div><div class="wz-bar"><span></span></div>';
+    form.insertBefore(progress, form.firstChild);
+    var countEl = progress.querySelector(".wz-count");
+    var barEl = progress.querySelector(".wz-bar span");
+
+    var finalMsg = document.createElement("div");
+    finalMsg.id = "wz-final";
+    finalMsg.innerHTML = isEn
+      ? "That's every question — thank you. Please send your answers with the button below. You can go back to change anything.<span class='ja'>以上で質問は終わりです。下のボタンから送信してください。</span>"
+      : "以上で質問は終わりです。下のボタンから送信してください。修正したい場合は「もどる」で戻れます。<span class='ja'>That's every question — please send your answers with the button below.</span>";
+    form.insertBefore(finalMsg, submitBtn);
+
+    var nav = document.createElement("div");
+    nav.className = "wz-nav";
+    var backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "wz-btn wz-back";
+    backBtn.textContent = isEn ? "Back" : "もどる";
+    var nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "wz-btn wz-next";
+    nextBtn.textContent = isEn ? "Next" : "次へ";
+    nav.appendChild(backBtn);
+    nav.appendChild(nextBtn);
+    form.appendChild(nav);
+
+    // 「追加処方のみ」選択中は、記入不要セクション（data-skippable）の質問を飛ばす
+    function skipActive() {
+      var ticked = [].filter.call(reasonBoxes, function (b) { return b.checked; });
+      return !!refillBox && ticked.length === 1 && ticked[0] === refillBox;
+    }
+    function visibleIndexes() {
+      var skip = skipActive();
+      var out = [];
+      steps.forEach(function (s, i) {
+        if (skip && s.section && s.section.hasAttribute("data-skippable")) return;
+        // ピル問診を外した回は、その質問をウィザードにも出さない
+        if (s.el.classList.contains("oc-hide")) return;
+        if (s.section && s.section.classList.contains("oc-hide")) return;
+        out.push(i);
+      });
+      return out;
+    }
+
+    var pos = 0; // visibleIndexes() 上の位置。== length なら送信ステップ
+
+    function render() {
+      var vis = visibleIndexes();
+      if (pos > vis.length) pos = vis.length;
+      var onFinal = pos >= vis.length;
+
+      steps.forEach(function (s) {
+        s.el.classList.add("wz-hide");
+        if (s.wrap) s.wrap.classList.add("wz-hide");
+      });
+      [].forEach.call(form.querySelectorAll(".section-label"), function (l) { l.classList.add("wz-hide"); });
+      [finalMsg, submitBtn, printBtn, statusEl].forEach(function (el) { el.classList.add("wz-hide"); });
+
+      if (onFinal) {
+        [finalMsg, submitBtn, printBtn, statusEl].forEach(function (el) { el.classList.remove("wz-hide"); });
+        countEl.textContent = isEn ? "Ready to send" : "送信の確認";
+        barEl.style.width = "100%";
+        // 最後まで到達したことは待たせずに知らせる（あと一歩なのが分かる）
+        reportProgress(vis.length, vis.length, true);
+      } else {
+        var s = steps[vis[pos]];
+        s.el.classList.remove("wz-hide");
+        if (s.wrap) s.wrap.classList.remove("wz-hide");
+        if (s.section) s.section.classList.remove("wz-hide");
+        countEl.textContent = (isEn ? "Question " : "質問 ") + (pos + 1) + " / " + vis.length;
+        barEl.style.width = Math.round((pos / vis.length) * 100) + "%";
+        reportProgress(pos + 1, vis.length, false);
+      }
+      backBtn.disabled = pos === 0;
+      nextBtn.style.display = onFinal ? "none" : "";
+      // 質問が変わったらページ先頭（進捗バー）へ戻す（初回表示では動かさない）
+      if (rendered) progress.scrollIntoView({ behavior: "smooth", block: "start" });
+      rendered = true;
+    }
+    var rendered = false;
+
+    function validateCurrent() {
+      var vis = visibleIndexes();
+      if (pos >= vis.length) return true;
+      var inputs = steps[vis[pos]].el.querySelectorAll("input, select, textarea");
+      for (var i = 0; i < inputs.length; i++) {
+        if (!inputs[i].checkValidity()) { inputs[i].reportValidity(); return false; }
+      }
+      return true;
+    }
+
+    backBtn.addEventListener("click", function () {
+      if (pos > 0) { pos--; render(); }
+    });
+    nextBtn.addEventListener("click", function () {
+      if (!validateCurrent()) return;
+      pos++;
+      render();
+      // 受付を兼ねるモードでは、冒頭（氏名・カナ・生年月日・保険）を
+      // 答え終えた時点で受付を成立させる。残りは待合室で記入してもらう
+      ensureSelfCheckin();
+    });
+
+    // テキスト欄でEnterを押したら（送信ではなく）次の質問へ
+    form.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      var tag = (e.target.tagName || "").toUpperCase();
+      if (tag === "TEXTAREA") return;
+      var vis = visibleIndexes();
+      if (pos < vis.length) { e.preventDefault(); nextBtn.click(); }
+    });
+
+    // 送信成功（done-panel表示）でウィザードを解除して全問を表示（PDF保存用）
+    var doneEl = document.getElementById("if-done");
+    new MutationObserver(function () {
+      if (!doneEl.classList.contains("show")) return;
+      [].forEach.call(form.querySelectorAll(".wz-hide"), function (el) { el.classList.remove("wz-hide"); });
+      progress.style.display = "none";
+      nav.style.display = "none";
+      finalMsg.style.display = "none";
+    }).observe(doneEl, { attributes: true, attributeFilter: ["class"] });
+
+    render();
+  })();
+</script>
+
+</body>
+</html>

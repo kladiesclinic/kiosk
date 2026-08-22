@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>再診の問診 ／ Follow-up Questionnaire, K Ladies Clinic Shinjuku</title>
+<meta name="robots" content="noindex, follow" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23FF6766'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='Georgia,serif' font-size='20' font-weight='bold' fill='%23FFFFFF'%3EK%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Inter:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="assets/sub.css" />
+<style>
+  .ja-sub { display: block; font-family: 'Inter', sans-serif; font-size: 11.5px; color: var(--faint); text-transform: none; letter-spacing: normal; font-weight: 400; margin-top: 2px; line-height: 1.5; }
+  .done-panel {
+    display: none; background: #E8F5EC; border: 1px solid #BFE3CC;
+    border-radius: 16px; padding: 22px; margin-bottom: 28px;
+  }
+  .done-panel.show { display: block; }
+  .done-panel h2 { font-family: 'Noto Sans JP', var(--sans); font-size: 20px; font-weight: 500; color: #1F5B37; }
+  .done-panel p { font-size: 14px; line-height: 1.75; color: #2E5C41; margin-top: 12px; }
+  .form-locked { pointer-events: none; opacity: 0.7; }
+
+  /* ---- 1問ずつ表示（ウィザード形式・intake.htmlと同じ見た目） ---- */
+  .wz-hide { display: none !important; }
+  .wz-progress { margin-bottom: 20px; }
+  .wz-progress .wz-count {
+    font-family: 'Noto Sans JP', var(--sans); font-size: 12.5px; font-weight: 700;
+    color: var(--accent); margin-bottom: 7px;
+  }
+  .wz-bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .wz-bar span {
+    display: block; height: 100%; width: 0; background: var(--accent);
+    border-radius: 999px; transition: width 0.25s ease;
+  }
+  .wz-nav { display: flex; gap: 10px; margin-top: 26px; }
+  .wz-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 15px; font-weight: 600; padding: 14px 18px; border-radius: 10px;
+    cursor: pointer; font-family: var(--sans);
+  }
+  .wz-next { flex: 1; background: var(--accent); color: #FFFFFF; border: none; }
+  .wz-back { flex: 0 0 auto; min-width: 108px; background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+  .wz-back:disabled { opacity: 0.35; cursor: default; }
+  #wz-final { font-size: 14.5px; line-height: 1.75; color: var(--soft); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <img src="assets/logo_ja.png" alt="K Ladies Clinic Shinjuku" class="brand-logo" />
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- 冒頭の案内文は撤去（pillorder問診票に合わせてすぐ本題へ）。 -->
+
+  <div class="card">
+    <div class="done-panel" id="fu-done">
+      <h2>送信しました ／ Sent</h2>
+      <p>ありがとうございます。回答は受付に送信され、診察前に医師が確認します。お掛けになってお待ちください。
+      <span class="ja-sub">Thank you — your answers have been sent to the reception desk. Please take a seat.</span></p>
+    </div>
+
+    <form id="fu-form" novalidate>
+      <div class="field">
+        <label for="fu-name">お名前<span class="ja-sub">Full name</span></label>
+        <input id="fu-name" type="text" autocomplete="name" required />
+      </div>
+
+      <div class="field">
+        <label for="fu-symptom">今日はどうなさいましたか<span class="ja-sub">How are you doing today? What brings you in?</span></label>
+        <textarea id="fu-symptom" required placeholder="例）前回のお薬を続けて相談したい／その後の経過について　など"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="fu-change">前回の診察から変わったこと・気になることがあれば（任意）<span class="ja-sub">Anything that has changed since your last visit? (optional)</span></label>
+        <input id="fu-change" type="text" />
+      </div>
+
+      <button type="submit" class="submit-btn" id="fu-submit">
+        送信する ／ Submit
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+      <p class="form-status" id="fu-status" role="status"></p>
+    </form>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <span>&copy; 2026 K Ladies Clinic Shinjuku</span>
+  </div>
+</footer>
+
+<script>
+  // 回答は intake_forms テーブルへ（フル問診票 intake.html と同じ仕組み）。
+  // anonキーは公開前提のクライアントキーで、RLS上は送信のみ可・閲覧はスタッフのみ。
+  var SUPABASE_URL = "https://dfkylexozstecjpgvnxg.supabase.co";
+  var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRma3lsZXhvenN0ZWNqcGd2bnhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzAxODAsImV4cCI6MjA5ODkwNjE4MH0.7gtNcTLeiISvEJRCxIaHpOwafbLyTAVnYFE2wvqi8Wc";
+  var CHECKIN_ID = new URLSearchParams(window.location.search).get("checkin") || "";
+  var BOOKING_ID = new URLSearchParams(window.location.search).get("booking") || "";
+  // 受付票QRに含まれる送信トークン（DB側で受付IDと照合・なりすまし防止）
+  var SUBMIT_TOKEN = new URLSearchParams(window.location.search).get("token") || "";
+
+  var form = document.getElementById("fu-form");
+  var statusEl = document.getElementById("fu-status");
+  var submitBtn = document.getElementById("fu-submit");
+
+  function val(id) { return document.getElementById(id).value.trim(); }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    statusEl.className = "form-status";
+    statusEl.textContent = "";
+    if (!form.reportValidity()) {
+      statusEl.textContent = "未入力の項目があります。ご確認ください。 ／ Some required fields are still empty.";
+      statusEl.className = "form-status err";
+      return;
+    }
+
+    submitBtn.disabled = true;
+    function postIntake(withCheckin) {
+      return fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({
+          id: "fu-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          patient_name: val("fu-name"),
+          checkin_id: withCheckin ? CHECKIN_ID || null : null,
+          submit_token: withCheckin ? SUBMIT_TOKEN || null : null,
+          booking_id: BOOKING_ID || null,
+          answers: [
+            { label: "種類 ／ Form", value: "再診・前回の続き（簡易問診） ／ Follow-up" },
+            { label: "氏名 ／ Full name", value: val("fu-name") },
+            { label: "本日のご相談内容 ／ Today's concern", value: val("fu-symptom") },
+            { label: "前回から変わったこと ／ Changes since last visit", value: val("fu-change") || "—" },
+          ],
+        }),
+      });
+    }
+    postIntake(true)
+      .then(function (res) {
+        // トークンなし・不一致（旧受付票のQR等）はRLSに弾かれる（anonキーは401、
+        // 認証済みは403）ので、受付IDなしで再送信する
+        if ((res.status === 401 || res.status === 403) && CHECKIN_ID) return postIntake(false);
+        return res;
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        form.classList.add("form-locked");
+        submitBtn.style.display = "none";
+        var done = document.getElementById("fu-done");
+        done.classList.add("show");
+        done.scrollIntoView({ behavior: "smooth", block: "center" });
+      })
+      .catch(function () {
+        statusEl.textContent = "送信できませんでした。お手数ですがこの画面を受付スタッフにお見せください。 ／ We couldn't send your answers — please show this screen to our staff.";
+        statusEl.className = "form-status err";
+      })
+      .finally(function () { submitBtn.disabled = false; });
+  });
+
+  /* ---- 1問ずつ表示するウィザード形式（intake.htmlと同じ動き） ---- */
+  (function () {
+    var steps = [].filter.call(form.children, function (n) {
+      return n.classList && n.classList.contains("field");
+    });
+    if (!steps.length) return;
+
+    var progress = document.createElement("div");
+    progress.className = "wz-progress";
+    progress.innerHTML = '<div class="wz-count"></div><div class="wz-bar"><span></span></div>';
+    form.insertBefore(progress, form.firstChild);
+    var countEl = progress.querySelector(".wz-count");
+    var barEl = progress.querySelector(".wz-bar span");
+
+    var finalMsg = document.createElement("div");
+    finalMsg.id = "wz-final";
+    finalMsg.textContent = "以上で質問は終わりです。下のボタンから送信してください。 ／ That's everything — please send your answers below.";
+    form.insertBefore(finalMsg, submitBtn);
+
+    var nav = document.createElement("div");
+    nav.className = "wz-nav";
+    var backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.className = "wz-btn wz-back";
+    backBtn.textContent = "もどる ／ Back";
+    var nextBtn = document.createElement("button");
+    nextBtn.type = "button";
+    nextBtn.className = "wz-btn wz-next";
+    nextBtn.textContent = "次へ ／ Next";
+    nav.appendChild(backBtn);
+    nav.appendChild(nextBtn);
+    form.appendChild(nav);
+
+    var pos = 0; // steps.length なら送信ステップ
+    var rendered = false;
+
+    function render() {
+      var onFinal = pos >= steps.length;
+      steps.forEach(function (s) { s.classList.add("wz-hide"); });
+      [finalMsg, submitBtn, statusEl].forEach(function (el) { el.classList.add("wz-hide"); });
+      if (onFinal) {
+        [finalMsg, submitBtn, statusEl].forEach(function (el) { el.classList.remove("wz-hide"); });
+        countEl.textContent = "送信の確認 ／ Ready to send";
+        barEl.style.width = "100%";
+      } else {
+        steps[pos].classList.remove("wz-hide");
+        countEl.textContent = "質問 " + (pos + 1) + " / " + steps.length;
+        barEl.style.width = Math.round((pos / steps.length) * 100) + "%";
+      }
+      backBtn.disabled = pos === 0;
+      nextBtn.style.display = onFinal ? "none" : "";
+      if (rendered) progress.scrollIntoView({ behavior: "smooth", block: "start" });
+      rendered = true;
+    }
+
+    backBtn.addEventListener("click", function () {
+      if (pos > 0) { pos--; render(); }
+    });
+    nextBtn.addEventListener("click", function () {
+      var inputs = steps[pos].querySelectorAll("input, select, textarea");
+      for (var i = 0; i < inputs.length; i++) {
+        if (!inputs[i].checkValidity()) { inputs[i].reportValidity(); return; }
+      }
+      pos++;
+      render();
+    });
+    form.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      if ((e.target.tagName || "").toUpperCase() === "TEXTAREA") return;
+      if (pos < steps.length) { e.preventDefault(); nextBtn.click(); }
+    });
+
+    // 送信成功（done-panel表示）でウィザードUIを片付ける
+    var doneEl = document.getElementById("fu-done");
+    new MutationObserver(function () {
+      if (!doneEl.classList.contains("show")) return;
+      [].forEach.call(form.querySelectorAll(".wz-hide"), function (el) { el.classList.remove("wz-hide"); });
+      progress.style.display = "none";
+      nav.style.display = "none";
+      finalMsg.style.display = "none";
+    }).observe(doneEl, { attributes: true, attributeFilter: ["class"] });
+
+    render();
+  })();
+</script>
+
+</body>
+</html>
