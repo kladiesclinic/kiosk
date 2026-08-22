@@ -1455,7 +1455,14 @@ export default function StaffView() {
           r.reminder_morning9_at && "朝9時",
           r.reminder_before1h_at && "1時間前",
           r.reminder_today10min_at && "当日",
+          r.reminder_manual_sent_at && `手動 ${hhmm(r.reminder_manual_sent_at)}`,
         ].filter(Boolean),
+        // 「催促メールを送る」ボタンの状態（依頼→batchが3分以内に送信→送信済）
+        reserveId: r.reserve_id,
+        manual: {
+          requested: !!r.reminder_manual_requested_at && !r.reminder_manual_sent_at && !r.reminder_manual_error,
+          error: r.reminder_manual_error || "",
+        },
       };
     });
     monshinRows.forEach((m) => {
@@ -1472,6 +1479,37 @@ export default function StaffView() {
   }, [pillorderResv, monshinRows, progressRows]);
   const pillorderActive = pillorderList.filter((r) => !r.canceled);
   const pillorderUnfilled = pillorderActive.filter((r) => !r.monshin && !r.answered);
+
+  // 「催促メールを送る」（pillorder）: 依頼を立てるだけ。送信は batch が3分以内に行い、
+  // 結果（送信済／失敗）は一覧の自動更新で戻ってくる。押した直後は画面側で依頼中にする
+  const requestReminder = async (reserveId) => {
+    setPillorderResv((rows) => rows.map((r) =>
+      r.reserve_id === reserveId
+        ? { ...r, reminder_manual_requested_at: new Date().toISOString(), reminder_manual_sent_at: null, reminder_manual_error: null }
+        : r
+    ));
+    const { error } = await supabase.rpc("request_pillorder_reminder", { p_reserve_id: reserveId });
+    if (error) setLoadError(`催促メールの依頼を登録できませんでした: ${error.message}`);
+  };
+
+  // Zoom英語: メール送信の基盤が無いので、スタッフのメールアプリに英語の定型文を開く
+  const zoomReminderMailto = (row) => {
+    const when = row.at
+      ? new Date(row.at).toLocaleString("en-GB", {
+          timeZone: "Asia/Tokyo", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+        }) + " (JST)"
+      : "your appointment";
+    const subject = "K Ladies Clinic Shinjuku: your intake form before your Zoom consultation";
+    const body =
+      `Hello ${row.name || ""},\n\n` +
+      `Thank you for booking your online consultation on ${when}. ` +
+      `We have not yet received your intake form. It takes about 5 minutes and the doctor uses it to prepare, ` +
+      `so your consultation time goes to your questions.\n\n` +
+      `Please fill it in before your appointment:\nhttps://www.klcs.jp/en/intake.html\n\n` +
+      `If you have already sent it, please ignore this message.\n\n` +
+      `K Ladies Clinic Shinjuku\nEnglish speaking staff\n`;
+    return `mailto:${encodeURIComponent(row.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  };
   const printMonshinBatch = async () => {
     if (!monshinBatchRef.current || monshinPrinting || monshinPrintRows.length === 0) return;
     const iosWindow = IS_IOS ? window.open("", "_blank") : null;
@@ -2637,10 +2675,30 @@ export default function StaffView() {
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>未記入</span>
                               )}
                               {!m && !row.canceled && row.reminders && (
-                                /* 催促メール（朝9時／1時間前／当日10分後）のうち送ったもの */
+                                /* 催促メール（朝9時／1時間前／当日10分後／手動）のうち送ったもの */
                                 <span className="block text-[10px] mt-0.5" style={{ color: row.reminders.length ? "#8A7A7E" : "#C9AEB3" }}>
                                   {row.reminders.length ? `催促メール送信済（${row.reminders.join("・")}）` : "催促メール 未送信"}
                                 </span>
+                              )}
+                              {!m && !row.canceled && row.reserveId && (
+                                row.manual.requested ? (
+                                  <span className="block text-[10px] mt-1 font-bold" style={{ color: "#0F8B8D" }}>催促メール 送信依頼中（数分以内に送信）</span>
+                                ) : (
+                                  <span className="block mt-1">
+                                    <button
+                                      onClick={() => requestReminder(row.reserveId)}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium active:opacity-70"
+                                      style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#B7791F" }}
+                                      title="自動リマインドと同じメールを、この方にもう一度送ります（数分以内に送信）"
+                                    >
+                                      <MessageCircle size={11} />
+                                      催促メールを送る
+                                    </button>
+                                    {row.manual.error && (
+                                      <span className="block text-[10px] mt-0.5" style={{ color: "#B03A44" }}>前回の送信に失敗: {row.manual.error}</span>
+                                    )}
+                                  </span>
+                                )
                               )}
                             </td>
                           </tr>
@@ -2735,6 +2793,20 @@ export default function StaffView() {
                                 <ProgressBadge p={row.progress} />
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>未記入</span>
+                              )}
+                              {!m && !row.canceled && row.email && (
+                                /* 英語の定型文をスタッフのメールアプリで開く（staff@ から送る） */
+                                <span className="block mt-1">
+                                  <a
+                                    href={zoomReminderMailto(row)}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium active:opacity-70"
+                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#B7791F" }}
+                                    title="英語のリマインド文を入れた状態でメールアプリを開きます"
+                                  >
+                                    <MessageCircle size={11} />
+                                    催促メールを送る
+                                  </a>
+                                </span>
                               )}
                             </td>
                           </tr>
