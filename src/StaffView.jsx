@@ -1262,6 +1262,8 @@ export default function StaffView() {
   const monshinBatchRef = useRef(null); // 一括印刷用（複数ページ）
   // zoomタブ: 英語LP（klcs.jp/en/intake.html）のZoom診療の問診票（monshin_online の source='zoom'）
   const [zoomRows, setZoomRows] = useState([]);
+  const [zoomAll, setZoomAll] = useState([]); // 日付に関係なく直近のZoom問診票（予約との突合用）
+  const [calBookings, setCalBookings] = useState([]); // Calendly の予約一覧（calendly_bookings、タブを開くたびに同期）
   const zoomBatchRef = useRef(null); // Zoom分の一括印刷用
   const intakeBatchRef = useRef(null); // 来院受付の問診票 一括印刷用（オンラインと合わせて出す）
   // 1日の予定表（来院＋オンラインを時刻順に1枚へ）
@@ -1336,6 +1338,42 @@ export default function StaffView() {
   // Zoom英語問診票の一括印刷（1人1枚A4・複数ページ）。
   // キャンセル済（Calendly予約が取り消され、取り直しも無い人）は紙にしない
   const zoomPrintRows = zoomRows.filter((m) => !m.reserve_canceled);
+
+  // Zoom英語タブの一覧。Calendly の予約（calendly_bookings）を軸に問診票を突き合わせる。
+  // 突合はメール → 無ければ氏名（Hide My Email 等でメールが一致しない人の予備）。
+  // 問診票は日付に関係なく直近分（zoomAll）から探す（予約日時を書かずに送った人も拾う）
+  const zoomList = useMemo(() => {
+    const used = new Set();
+    const nameKey = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+    const findMonshin = (b) => {
+      const em = String(b.email || "").toLowerCase();
+      const byEmail = em && zoomAll.find((m) => !used.has(m.id) && String(m.email || "").toLowerCase() === em);
+      if (byEmail) return byEmail;
+      const nk = nameKey(b.name);
+      return (nk && zoomAll.find((m) => !used.has(m.id) && nameKey(m.name) === nk)) || null;
+    };
+    const rows = calBookings.map((b) => {
+      const m = findMonshin(b);
+      if (m) used.add(m.id);
+      return {
+        key: `c:${b.invitee_uri}`, at: b.start_at, time: hhmm(b.start_at),
+        name: b.name || "", email: b.email || "", dob: m?.dob || "", phone: m?.phone || "",
+        canceled: !!b.canceled, monshin: m, noReserveTime: false,
+      };
+    });
+    zoomRows.forEach((m) => {
+      if (used.has(m.id)) return;
+      rows.push({
+        key: `m:${m.id}`, at: m.reserve_at || m.created_at,
+        time: m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at),
+        name: m.name || "", email: m.email || "", dob: m.dob || "", phone: m.phone || "",
+        canceled: !!m.reserve_canceled, monshin: m, noReserveTime: !m.reserve_at,
+      });
+    });
+    return rows.sort((a, b) => new Date(a.at) - new Date(b.at));
+  }, [calBookings, zoomAll, zoomRows]);
+  const zoomActive = zoomList.filter((r) => !r.canceled);
+  const zoomUnfilled = zoomActive.filter((r) => !r.monshin);
   const printZoomBatch = async () => {
     if (!zoomBatchRef.current || monshinPrinting || zoomPrintRows.length === 0) return;
     const iosWindow = IS_IOS ? window.open("", "_blank") : null;
@@ -1506,6 +1544,7 @@ export default function StaffView() {
       };
       setMonshinRows(dayRows("pillorder"));
       setZoomRows(dayRows("zoom"));
+      setZoomAll((mData || []).filter((r) => r.source === "zoom"));
     }
 
     // pillorder の予約一覧（batch が5分おきに pillorder_reservations へ同期）。
@@ -1517,6 +1556,15 @@ export default function StaffView() {
       .lte("start_at", `${dateKey}T23:59:59+09:00`)
       .order("start_at", { ascending: true });
     setPillorderResv(rErr ? [] : (rData || []));
+
+    // Calendly の予約一覧（Zoom英語タブを開くたびに calendly-sync が calendly_bookings へ同期）
+    const { data: cData, error: cErr } = await supabase
+      .from("calendly_bookings")
+      .select("*")
+      .gte("start_at", `${dateKey}T00:00:00+09:00`)
+      .lte("start_at", `${dateKey}T23:59:59+09:00`)
+      .order("start_at", { ascending: true });
+    setCalBookings(cErr ? [] : (cData || []));
 
     // 2回目以降の来院・予約では、過去の受付・問診票に入れたカルテ番号を自動で
     // 引いて見せる（電子カルテと繋がっていないぶん、前回の入力を再利用する）。
@@ -1561,8 +1609,9 @@ export default function StaffView() {
   // 突合して予約日の欄に並ぶ。同期に失敗しても一覧表示は通常どおり出す
   useEffect(() => {
     if (tab !== "zoom") return;
+    // 同期後は予約一覧（calendly_bookings）も新しくなっているので読み直す
     supabase.functions.invoke("calendly-sync")
-      .then(({ data }) => { if (data && data.updated > 0) load(); })
+      .then(() => load())
       .catch(() => {});
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2085,7 +2134,7 @@ export default function StaffView() {
                   : tab === "pillorder"
                     ? `${isToday ? "本日" : dateKey} のオンライン診療 ${pillorderActive.length}件　`
                     : tab === "zoom"
-                    ? `${isToday ? "本日" : dateKey} のZoom診療（英語） ${zoomRows.length}件　`
+                    ? `${isToday ? "本日" : dateKey} のZoom診療（英語） ${zoomActive.length}件　`
                     : tab === "bookings"
                       ? `${dateKey} の予約 ${bookings.filter((b) => b.status !== "cancelled").length}件　`
                       : isToday
@@ -2546,11 +2595,12 @@ export default function StaffView() {
           )}
 
           {tab === "zoom" && (
-          /* 英語LP（klcs.jp/en/intake.html）のZoom診療の問診票を予約時刻順で一覧。表示・印刷はpillorderタブと同じ */
+          /* Calendly の予約を予約時刻順に一覧し、英語LP（klcs.jp/en/intake.html）の問診票の記入状況を出す。表示・印刷はpillorderタブと同じ */
           <section>
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
-                {isToday ? "本日のZoom診療（英語）" : `${dateKey} のZoom診療（英語）`}（{zoomRows.length}件）
+                {isToday ? "本日のZoom診療（英語）" : `${dateKey} のZoom診療（英語）`}（{zoomActive.length}件
+                {zoomUnfilled.length > 0 && <span style={{ color: "#B7791F" }}>・問診票未記入 {zoomUnfilled.length}</span>}）
               </h2>
               <button
                 onClick={printZoomBatch}
@@ -2562,10 +2612,9 @@ export default function StaffView() {
                 {monshinPrinting ? "PDF作成中..." : `この日の分をまとめて印刷（${zoomPrintRows.length}）`}
               </button>
             </div>
-            {zoomRows.length === 0 ? (
+            {zoomList.length === 0 ? (
               <p className="text-sm" style={{ color: "#B08A90" }}>
-                この日のZoom診療の問診票はありません。（英語LPの問診票で予約日時が入力されると、予約時刻順にここへ並びます。
-                日時未入力の分は記入した日の欄に出ます）
+                この日のZoom診療の予約はありません。（Calendlyの予約がこのタブを開くたびに届き、問診票が記入されると「表示・印刷」に変わります）
               </p>
             ) : (
               <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
@@ -2580,45 +2629,51 @@ export default function StaffView() {
                       </tr>
                     </thead>
                     <tbody>
-                      {zoomRows.map((m) => {
-                        const flagged = (m.answers || []).some((a) => a.flag);
-                        const t = m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at);
-                        const anno = dobAnnotation(m.dob);
+                      {zoomList.map((row) => {
+                        const m = row.monshin;
+                        const flagged = !!m && (m.answers || []).some((a) => a.flag);
+                        const anno = dobAnnotation(row.dob);
                         return (
-                          <tr key={m.id} style={{ borderTop: "1px solid #FAEEF0", opacity: m.reserve_canceled ? 0.6 : 1 }}>
-                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace", textDecoration: m.reserve_canceled ? "line-through" : "none" }}>
-                              {t}
-                              {!m.reserve_at && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>記入時刻</span>}
+                          <tr key={row.key} style={{ borderTop: "1px solid #FAEEF0", opacity: row.canceled ? 0.6 : 1 }}>
+                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace", textDecoration: row.canceled ? "line-through" : "none" }}>
+                              {row.time}
+                              {row.noReserveTime && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>記入時刻</span>}
                             </td>
                             <td className="px-2 py-3 font-medium align-top">
-                              {m.name}
+                              {row.name}
                               <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
-                                {m.dob || "—"}{anno ? `（${anno}）` : ""}　{m.phone || "—"}
+                                {row.dob || "—"}{anno ? `（${anno}）` : ""}　{row.phone || "—"}
                               </span>
-                              {m.email && (
-                                <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90" }}>{m.email}</span>
+                              {row.email && (
+                                <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90" }}>{row.email}</span>
                               )}
                             </td>
                             <td className="px-2 py-3 align-top">
-                              {m.reserve_canceled && (
+                              {row.canceled && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold mr-1" style={{ background: "#EEE7E8", color: "#8A7A7E" }}>キャンセル済</span>
                               )}
                               {flagged ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FCE9EA", color: "#B03A44" }}>要注意</span>
                               ) : (
-                                !m.reserve_canceled && <span style={{ color: "#C9AEB3" }}>—</span>
+                                !row.canceled && <span style={{ color: "#C9AEB3" }}>—</span>
                               )}
-                              {m.printed_at && <span className="block text-[10px] mt-0.5" style={{ color: "#C9AEB3" }}>印刷済</span>}
+                              {m?.printed_at && <span className="block text-[10px] mt-0.5" style={{ color: "#C9AEB3" }}>印刷済</span>}
                             </td>
                             <td className="px-2 py-3 align-top">
-                              <button
-                                onClick={() => setSelectedMonshin(m)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
-                                style={{ background: "#0F8B8D", color: "#FFFFFF" }}
-                              >
-                                <FileText size={12} />
-                                表示・印刷
-                              </button>
+                              {m ? (
+                                <button
+                                  onClick={() => setSelectedMonshin(m)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                >
+                                  <FileText size={12} />
+                                  表示・印刷
+                                </button>
+                              ) : row.canceled ? (
+                                <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>未記入</span>
+                              )}
                             </td>
                           </tr>
                         );
