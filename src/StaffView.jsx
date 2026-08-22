@@ -1351,14 +1351,16 @@ export default function StaffView() {
   };
 
   // 当日分を一括印刷（1人1枚A4・複数ページ）
+  // キャンセル済（pillorder予約が取り消され、取り直しも無い人）は紙にしない
+  const monshinPrintRows = monshinRows.filter((m) => !m.reserve_canceled);
   const printMonshinBatch = async () => {
-    if (!monshinBatchRef.current || monshinPrinting || monshinRows.length === 0) return;
+    if (!monshinBatchRef.current || monshinPrinting || monshinPrintRows.length === 0) return;
     const iosWindow = IS_IOS ? window.open("", "_blank") : null;
     setMonshinPrinting(true);
     try {
       const els = [...monshinBatchRef.current.querySelectorAll(".monshin-batch-sheet")];
       await printElementsAsPdf(els, iosWindow, `オンライン診療_問診票_${dateKey}.pdf`);
-      monshinRows.forEach((m) => markMonshinPrinted(m.id));
+      monshinPrintRows.forEach((m) => markMonshinPrinted(m.id));
     } catch (e) {
       if (iosWindow && !iosWindow.closed) iosWindow.close();
       setLoadError(`一括印刷のPDFを作れませんでした: ${e.message}`);
@@ -1379,7 +1381,7 @@ export default function StaffView() {
     setMonshinPrinting(true);
     try {
       await printElementsAsPdf(els, iosWindow, `問診票_${dateKey}.pdf`);
-      monshinRows.forEach((m) => markMonshinPrinted(m.id));
+      monshinPrintRows.forEach((m) => markMonshinPrinted(m.id));
     } catch (e) {
       if (iosWindow && !iosWindow.closed) iosWindow.close();
       setLoadError(`一括印刷のPDFを作れませんでした: ${e.message}`);
@@ -1863,7 +1865,8 @@ export default function StaffView() {
           visitKind: VISIT_KIND_BADGE[b.visit_kind]?.label || "",
         };
       });
-    const online = monshinRows.map((m) => {
+    // キャンセル済（予約が取り消され取り直しも無い人）は1日の予定表に載せない
+    const online = monshinRows.filter((m) => !m.reserve_canceled).map((m) => {
       const chart = m.chart_number || pastCharts.get(chartMatchKey(m.name, m.dob)) || "";
       return {
       key: `m:${m.id}`,
@@ -2393,22 +2396,22 @@ export default function StaffView() {
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={printAllQuestionnaires}
-                  disabled={(monshinRows.length + dayIntakeForms.length) === 0 || monshinPrinting}
-                  title="オンライン診療の問診票と、来院受付の問診票をまとめてA4で印刷します"
+                  disabled={(monshinPrintRows.length + dayIntakeForms.length) === 0 || monshinPrinting}
+                  title="オンライン診療の問診票と、来院受付の問診票をまとめてA4で印刷します（キャンセル済は除きます）"
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
-                  style={{ background: (monshinRows.length + dayIntakeForms.length) ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
+                  style={{ background: (monshinPrintRows.length + dayIntakeForms.length) ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
                 >
                   <Printer size={15} />
-                  {monshinPrinting ? "PDF作成中..." : `この日の問診票をまとめて印刷（オンライン${monshinRows.length}＋来院受付${dayIntakeForms.length}）`}
+                  {monshinPrinting ? "PDF作成中..." : `この日の問診票をまとめて印刷（オンライン${monshinPrintRows.length}＋来院受付${dayIntakeForms.length}）`}
                 </button>
                 <button
                   onClick={printMonshinBatch}
-                  disabled={monshinRows.length === 0 || monshinPrinting}
+                  disabled={monshinPrintRows.length === 0 || monshinPrinting}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium active:opacity-70"
                   style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#127D82", opacity: monshinPrinting ? 0.5 : 1 }}
                 >
                   <Printer size={13} />
-                  オンライン分だけ（{monshinRows.length}）
+                  オンライン分だけ（{monshinPrintRows.length}）
                 </button>
               </div>
             </div>
@@ -2434,8 +2437,8 @@ export default function StaffView() {
                         const t = m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at);
                         const anno = dobAnnotation(m.dob);
                         return (
-                          <tr key={m.id} style={{ borderTop: "1px solid #FAEEF0" }}>
-                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                          <tr key={m.id} style={{ borderTop: "1px solid #FAEEF0", opacity: m.reserve_canceled ? 0.6 : 1 }}>
+                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace", textDecoration: m.reserve_canceled ? "line-through" : "none" }}>
                               {t}
                               {!m.reserve_at && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>記入時刻</span>}
                             </td>
@@ -2447,10 +2450,13 @@ export default function StaffView() {
                               </span>
                             </td>
                             <td className="px-2 py-3 align-top">
+                              {m.reserve_canceled && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold mr-1" style={{ background: "#EEE7E8", color: "#8A7A7E" }}>キャンセル済</span>
+                              )}
                               {flagged ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FCE9EA", color: "#B03A44" }}>要注意</span>
                               ) : (
-                                <span style={{ color: "#C9AEB3" }}>—</span>
+                                !m.reserve_canceled && <span style={{ color: "#C9AEB3" }}>—</span>
                               )}
                               {m.printed_at && <span className="block text-[10px] mt-0.5" style={{ color: "#C9AEB3" }}>印刷済</span>}
                             </td>
@@ -3519,9 +3525,9 @@ export default function StaffView() {
           親を display:none にすると html2canvas が寸法を取れず白紙になるため、
           親は画面外に置くだけにして、各シートを display:none で隠す。
           printElementsAsPdf が1枚ずつ block に戻して画像化する。 */}
-      {tab === "pillorder" && monshinRows.length > 0 && (
+      {tab === "pillorder" && monshinPrintRows.length > 0 && (
         <div ref={monshinBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
-          {monshinRows.map((m) => (
+          {monshinPrintRows.map((m) => (
             <div className="monshin-batch-sheet" style={{ display: "none" }} key={m.id}>
               <MonshinPrintSheet row={m} />
             </div>
