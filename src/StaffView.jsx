@@ -1080,17 +1080,23 @@ function FeedbackTab({ isAdmin, adminName, onCountChange }) {
   const input = { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30" };
 
   return (
-    <section className="flex flex-col gap-5" style={{ maxWidth: 860 }}>
+    /* 見出し・幅は「患者を探す」「設定」タブと同じ体裁（画面幅いっぱい、大見出し＋説明文） */
+    <section className="flex flex-col gap-5">
+      <div>
+        <h2 className="text-lg font-bold mb-1" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+          かねこさんへの要望・報告
+        </h2>
+        <p className="text-xs" style={{ color: "#B08A90" }}>
+          仕様を変えたい・機能を追加してほしい・おかしい所を見つけた、など何でもどうぞ。対応したらこのページでチェックが付きます。
+        </p>
+      </div>
+
       {error && (
         <div className="p-3 rounded-xl text-sm" style={{ background: "#FCE9EA", color: "#B03A44" }}>{error}</div>
       )}
 
       {/* 送信フォーム */}
       <div className="p-4" style={card}>
-        <h2 className="text-sm font-bold mb-1" style={{ color: "#3A2E30" }}>かねこさんへの要望・報告</h2>
-        <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
-          仕様を変えたい・機能を追加してほしい・おかしい所を見つけた、など何でもどうぞ。対応したらこのページでチェックが付きます。
-        </p>
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <input
             value={author}
