@@ -1331,15 +1331,17 @@ export default function StaffView() {
     }
   };
 
-  // Zoom英語問診票の一括印刷（1人1枚A4・複数ページ）
+  // Zoom英語問診票の一括印刷（1人1枚A4・複数ページ）。
+  // キャンセル済（Calendly予約が取り消され、取り直しも無い人）は紙にしない
+  const zoomPrintRows = zoomRows.filter((m) => !m.reserve_canceled);
   const printZoomBatch = async () => {
-    if (!zoomBatchRef.current || monshinPrinting || zoomRows.length === 0) return;
+    if (!zoomBatchRef.current || monshinPrinting || zoomPrintRows.length === 0) return;
     const iosWindow = IS_IOS ? window.open("", "_blank") : null;
     setMonshinPrinting(true);
     try {
       const els = [...zoomBatchRef.current.querySelectorAll(".monshin-batch-sheet")];
       await printElementsAsPdf(els, iosWindow, `Zoom診療_問診票_${dateKey}.pdf`);
-      zoomRows.forEach((m) => markMonshinPrinted(m.id));
+      zoomPrintRows.forEach((m) => markMonshinPrinted(m.id));
     } catch (e) {
       if (iosWindow && !iosWindow.closed) iosWindow.close();
       setLoadError(`一括印刷のPDFを作れませんでした: ${e.message}`);
@@ -2482,12 +2484,12 @@ export default function StaffView() {
               </h2>
               <button
                 onClick={printZoomBatch}
-                disabled={zoomRows.length === 0 || monshinPrinting}
+                disabled={zoomPrintRows.length === 0 || monshinPrinting}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
-                style={{ background: zoomRows.length ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
+                style={{ background: zoomPrintRows.length ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
               >
                 <Printer size={15} />
-                {monshinPrinting ? "PDF作成中..." : `この日の分をまとめて印刷（${zoomRows.length}）`}
+                {monshinPrinting ? "PDF作成中..." : `この日の分をまとめて印刷（${zoomPrintRows.length}）`}
               </button>
             </div>
             {zoomRows.length === 0 ? (
@@ -2513,8 +2515,8 @@ export default function StaffView() {
                         const t = m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at);
                         const anno = dobAnnotation(m.dob);
                         return (
-                          <tr key={m.id} style={{ borderTop: "1px solid #FAEEF0" }}>
-                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
+                          <tr key={m.id} style={{ borderTop: "1px solid #FAEEF0", opacity: m.reserve_canceled ? 0.6 : 1 }}>
+                            <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace", textDecoration: m.reserve_canceled ? "line-through" : "none" }}>
                               {t}
                               {!m.reserve_at && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>記入時刻</span>}
                             </td>
@@ -2528,10 +2530,13 @@ export default function StaffView() {
                               )}
                             </td>
                             <td className="px-2 py-3 align-top">
+                              {m.reserve_canceled && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold mr-1" style={{ background: "#EEE7E8", color: "#8A7A7E" }}>キャンセル済</span>
+                              )}
                               {flagged ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FCE9EA", color: "#B03A44" }}>要注意</span>
                               ) : (
-                                <span style={{ color: "#C9AEB3" }}>—</span>
+                                !m.reserve_canceled && <span style={{ color: "#C9AEB3" }}>—</span>
                               )}
                               {m.printed_at && <span className="block text-[10px] mt-0.5" style={{ color: "#C9AEB3" }}>印刷済</span>}
                             </td>
@@ -3360,7 +3365,7 @@ export default function StaffView() {
                     問診票（{selectedMonshin.source === "zoom" ? "Zoom診療・英語" : "オンライン診療"}）　{selectedMonshin.name}
                   </div>
                   <div className="text-xs" style={{ color: "#B08A90" }}>
-                    {selectedMonshin.reserve_at ? `予約 ${String(selectedMonshin.reserve_at).slice(0, 10)} ${hhmm(selectedMonshin.reserve_at)}　` : ""}
+                    {selectedMonshin.reserve_at ? `予約 ${String(selectedMonshin.reserve_at).slice(0, 10)} ${hhmm(selectedMonshin.reserve_at)}${selectedMonshin.reserve_canceled ? "（キャンセル済）" : ""}　` : ""}
                     記入 {String(selectedMonshin.created_at).slice(0, 10)} {hhmm(selectedMonshin.created_at)}
                     {selectedMonshin.dob ? `　生年月日 ${selectedMonshin.dob}` : ""}
                   </div>
@@ -3525,9 +3530,9 @@ export default function StaffView() {
       )}
 
       {/* Zoom診療（英語）の問診票 一括印刷レイアウト（画面外・pillorder分と同じ方式） */}
-      {tab === "zoom" && zoomRows.length > 0 && (
+      {tab === "zoom" && zoomPrintRows.length > 0 && (
         <div ref={zoomBatchRef} style={{ position: "fixed", left: "-10000px", top: 0, width: 1120 }}>
-          {zoomRows.map((m) => (
+          {zoomPrintRows.map((m) => (
             <div className="monshin-batch-sheet" style={{ display: "none" }} key={m.id}>
               <MonshinPrintSheet row={m} />
             </div>
