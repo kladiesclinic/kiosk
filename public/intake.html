@@ -753,14 +753,14 @@
         </div>
       </div>
 
-      <div class="section-label">How did you find us?<span class="ja">当院を知ったきっかけ</span></div>
+      <div class="section-label">How did you find us? (select all that apply)<span class="ja">当院を知ったきっかけ（当てはまるものを全て）</span></div>
 
       <!-- 追記の欄は選んだ項目のすぐ下に開く。選択肢の下にまとめて置いていた
            ときは、離れているせいでほとんど書いてもらえなかった。 -->
       <div class="field">
         <div class="choice-group">
           <div class="reason-cell">
-            <label class="choice"><input type="radio" name="found_us" value="Internet search" required /> Internet search<span class="ja">インターネット検索</span></label>
+            <label class="choice"><input type="checkbox" name="found_us" value="Internet search" required /> Internet search<span class="ja">インターネット検索</span></label>
             <div class="reason-sub">
               <div class="field">
                 <label for="if-found-search">What words did you search for?<span class="ja">検索した言葉</span></label>
@@ -769,7 +769,7 @@
             </div>
           </div>
           <div class="reason-cell">
-            <label class="choice"><input type="radio" name="found_us" value="AI assistant" /> AI (ChatGPT, Gemini)<span class="ja">AIに聞いた（ChatGPTなど）</span></label>
+            <label class="choice"><input type="checkbox" name="found_us" value="AI assistant" /> AI (ChatGPT, Gemini)<span class="ja">AIに聞いた（ChatGPTなど）</span></label>
             <div class="reason-sub">
               <div class="field">
                 <label for="if-found-ai">What did you ask it?<span class="ja">どのように聞きましたか</span></label>
@@ -777,10 +777,10 @@
               </div>
             </div>
           </div>
-          <label class="choice"><input type="radio" name="found_us" value="Google Maps" /> Google Maps<span class="ja">Googleマップ</span></label>
-          <label class="choice"><input type="radio" name="found_us" value="Instagram" /> Instagram<span class="ja">インスタグラム</span></label>
+          <label class="choice"><input type="checkbox" name="found_us" value="Google Maps" /> Google Maps<span class="ja">Googleマップ</span></label>
+          <label class="choice"><input type="checkbox" name="found_us" value="Instagram" /> Instagram<span class="ja">インスタグラム</span></label>
           <div class="reason-cell">
-            <label class="choice"><input type="radio" name="found_us" value="Other social media" /> Other social media<span class="ja">その他SNS</span></label>
+            <label class="choice"><input type="checkbox" name="found_us" value="Other social media" /> Other social media<span class="ja">その他SNS</span></label>
             <div class="reason-sub">
               <div class="field">
                 <label for="if-found-sns">Which one?<span class="ja">どのSNSですか</span></label>
@@ -788,9 +788,9 @@
               </div>
             </div>
           </div>
-          <label class="choice"><input type="radio" name="found_us" value="From a friend" /> From a friend<span class="ja">知人の紹介</span></label>
+          <label class="choice"><input type="checkbox" name="found_us" value="From a friend" /> From a friend<span class="ja">知人の紹介</span></label>
           <div class="reason-cell">
-            <label class="choice"><input type="radio" name="found_us" value="Referred by another clinic" /> Referred by another clinic<span class="ja">他院からの紹介</span></label>
+            <label class="choice"><input type="checkbox" name="found_us" value="Referred by another clinic" /> Referred by another clinic<span class="ja">他院からの紹介</span></label>
             <div class="reason-sub">
               <div class="field">
                 <label for="if-found-clinic">Which clinic?<span class="ja">医院名</span></label>
@@ -798,9 +798,9 @@
               </div>
             </div>
           </div>
-          <label class="choice"><input type="radio" name="found_us" value="Saw the clinic / signage" /> Saw the clinic or its sign<span class="ja">通りがかり・看板</span></label>
+          <label class="choice"><input type="checkbox" name="found_us" value="Saw the clinic / signage" /> Saw the clinic or its sign<span class="ja">通りがかり・看板</span></label>
           <div class="reason-cell">
-            <label class="choice"><input type="radio" name="found_us" value="Other" /> Other<span class="ja">その他</span></label>
+            <label class="choice"><input type="checkbox" name="found_us" value="Other" /> Other<span class="ja">その他</span></label>
             <div class="reason-sub">
               <div class="field">
                 <label for="if-found-other">Please describe<span class="ja">内容</span></label>
@@ -1375,6 +1375,20 @@
     }
   });
 
+  // 「当院を知ったきっかけ」は複数選択だが最低1つは選んでもらう。ブラウザの
+  // required はチェックボックスのグループを見ないので、先頭の1つに代表させて
+  // どれかが選ばれたら外す
+  (function () {
+    var boxes = document.querySelectorAll('input[name="found_us"]');
+    if (!boxes.length) return;
+    function sync() {
+      var any = [].some.call(boxes, function (b) { return b.checked; });
+      boxes[0].required = !any;
+    }
+    [].forEach.call(boxes, function (b) { b.addEventListener("change", sync); });
+    sync();
+  })();
+
   // 受診理由によって質問を減らす。判定は独立した2つ。
   //
   //   ① 追加処方のみ … data-skippable のセクションを任意にする（表示は残す）
@@ -1821,9 +1835,8 @@
       recent_or_planned_surgery: radioVal("surgery"),
       family_history_thrombosis: radioVal("family_clots"),
       family_history_breast_cancer: radioVal("family_breast_cancer"),
-      found_us: radioVal("found_us"),
-      // 追記の欄は選択肢ごとに分かれているが、ラジオなので同時に埋まることはない
-      // （選び直すと前の欄は消える）。保存は今までどおり1項目にまとめる
+      found_us: checkVals("found_us"),
+      // 複数選択なので追記欄も複数埋まりうる。まとめて1項目で送る
       found_us_detail: ["if-found-search", "if-found-ai", "if-found-sns", "if-found-clinic", "if-found-other"]
         .map(val).filter(Boolean).join(" / "),
       notes: val("if-notes"),
