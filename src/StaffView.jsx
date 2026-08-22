@@ -1503,6 +1503,16 @@ export default function StaffView() {
     return () => clearInterval(t);
   }, [dateKey, tab]);
 
+  // Zoom英語タブを開いたら、Calendly の予約日時を問診票へ同期（Edge Function）。
+  // 患者が問診票の日時欄を空で送っても、Calendly に予約があればメールアドレスで
+  // 突合して予約日の欄に並ぶ。同期に失敗しても一覧表示は通常どおり出す
+  useEffect(() => {
+    if (tab !== "zoom") return;
+    supabase.functions.invoke("calendly-sync")
+      .then(({ data }) => { if (data && data.updated > 0) load(); })
+      .catch(() => {});
+  }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 予約の編集・代理予約に使う設定・メニュー・祝日は日付に依らないので一度だけ読む
   const loadBookingConfig = () => {
     supabase.from("visit_menus").select("*").order("sort_order")
