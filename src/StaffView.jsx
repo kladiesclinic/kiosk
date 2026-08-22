@@ -30,6 +30,25 @@ const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
 `;
 
+// 問診票の記入中の進捗（monshin_progress）のバッジ。問診票本体がまだ届いていない
+// 予約に出す。10分以上動きが無ければ色を落として「途中で止まっている」と分かるようにする
+function ProgressBadge({ p }) {
+  const min = Math.max(0, Math.round((Date.now() - new Date(p.updated_at).getTime()) / 60000));
+  const ago = min < 1 ? "たった今" : min < 60 ? `${min}分前` : `${Math.floor(min / 60)}時間前`;
+  const stale = min >= 10;
+  const label = p.step > 0 && p.total ? `記入中 ${p.step}/${p.total}問` : "問診票を開いた";
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+      style={stale ? { background: "#F1ECEC", color: "#8A7A7E" } : { background: "#E3F4F4", color: "#0F8B8D" }}
+      title={p.section ? `いま: ${p.section}` : undefined}
+    >
+      {label}
+      <span className="ml-1 font-normal" style={{ opacity: 0.8 }}>{ago}</span>
+    </span>
+  );
+}
+
 // iPadOS 13以降のSafariはUAをMacと名乗るので、UAだけでは判別できない。
 // タッチできるMacは実質iPadなので、その組み合わせも見る
 const IS_IOS =
@@ -1264,6 +1283,7 @@ export default function StaffView() {
   const [zoomRows, setZoomRows] = useState([]);
   const [zoomAll, setZoomAll] = useState([]); // 日付に関係なく直近のZoom問診票（予約との突合用）
   const [calBookings, setCalBookings] = useState([]); // Calendly の予約一覧（calendly_bookings、タブを開くたびに同期）
+  const [progressRows, setProgressRows] = useState([]); // 問診票の記入中の進捗（monshin_progress、直近2日）
   const zoomBatchRef = useRef(null); // Zoom分の一括印刷用
   const intakeBatchRef = useRef(null); // 来院受付の問診票 一括印刷用（オンラインと合わせて出す）
   // 1日の予定表（来院＋オンラインを時刻順に1枚へ）
@@ -1352,6 +1372,14 @@ export default function StaffView() {
       const nk = nameKey(b.name);
       return (nk && zoomAll.find((m) => !used.has(m.id) && nameKey(m.name) === nk)) || null;
     };
+    // 記入中の進捗（まだ送信されていない分）。メール → 氏名で、いちばん新しい1件
+    const findProgress = (b) => {
+      const em = String(b.email || "").toLowerCase();
+      const nk = nameKey(b.name);
+      return progressRows.find((p) => p.source === "zoom" && (
+        (em && String(p.email || "").toLowerCase() === em) || (nk && nameKey(p.name) === nk)
+      )) || null;
+    };
     const rows = calBookings.map((b) => {
       const m = findMonshin(b);
       if (m) used.add(m.id);
@@ -1359,6 +1387,7 @@ export default function StaffView() {
         key: `c:${b.invitee_uri}`, at: b.start_at, time: hhmm(b.start_at),
         name: b.name || "", email: b.email || "", dob: m?.dob || "", phone: m?.phone || "",
         canceled: !!b.canceled, monshin: m, noReserveTime: false,
+        progress: m ? null : findProgress(b),
       };
     });
     zoomRows.forEach((m) => {
@@ -1371,7 +1400,7 @@ export default function StaffView() {
       });
     });
     return rows.sort((a, b) => new Date(a.at) - new Date(b.at));
-  }, [calBookings, zoomAll, zoomRows]);
+  }, [calBookings, zoomAll, zoomRows, progressRows]);
   const zoomActive = zoomList.filter((r) => !r.canceled);
   const zoomUnfilled = zoomActive.filter((r) => !r.monshin);
   const printZoomBatch = async () => {
@@ -1406,6 +1435,13 @@ export default function StaffView() {
       if (uid && String(r.user_id) === uid) return true;
       return !!(r.dob && r.phone && m.dob === r.dob && m.phone === r.phone);
     });
+    // 記入中の進捗（まだ送信されていない分）。同じ突合キーで、いちばん新しい1件
+    const findProgress = (r) => progressRows.find((p) => {
+      if (p.source !== "pillorder") return false;
+      const uid = p.token ? String(p.token).split(".")[0] : "";
+      if (uid && String(r.user_id) === uid) return true;
+      return !!(r.dob && r.phone && p.dob === r.dob && p.phone === r.phone);
+    }) || null;
     const rows = pillorderResv.map((r) => {
       const m = findMonshin(r);
       if (m) used.add(m.id);
@@ -1414,6 +1450,12 @@ export default function StaffView() {
         name: r.name || "", kana: r.kana || "", dob: r.dob || "", phone: r.phone || "",
         chart: r.chart || "", status: r.reserve_status, canceled: r.reserve_status === 4,
         monshin: m || null, answered: !!r.answered, noReserveTime: false,
+        progress: m ? null : findProgress(r),
+        reminders: [
+          r.reminder_morning9_at && "朝9時",
+          r.reminder_before1h_at && "1時間前",
+          r.reminder_today10min_at && "当日",
+        ].filter(Boolean),
       };
     });
     monshinRows.forEach((m) => {
@@ -1427,7 +1469,7 @@ export default function StaffView() {
       });
     });
     return rows.sort((a, b) => new Date(a.at) - new Date(b.at));
-  }, [pillorderResv, monshinRows]);
+  }, [pillorderResv, monshinRows, progressRows]);
   const pillorderActive = pillorderList.filter((r) => !r.canceled);
   const pillorderUnfilled = pillorderActive.filter((r) => !r.monshin && !r.answered);
   const printMonshinBatch = async () => {
@@ -1565,6 +1607,16 @@ export default function StaffView() {
       .lte("start_at", `${dateKey}T23:59:59+09:00`)
       .order("start_at", { ascending: true });
     setCalBookings(cErr ? [] : (cData || []));
+
+    // 問診票の記入中の進捗（画面側が1秒まとめで送ってくる）。未送信の分だけ、直近2日
+    const { data: pData, error: pErr } = await supabase
+      .from("monshin_progress")
+      .select("*")
+      .is("submitted_at", null)
+      .gte("updated_at", new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString())
+      .order("updated_at", { ascending: false })
+      .limit(300);
+    setProgressRows(pErr ? [] : (pData || []));
 
     // 2回目以降の来院・予約では、過去の受付・問診票に入れたカルテ番号を自動で
     // 引いて見せる（電子カルテと繋がっていないぶん、前回の入力を再利用する）。
@@ -2576,11 +2628,19 @@ export default function StaffView() {
                                 </button>
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
+                              ) : row.progress ? (
+                                <ProgressBadge p={row.progress} />
                               ) : row.answered ? (
                                 /* pillorder 側の記入済みフラグだけ立っている（旧問診・pillorder内で回答）。紙はこちらに無い */
                                 <span className="text-xs" style={{ color: "#B08A90" }}>記入済（pillorder内）</span>
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>未記入</span>
+                              )}
+                              {!m && !row.canceled && row.reminders && (
+                                /* 催促メール（朝9時／1時間前／当日10分後）のうち送ったもの */
+                                <span className="block text-[10px] mt-0.5" style={{ color: row.reminders.length ? "#8A7A7E" : "#C9AEB3" }}>
+                                  {row.reminders.length ? `催促メール送信済（${row.reminders.join("・")}）` : "催促メール 未送信"}
+                                </span>
                               )}
                             </td>
                           </tr>
@@ -2671,6 +2731,8 @@ export default function StaffView() {
                                 </button>
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
+                              ) : row.progress ? (
+                                <ProgressBadge p={row.progress} />
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>未記入</span>
                               )}
