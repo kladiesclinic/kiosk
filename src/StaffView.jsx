@@ -1483,8 +1483,6 @@ export default function StaffView() {
 
   // 当日分を一括印刷（1人1枚A4・複数ページ）
   // キャンセル済（pillorder予約が取り消され、取り直しも無い人）は紙にしない
-  const monshinPrintRows = monshinRows.filter((m) => !m.reserve_canceled);
-
   // pillorderタブの一覧。pillorder の予約（pillorder_reservations）を軸に問診票を突き合わせる。
   //   ・予約に問診票が来ていれば「表示・印刷」、無ければ「未記入」
   //   ・予約側に無い問診票（古いリンク経由など）もそのまま並べる
@@ -1541,6 +1539,10 @@ export default function StaffView() {
   }, [pillorderResv, monshinRows, progressRows]);
   const pillorderActive = pillorderList.filter((r) => !r.canceled);
   const pillorderUnfilled = pillorderActive.filter((r) => !r.monshin && !r.answered);
+  // 一括印刷するオンライン問診票。一覧と同じ判定（pillorder の予約キャンセル＝紙にしない）で、
+  // 一覧と同じ予約時刻順に並べる。以前は問診票側の reserve_canceled（Zoom用の印）しか
+  // 見ていなかったので、pillorder でキャンセルした人の分も印刷されていた
+  const monshinPrintRows = pillorderActive.filter((r) => r.monshin).map((r) => r.monshin);
 
   // 「催促メールを送る」（pillorder）: 依頼を立てるだけ。送信は batch が3分以内に行い、
   // 結果（送信済／失敗）は一覧の自動更新で戻ってくる。押した直後は画面側で依頼中にする
@@ -2046,10 +2048,29 @@ export default function StaffView() {
 
   // この日の来院受付の問診票（intake_forms）。受付経由(forms)と予約に紐付く事前記入
   // (bookingForms)を id で重複排除。オンラインと合わせた一括印刷の対象。
+  // この日の来院受付の問診票（一括印刷用）。
+  //   ・キャンセルされた予約の事前記入分は紙にしない（受付まで済んでいれば残す）
+  //   ・並びは予約時刻順 → 予約なし（飛び込み）は受付順で後ろ
   const dayIntakeForms = (() => {
     const map = new Map();
     [...forms, ...bookingForms].forEach((f) => { if (f && !map.has(f.id)) map.set(f.id, f); });
-    return [...map.values()];
+    const bookingOf = (f) => {
+      const c = f.checkin_id ? checkins.find((x) => x.id === f.checkin_id) : null;
+      return (f.booking_id && bookings.find((x) => x.id === f.booking_id)) ||
+             (c?.booking_id && bookings.find((x) => x.id === c.booking_id)) || null;
+    };
+    const sortKey = (f) => {
+      const b = bookingOf(f);
+      if (b) return `0 ${String(b.time).slice(0, 5)} ${f.created_at || ""}`;
+      const c = f.checkin_id ? checkins.find((x) => x.id === f.checkin_id) : null;
+      return `1 ${c?.created_at || f.created_at || ""}`;
+    };
+    return [...map.values()]
+      .filter((f) => {
+        const b = bookingOf(f);
+        return !(b && b.status === "cancelled" && !f.checkin_id);
+      })
+      .sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : sortKey(a) > sortKey(b) ? 1 : 0));
   })();
 
   // 来院受付の問診票に載せる「予約時間」。intake_forms → visit_bookings を辿って
