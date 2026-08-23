@@ -1464,6 +1464,11 @@ export default function StaffView() {
         // 催促メール（staff@klcs.jp から自動送信）の対象キーと送信記録
         inviteeUri: b.invitee_uri, reminderSentAt: b.reminder_sent_at || null, reminderSentBy: b.reminder_sent_by || "",
         reminderError: b.reminder_error || "",
+        reminders: [
+          b.reminder_morning9_at && "朝9時",
+          b.reminder_before1h_at && "1時間前",
+          b.reminder_sent_at && `手動 ${hhmm(b.reminder_sent_at)}${b.reminder_sent_by ? `・${b.reminder_sent_by}` : ""}`,
+        ].filter(Boolean),
       };
     });
     zoomRows.forEach((m) => {
@@ -2969,11 +2974,10 @@ export default function StaffView() {
                                 /* 英語の催促メールを staff@klcs.jp から自動送信（Edge Function zoom-reminder）。
                                    送信済でも、時間をおいてもう一度送れる */
                                 <span className="block mt-1">
-                                  {row.reminderSentAt && (
-                                    <span className="block text-[10px] mb-0.5" style={{ color: "#8A7A7E" }}>
-                                      催促メール送信済（{hhmm(row.reminderSentAt)}{row.reminderSentBy ? `・${row.reminderSentBy}` : ""}）
-                                    </span>
-                                  )}
+                                  {/* 催促メール（朝9時／1時間前＝自動、手動）のうち送ったもの。pillorder と同じ見え方 */}
+                                  <span className="block text-[10px] mb-0.5" style={{ color: row.reminders.length ? "#8A7A7E" : "#C9AEB3" }}>
+                                    {row.reminders.length ? `催促メール送信済（${row.reminders.join("・")}）` : "催促メール 未送信"}
+                                  </span>
                                   {row.reminderError && !row.reminderSentAt && (
                                     <span className="block text-[10px] mb-0.5" style={{ color: "#D64550" }}>前回の送信に失敗: {row.reminderError}</span>
                                   )}
