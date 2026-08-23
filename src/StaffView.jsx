@@ -2048,9 +2048,10 @@ export default function StaffView() {
 
   // この日の来院受付の問診票（intake_forms）。受付経由(forms)と予約に紐付く事前記入
   // (bookingForms)を id で重複排除。オンラインと合わせた一括印刷の対象。
-  // この日の来院受付の問診票（一括印刷用）。
-  //   ・キャンセルされた予約の事前記入分は紙にしない（受付まで済んでいれば残す）
-  //   ・並びは予約時刻順 → 予約なし（飛び込み）は受付順で後ろ
+  // この日の来院受付の問診票（一括印刷用）。予約のある方の分だけ。
+  //   ・予約なし（飛び込み受付）の分は紙にしない（受付のときに個別に印刷する）
+  //   ・キャンセルされた予約の事前記入分も紙にしない（受付まで済んでいれば残す）
+  //   ・並びは予約時刻順
   const dayIntakeForms = (() => {
     const map = new Map();
     [...forms, ...bookingForms].forEach((f) => { if (f && !map.has(f.id)) map.set(f.id, f); });
@@ -2068,7 +2069,8 @@ export default function StaffView() {
     return [...map.values()]
       .filter((f) => {
         const b = bookingOf(f);
-        return !(b && b.status === "cancelled" && !f.checkin_id);
+        if (!b) return false;
+        return !(b.status === "cancelled" && !f.checkin_id);
       })
       .sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : sortKey(a) > sortKey(b) ? 1 : 0));
   })();
@@ -2716,7 +2718,7 @@ export default function StaffView() {
                   style={{ background: (monshinPrintRows.length + dayIntakeForms.length) ? "#0F8B8D" : "#E7D9DC", color: "#FFFFFF", opacity: monshinPrinting ? 0.5 : 1 }}
                 >
                   <Printer size={15} />
-                  {monshinPrinting ? "PDF作成中..." : `この日の問診票をまとめて印刷（オンライン${monshinPrintRows.length}＋来院受付${dayIntakeForms.length}）`}
+                  {monshinPrinting ? "PDF作成中..." : `この日の問診票をまとめて印刷（オンライン${monshinPrintRows.length}＋来院予約${dayIntakeForms.length}）`}
                 </button>
                 <button
                   onClick={printMonshinBatch}
