@@ -1447,6 +1447,9 @@ export default function StaffView() {
         name: b.name || "", email: b.email || "", dob: m?.dob || "", phone: m?.phone || "",
         canceled: !!b.canceled, monshin: m, noReserveTime: false,
         progress: m ? null : findProgress(b),
+        // 催促メール（staff@klcs.jp から自動送信）の対象キーと送信記録
+        inviteeUri: b.invitee_uri, reminderSentAt: b.reminder_sent_at || null, reminderSentBy: b.reminder_sent_by || "",
+        reminderError: b.reminder_error || "",
       };
     });
     zoomRows.forEach((m) => {
@@ -1551,23 +1554,28 @@ export default function StaffView() {
     if (error) setLoadError(`催促メールの依頼を登録できませんでした: ${error.message}`);
   };
 
-  // Zoom英語: メール送信の基盤が無いので、スタッフのメールアプリに英語の定型文を開く
-  const zoomReminderMailto = (row) => {
-    const when = row.at
-      ? new Date(row.at).toLocaleString("en-GB", {
-          timeZone: "Asia/Tokyo", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-        }) + " (JST)"
-      : "your appointment";
-    const subject = "K Ladies Clinic Shinjuku: your intake form before your Zoom consultation";
-    const body =
-      `Hello ${row.name || ""},\n\n` +
-      `Thank you for booking your online consultation on ${when}. ` +
-      `We have not yet received your intake form. It takes about 5 minutes and the doctor uses it to prepare, ` +
-      `so your consultation time goes to your questions.\n\n` +
-      `Please fill it in before your appointment:\nhttps://www.klcs.jp/en/intake.html\n\n` +
-      `If you have already sent it, please ignore this message.\n\n` +
-      `K Ladies Clinic Shinjuku\nEnglish speaking staff\n`;
-    return `mailto:${encodeURIComponent(row.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  // Zoom英語: 催促メールは Edge Function zoom-reminder が staff@klcs.jp から送る
+  // （文面は関数側。送信結果は calendly_bookings.reminder_sent_at に残る）
+  const [zoomReminding, setZoomReminding] = useState(null); // 送信中の invitee_uri
+  const sendZoomReminder = async (row) => {
+    if (!row.inviteeUri || zoomReminding) return;
+    setZoomReminding(row.inviteeUri);
+    try {
+      const { data, error } = await supabase.functions.invoke("zoom-reminder", { body: { invitee_uri: row.inviteeUri } });
+      // invoke は HTTP エラー時 error に入る。関数が返した理由（JSON）を読めれば出す
+      if (error) {
+        let detail = error.message || "";
+        try { const j = await error.context?.json?.(); if (j?.error) detail = j.error; } catch { /* ignore */ }
+        throw new Error(detail);
+      }
+      if (data?.error) throw new Error(data.error);
+      setNotice(`催促メールを送りました（${row.email}）`);
+      load();
+    } catch (e) {
+      setLoadError(`催促メールを送れませんでした: ${e.message}`);
+    } finally {
+      setZoomReminding(null);
+    }
   };
   const printMonshinBatch = async () => {
     if (!monshinBatchRef.current || monshinPrinting || monshinPrintRows.length === 0) return;
@@ -2888,18 +2896,28 @@ export default function StaffView() {
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>未記入</span>
                               )}
-                              {!m && !row.canceled && row.email && (
-                                /* 英語の定型文をスタッフのメールアプリで開く（staff@ から送る） */
+                              {!m && !row.canceled && row.email && row.inviteeUri && (
+                                /* 英語の催促メールを staff@klcs.jp から自動送信（Edge Function zoom-reminder）。
+                                   送信済でも、時間をおいてもう一度送れる */
                                 <span className="block mt-1">
-                                  <a
-                                    href={zoomReminderMailto(row)}
+                                  {row.reminderSentAt && (
+                                    <span className="block text-[10px] mb-0.5" style={{ color: "#8A7A7E" }}>
+                                      催促メール送信済（{hhmm(row.reminderSentAt)}{row.reminderSentBy ? `・${row.reminderSentBy}` : ""}）
+                                    </span>
+                                  )}
+                                  {row.reminderError && !row.reminderSentAt && (
+                                    <span className="block text-[10px] mb-0.5" style={{ color: "#D64550" }}>前回の送信に失敗: {row.reminderError}</span>
+                                  )}
+                                  <button
+                                    onClick={() => sendZoomReminder(row)}
+                                    disabled={zoomReminding === row.inviteeUri}
                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium active:opacity-70"
-                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#B7791F" }}
-                                    title="英語のリマインド文を入れた状態でメールアプリを開きます"
+                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#B7791F", opacity: zoomReminding === row.inviteeUri ? 0.5 : 1 }}
+                                    title="英語のリマインドメールを staff@klcs.jp から送ります"
                                   >
                                     <MessageCircle size={11} />
-                                    催促メールを送る
-                                  </a>
+                                    {zoomReminding === row.inviteeUri ? "送信中..." : row.reminderSentAt ? "もう一度送る" : "催促メールを送る"}
+                                  </button>
                                 </span>
                               )}
                             </td>
