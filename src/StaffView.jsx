@@ -24,10 +24,14 @@ import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
 import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
 import { buildSlotTimes, timeToMinutes } from "./lib/slots.js";
-import { Settings, Plus, Pencil, RotateCcw, MessageCircle } from "lucide-react";
+import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell } from "lucide-react";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
+/* 当日予約の吹き出し: 軽く揺れて目に入るように */
+@keyframes sameday-pop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.sameday-pop { animation: sameday-pop 1.6s ease-in-out infinite; }
+@media print { .sameday-pop { display: none !important; } }
 `;
 
 // 問診票の記入中の進捗（monshin_progress）のバッジ。問診票本体がまだ届いていない
@@ -1277,6 +1281,38 @@ export default function StaffView() {
     const t = setInterval(f, 60000);
     return () => clearInterval(t);
   }, []);
+  // pillorderタブの通知タグ: 今日のオンライン診察に「当日予約」（reserve_status 5/6）が入ったら
+  // 件数を出す。どのタブを見ていても気づけるよう、表示中の日付とは別に今日の分だけを見張る。
+  // pillorderタブを開いた時点の予約は「見た」として端末に覚え、その後に増えた分だけを数える
+  const SAMEDAY_SEEN_KEY = "kiosk-pillorder-sameday-seen";
+  const [samedayResv, setSamedayResv] = useState([]); // 今日の当日予約（キャンセル除く）
+  const [samedaySeen, setSamedaySeen] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(SAMEDAY_SEEN_KEY) || "null");
+      return v && v.date === todayKey() ? new Set(v.ids) : new Set();
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    const f = () => {
+      const today = todayKey();
+      supabase.from("pillorder_reservations").select("reserve_id, reserve_status, start_at")
+        .gte("start_at", `${today}T00:00:00+09:00`).lte("start_at", `${today}T23:59:59+09:00`)
+        .in("reserve_status", [5, 6])
+        .then(({ data }) => setSamedayResv(data || []));
+    };
+    f();
+    const t = setInterval(f, 30000);
+    return () => clearInterval(t);
+  }, []);
+  const samedayNew = samedayResv.filter((r) => !samedaySeen.has(r.reserve_id)).length;
+  const pillTabRef = useRef(null); // 吹き出しの位置合わせ用（pillorderタブのボタン）
+  // pillorderタブを開いているあいだに入った分も含めて「見た」扱いにする
+  useEffect(() => {
+    if (tab !== "pillorder" || samedayNew === 0) return;
+    const ids = samedayResv.map((r) => r.reserve_id);
+    setSamedaySeen(new Set(ids));
+    localStorage.setItem(SAMEDAY_SEEN_KEY, JSON.stringify({ date: todayKey(), ids }));
+  }, [tab, samedayResv]);
   // pillorderタブ: オンライン診療の問診票（monshin_online）。予約時刻(reserve_at)順の時系列で並べる
   const [monshinRows, setMonshinRows] = useState([]);
   // pillorder の予約一覧（pillorder_reservations）。問診票が無い人も出すために予約を軸にする
@@ -2338,7 +2374,27 @@ export default function StaffView() {
         {/* タブ切り替え: 受付一覧 / 予約状況 */}
         {/* 幅は画面いっぱいまで使う。1024pxで頭打ちにしていたので、
             列がそろわず横スクロールになっていた（iPadは横向きで1024px） */}
-        <div className="px-3 sm:px-6 pt-4 max-w-[1500px] mx-auto w-full">
+        <div className={`relative px-3 sm:px-6 ${samedayNew > 0 ? "pt-12" : "pt-4"} max-w-[1500px] mx-auto w-full`}>
+          {/* オンライン診察の当日予約が入ったら、pillorderタブの真上に吹き出しで知らせる。
+              タブを開くと消える（見た予約は端末に記憶）。タブ枠は overflow-hidden なので枠の外に置く */}
+          {samedayNew > 0 && (
+            <button
+              onClick={() => setTab("pillorder")}
+              className="sameday-pop absolute flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-md"
+              style={{
+                top: 8,
+                left: pillTabRef.current ? pillTabRef.current.offsetLeft : undefined,
+                background: "#D64550", color: "#FFFFFF", zIndex: 5, whiteSpace: "nowrap",
+              }}
+            >
+              <Bell size={13} />
+              当日予約 {samedayNew}件（オンライン診察）
+              <span
+                className="absolute"
+                style={{ left: 18, bottom: -6, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid #D64550" }}
+              />
+            </button>
+          )}
           <div className="inline-flex rounded-xl overflow-hidden" style={{ border: "1.5px solid #F2DFE4", background: "#FFFFFF" }}>
             {[
               { id: "checkins", label: "受付一覧", Icon: ClipboardList },
@@ -2351,6 +2407,7 @@ export default function StaffView() {
             ].map(({ id, label, Icon }) => (
               <button
                 key={id}
+                ref={id === "pillorder" ? pillTabRef : undefined}
                 onClick={() => {
                   setTab(id);
                   // 予約タブで未来日を見ていた場合、受付タブは未来分が無いので今日に戻す
@@ -2376,6 +2433,15 @@ export default function StaffView() {
                     }}
                   >
                     {feedbackOpen}
+                  </span>
+                )}
+                {/* 未確認の当日予約（オンライン診察）の件数 */}
+                {id === "pillorder" && samedayNew > 0 && (
+                  <span
+                    className="ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
+                    style={{ minWidth: 17, height: 17, padding: "0 4px", background: "#D64550", color: "#FFFFFF" }}
+                  >
+                    {samedayNew}
                   </span>
                 )}
               </button>
