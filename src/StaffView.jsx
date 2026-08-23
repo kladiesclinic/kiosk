@@ -1342,6 +1342,7 @@ export default function StaffView() {
   const [zoomRows, setZoomRows] = useState([]);
   const [zoomAll, setZoomAll] = useState([]); // 日付に関係なく直近のZoom問診票（予約との突合用）
   const [calBookings, setCalBookings] = useState([]); // Calendly の予約一覧（calendly_bookings、タブを開くたびに同期）
+  const [calFuture, setCalFuture] = useState([]);     // 今日以降の有効な Calendly 予約（重複予約の検知用）
   const [progressRows, setProgressRows] = useState([]); // 問診票の記入中の進捗（monshin_progress、直近2日）
   const zoomBatchRef = useRef(null); // Zoom分の一括印刷用
   const intakeBatchRef = useRef(null); // 来院受付の問診票 一括印刷用（オンラインと合わせて出す）
@@ -1439,6 +1440,18 @@ export default function StaffView() {
         (em && String(p.email || "").toLowerCase() === em) || (nk && nameKey(p.name) === nk)
       )) || null;
     };
+    // 同じ人（メール一致 → 無ければ氏名一致）の、今日以降の他の有効な予約。
+    // Calendly には「同じ人は1回まで」の設定が無いので、ここで気づけるようにする
+    const samePerson = (a, b) => {
+      const ea = String(a.email || "").toLowerCase(), eb = String(b.email || "").toLowerCase();
+      if (ea && eb) return ea === eb;
+      const na = nameKey(a.name), nb = nameKey(b.name);
+      return !!na && na === nb;
+    };
+    const otherBookings = (b) => b.canceled ? [] : calFuture
+      .filter((o) => o.invitee_uri !== b.invitee_uri && samePerson(o, b))
+      .map((o) => o.start_at)
+      .sort();
     const rows = calBookings.map((b) => {
       const m = findMonshin(b);
       if (m) used.add(m.id);
@@ -1447,6 +1460,7 @@ export default function StaffView() {
         name: b.name || "", email: b.email || "", dob: m?.dob || "", phone: m?.phone || "",
         canceled: !!b.canceled, monshin: m, noReserveTime: false,
         progress: m ? null : findProgress(b),
+        duplicates: otherBookings(b),
         // 催促メール（staff@klcs.jp から自動送信）の対象キーと送信記録
         inviteeUri: b.invitee_uri, reminderSentAt: b.reminder_sent_at || null, reminderSentBy: b.reminder_sent_by || "",
         reminderError: b.reminder_error || "",
@@ -1462,7 +1476,7 @@ export default function StaffView() {
       });
     });
     return rows.sort((a, b) => new Date(a.at) - new Date(b.at));
-  }, [calBookings, zoomAll, zoomRows, progressRows]);
+  }, [calBookings, calFuture, zoomAll, zoomRows, progressRows]);
   const zoomActive = zoomList.filter((r) => !r.canceled);
   const zoomUnfilled = zoomActive.filter((r) => !r.monshin);
   const printZoomBatch = async () => {
@@ -1714,6 +1728,13 @@ export default function StaffView() {
       .lte("start_at", `${dateKey}T23:59:59+09:00`)
       .order("start_at", { ascending: true });
     setCalBookings(cErr ? [] : (cData || []));
+    // 重複予約の検知用: 今日以降の有効な Calendly 予約すべて（同じ人が複数回取っていないか）
+    const { data: cfData } = await supabase
+      .from("calendly_bookings")
+      .select("invitee_uri, name, email, start_at")
+      .gte("start_at", `${todayKey()}T00:00:00+09:00`)
+      .eq("canceled", false);
+    setCalFuture(cfData || []);
 
     // 問診票の記入中の進捗（画面側が1秒まとめで送ってくる）。未送信の分だけ、直近2日
     const { data: pData, error: pErr } = await supabase
@@ -2905,7 +2926,25 @@ export default function StaffView() {
                               {flagged ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FCE9EA", color: "#B03A44" }}>要注意</span>
                               ) : (
-                                !row.canceled && <span style={{ color: "#C9AEB3" }}>—</span>
+                                !row.canceled && !(row.duplicates || []).length && <span style={{ color: "#C9AEB3" }}>—</span>
+                              )}
+                              {(row.duplicates || []).length > 0 && (
+                                /* 同じ人が他の日時にも予約を持っている。Calendly 側で片方を取り消すか患者に確認する */
+                                <>
+                                  <span
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+                                    style={{ background: "#FCE9EA", color: "#D64550" }}
+                                    title="同じ方が今日以降に他の予約も取っています。Calendly で片方をキャンセルするか、患者さんに確認してください"
+                                  >
+                                    重複予約 +{row.duplicates.length}
+                                  </span>
+                                  <span className="block text-[10px] mt-0.5" style={{ color: "#D64550" }}>
+                                    他: {row.duplicates.map((d) => {
+                                      const x = new Date(d);
+                                      return `${x.getMonth() + 1}/${x.getDate()} ${hhmm(d)}`;
+                                    }).join("、")}
+                                  </span>
+                                </>
                               )}
                               {m?.printed_at && <span className="block text-[10px] mt-0.5" style={{ color: "#C9AEB3" }}>印刷済</span>}
                             </td>
