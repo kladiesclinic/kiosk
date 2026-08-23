@@ -1284,35 +1284,52 @@ export default function StaffView() {
   // pillorderタブの通知タグ: 今日のオンライン診察に「当日予約」（reserve_status 5/6）が入ったら
   // 件数を出す。どのタブを見ていても気づけるよう、表示中の日付とは別に今日の分だけを見張る。
   // pillorderタブを開いた時点の予約は「見た」として端末に覚え、その後に増えた分だけを数える
-  const SAMEDAY_SEEN_KEY = "kiosk-pillorder-sameday-seen";
-  const [samedayResv, setSamedayResv] = useState([]); // 今日の当日予約（キャンセル除く）
+  // Zoom英語（Calendly）も同じ: 今日の予約のうち、まだこの端末で見ていないものを数える。
+  // Calendly は「当日予約」の区別が無いので、今日の枠に新しく現れた予約＝当日入った予約とみなす
+  const SAMEDAY_SEEN_KEY = "kiosk-sameday-seen";
+  const [samedayResv, setSamedayResv] = useState([]); // 今日の pillorder 当日予約（キャンセル除く）
+  const [samedayCal, setSamedayCal] = useState([]);   // 今日の Calendly 予約（キャンセル除く）
   const [samedaySeen, setSamedaySeen] = useState(() => {
     try {
       const v = JSON.parse(localStorage.getItem(SAMEDAY_SEEN_KEY) || "null");
-      return v && v.date === todayKey() ? new Set(v.ids) : new Set();
-    } catch { return new Set(); }
+      return v && v.date === todayKey() ? { pill: new Set(v.pill), cal: new Set(v.cal) } : { pill: new Set(), cal: new Set() };
+    } catch { return { pill: new Set(), cal: new Set() }; }
   });
+  const saveSamedaySeen = (next) => {
+    setSamedaySeen(next);
+    localStorage.setItem(SAMEDAY_SEEN_KEY, JSON.stringify({ date: todayKey(), pill: [...next.pill], cal: [...next.cal] }));
+  };
   useEffect(() => {
     const f = () => {
       const today = todayKey();
+      const from = `${today}T00:00:00+09:00`, to = `${today}T23:59:59+09:00`;
       supabase.from("pillorder_reservations").select("reserve_id, reserve_status, start_at")
-        .gte("start_at", `${today}T00:00:00+09:00`).lte("start_at", `${today}T23:59:59+09:00`)
-        .in("reserve_status", [5, 6])
+        .gte("start_at", from).lte("start_at", to).in("reserve_status", [5, 6])
         .then(({ data }) => setSamedayResv(data || []));
+      supabase.from("calendly_bookings").select("invitee_uri, start_at")
+        .gte("start_at", from).lte("start_at", to).eq("canceled", false)
+        .then(({ data }) => setSamedayCal(data || []));
     };
+    // Calendly は Zoom英語タブを開いた時にしか同期されないので、見張りの側でも5分おきに同期を起こす
+    const sync = () => supabase.functions.invoke("calendly-sync").then(f).catch(() => {});
     f();
+    sync();
     const t = setInterval(f, 30000);
-    return () => clearInterval(t);
+    const ts = setInterval(sync, 5 * 60000);
+    return () => { clearInterval(t); clearInterval(ts); };
   }, []);
-  const samedayNew = samedayResv.filter((r) => !samedaySeen.has(r.reserve_id)).length;
+  const samedayNew = samedayResv.filter((r) => !samedaySeen.pill.has(r.reserve_id)).length;
+  const samedayCalNew = samedayCal.filter((r) => !samedaySeen.cal.has(r.invitee_uri)).length;
   const pillTabRef = useRef(null); // 吹き出しの位置合わせ用（pillorderタブのボタン）
-  // pillorderタブを開いているあいだに入った分も含めて「見た」扱いにする
+  const zoomTabRef = useRef(null); // 同じく Zoom英語タブ
+  // タブを開いているあいだに入った分も含めて「見た」扱いにする
   useEffect(() => {
-    if (tab !== "pillorder" || samedayNew === 0) return;
-    const ids = samedayResv.map((r) => r.reserve_id);
-    setSamedaySeen(new Set(ids));
-    localStorage.setItem(SAMEDAY_SEEN_KEY, JSON.stringify({ date: todayKey(), ids }));
-  }, [tab, samedayResv]);
+    if (tab === "pillorder" && samedayNew > 0) {
+      saveSamedaySeen({ ...samedaySeen, pill: new Set(samedayResv.map((r) => r.reserve_id)) });
+    } else if (tab === "zoom" && samedayCalNew > 0) {
+      saveSamedaySeen({ ...samedaySeen, cal: new Set(samedayCal.map((r) => r.invitee_uri)) });
+    }
+  }, [tab, samedayResv, samedayCal]);
   // pillorderタブ: オンライン診療の問診票（monshin_online）。予約時刻(reserve_at)順の時系列で並べる
   const [monshinRows, setMonshinRows] = useState([]);
   // pillorder の予約一覧（pillorder_reservations）。問診票が無い人も出すために予約を軸にする
@@ -2374,27 +2391,32 @@ export default function StaffView() {
         {/* タブ切り替え: 受付一覧 / 予約状況 */}
         {/* 幅は画面いっぱいまで使う。1024pxで頭打ちにしていたので、
             列がそろわず横スクロールになっていた（iPadは横向きで1024px） */}
-        <div className={`relative px-3 sm:px-6 ${samedayNew > 0 ? "pt-12" : "pt-4"} max-w-[1500px] mx-auto w-full`}>
-          {/* オンライン診察の当日予約が入ったら、pillorderタブの真上に吹き出しで知らせる。
-              タブを開くと消える（見た予約は端末に記憶）。タブ枠は overflow-hidden なので枠の外に置く */}
-          {samedayNew > 0 && (
+        <div className={`relative px-3 sm:px-6 ${samedayNew > 0 || samedayCalNew > 0 ? "pt-12" : "pt-4"} max-w-[1500px] mx-auto w-full`}>
+          {/* オンライン診察（pillorder / Zoom英語=Calendly）に当日予約が入ったら、そのタブの真上に
+              吹き出しで知らせる。タブを開くと消える（見た予約は端末に記憶）。
+              タブ枠は overflow-hidden なので枠の外に置く */}
+          {[
+            { id: "pillorder", n: samedayNew, ref: pillTabRef, label: "オンライン診察" },
+            { id: "zoom", n: samedayCalNew, ref: zoomTabRef, label: "Zoom英語" },
+          ].filter((p) => p.n > 0).map((p) => (
             <button
-              onClick={() => setTab("pillorder")}
+              key={p.id}
+              onClick={() => setTab(p.id)}
               className="sameday-pop absolute flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-md"
               style={{
                 top: 8,
-                left: pillTabRef.current ? pillTabRef.current.offsetLeft : undefined,
+                left: p.ref.current ? p.ref.current.offsetLeft : undefined,
                 background: "#D64550", color: "#FFFFFF", zIndex: 5, whiteSpace: "nowrap",
               }}
             >
               <Bell size={13} />
-              当日予約 {samedayNew}件（オンライン診察）
+              当日予約 {p.n}件（{p.label}）
               <span
                 className="absolute"
                 style={{ left: 18, bottom: -6, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid #D64550" }}
               />
             </button>
-          )}
+          ))}
           <div className="inline-flex rounded-xl overflow-hidden" style={{ border: "1.5px solid #F2DFE4", background: "#FFFFFF" }}>
             {[
               { id: "checkins", label: "受付一覧", Icon: ClipboardList },
@@ -2407,7 +2429,7 @@ export default function StaffView() {
             ].map(({ id, label, Icon }) => (
               <button
                 key={id}
-                ref={id === "pillorder" ? pillTabRef : undefined}
+                ref={id === "pillorder" ? pillTabRef : id === "zoom" ? zoomTabRef : undefined}
                 onClick={() => {
                   setTab(id);
                   // 予約タブで未来日を見ていた場合、受付タブは未来分が無いので今日に戻す
@@ -2435,13 +2457,13 @@ export default function StaffView() {
                     {feedbackOpen}
                   </span>
                 )}
-                {/* 未確認の当日予約（オンライン診察）の件数 */}
-                {id === "pillorder" && samedayNew > 0 && (
+                {/* 未確認の当日予約（pillorder / Zoom英語）の件数 */}
+                {((id === "pillorder" && samedayNew > 0) || (id === "zoom" && samedayCalNew > 0)) && (
                   <span
                     className="ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
                     style={{ minWidth: 17, height: 17, padding: "0 4px", background: "#D64550", color: "#FFFFFF" }}
                   >
-                    {samedayNew}
+                    {id === "pillorder" ? samedayNew : samedayCalNew}
                   </span>
                 )}
               </button>
