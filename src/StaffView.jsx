@@ -2052,26 +2052,40 @@ export default function StaffView() {
   //   ・予約なし（飛び込み受付）の分は紙にしない（受付のときに個別に印刷する）
   //   ・キャンセルされた予約の事前記入分も紙にしない（受付まで済んでいれば残す）
   //   ・並びは予約時刻順
+  //   ・日時変更（キャンセル＋取り直し）の方は、古い予約に紐づいた事前記入を
+  //     氏名＋生年月日で新しい予約に引き直す（引き直さないと印刷から落ちる）
+  //   ・同じ予約に問診票が2通あれば新しい1通だけ
+  const bookingForForm = (f) => {
+    const c = f.checkin_id ? checkins.find((x) => x.id === f.checkin_id) : null;
+    const direct =
+      (f.booking_id && bookings.find((x) => x.id === f.booking_id)) ||
+      (c?.booking_id && bookings.find((x) => x.id === c.booking_id)) || null;
+    if (direct && direct.status !== "cancelled") return direct;
+    // 直接の紐付けが無い／キャンセル済なら、同じ方の有効な予約を探す
+    const k = chartMatchKey(f.patient_name, f.date_of_birth);
+    const alt = k ? bookings.find((b) => b.status !== "cancelled" && chartMatchKey(b.patient_name, b.birthdate) === k) : null;
+    return alt || direct;
+  };
   const dayIntakeForms = (() => {
     const map = new Map();
     [...forms, ...bookingForms].forEach((f) => { if (f && !map.has(f.id)) map.set(f.id, f); });
-    const bookingOf = (f) => {
-      const c = f.checkin_id ? checkins.find((x) => x.id === f.checkin_id) : null;
-      return (f.booking_id && bookings.find((x) => x.id === f.booking_id)) ||
-             (c?.booking_id && bookings.find((x) => x.id === c.booking_id)) || null;
-    };
     const sortKey = (f) => {
-      const b = bookingOf(f);
-      if (b) return `0 ${String(b.time).slice(0, 5)} ${f.created_at || ""}`;
-      const c = f.checkin_id ? checkins.find((x) => x.id === f.checkin_id) : null;
-      return `1 ${c?.created_at || f.created_at || ""}`;
+      const b = bookingForForm(f);
+      return `${String(b.time).slice(0, 5)} ${f.created_at || ""}`;
     };
-    return [...map.values()]
-      .filter((f) => {
-        const b = bookingOf(f);
-        if (!b) return false;
-        return !(b.status === "cancelled" && !f.checkin_id);
-      })
+    const picked = [...map.values()].filter((f) => {
+      const b = bookingForForm(f);
+      if (!b) return false;
+      return !(b.status === "cancelled" && !f.checkin_id);
+    });
+    // 予約ごとに新しい1通
+    const latest = new Map();
+    picked.forEach((f) => {
+      const b = bookingForForm(f);
+      const prev = latest.get(b.id);
+      if (!prev || (f.created_at || "") > (prev.created_at || "")) latest.set(b.id, f);
+    });
+    return [...latest.values()]
       .sort((a, b) => (sortKey(a) < sortKey(b) ? -1 : sortKey(a) > sortKey(b) ? 1 : 0));
   })();
 
@@ -2079,11 +2093,7 @@ export default function StaffView() {
   // 予約日時(HH:MM)を出す。受付(checkin)経由でも、その受付の booking_id から辿る。
   // 予約なしの飛び込み受付は空（何も出さない）。
   const reserveLabelForForm = (form) => {
-    let b = form.booking_id ? bookings.find((x) => x.id === form.booking_id) : null;
-    if (!b && form.checkin_id) {
-      const c = checkins.find((x) => x.id === form.checkin_id);
-      if (c && c.booking_id) b = bookings.find((x) => x.id === c.booking_id) || null;
-    }
+    const b = bookingForForm(form);
     return b ? `${b.date} ${b.time}` : "";
   };
 
@@ -2091,10 +2101,7 @@ export default function StaffView() {
   // 一目で掴めるようにする。予約のある方だけ（飛び込み受付では出さない）
   const printHeadlineForForm = (form) => {
     const c = form.checkin_id ? checkins.find((x) => x.id === form.checkin_id) : null;
-    const b =
-      (form.booking_id && bookings.find((x) => x.id === form.booking_id)) ||
-      (c?.booking_id && bookings.find((x) => x.id === c.booking_id)) ||
-      null;
+    const b = bookingForForm(form);
     if (!b) return "";
     const kind = c?.visit_kind || b.visit_kind;
     const kindLabel = kind === "first" ? "初診" : kind === "return" ? "再診" : "";
