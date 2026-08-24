@@ -589,6 +589,16 @@ function MonshinPrintSheet({ row }) {
         textSizeAdjust: "100%",
       }}
     >
+      {/* Zoom分は診察の種別と時刻が一目で分かるよう、いちばん上に大きく出す
+          （紙の山から当日分を拾うときに見るのはここだけ、という使われ方） */}
+      {row.source === "zoom" && (
+        <div style={{ fontSize: 40, fontWeight: 900, lineHeight: 1.2, marginBottom: 8 }}>
+          英語Zoom{row.reserve_at ? `　${hhmm(row.reserve_at)}` : ""}
+          {row.reserve_at && (
+            <span style={{ fontSize: 18, fontWeight: 700, marginLeft: 14 }}>{String(row.reserve_at).slice(0, 10)}</span>
+          )}
+        </div>
+      )}
       <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
         <div>
           <strong style={{ fontSize: 20 }}>
@@ -602,8 +612,8 @@ function MonshinPrintSheet({ row }) {
             {row.email ? `　${row.email}` : ""}
           </div>
         </div>
-        {/* 予約時間は右上 */}
-        {row.reserve_at ? (
+        {/* 予約時間は右上（Zoom分は上に大きく出しているので重ねて出さない） */}
+        {row.reserve_at && row.source !== "zoom" ? (
           <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textAlign: "right" }}>
             予約 {String(row.reserve_at).slice(0, 10)} {hhmm(row.reserve_at)}
           </div>
@@ -623,7 +633,13 @@ function MonshinPrintSheet({ row }) {
             <tbody>
               {col.map((a, i) => (
                 <tr key={i}>
-                  <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>{a.q_ja}</td>
+                  <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>
+                    {a.q_ja}
+                    {/* Zoom英語分は設問も日英併記（患者は英語で答えているので、照らし合わせやすくする） */}
+                    {a.q_en && a.q_en !== a.q_ja && (
+                      <div style={{ fontSize: 11, color: "#666666", lineHeight: 1.35 }}>{a.q_en}</div>
+                    )}
+                  </td>
                   <td style={{ border: "1px solid #999999", padding: "4px 7px", fontWeight: 600, color: a.flag ? "#c0392b" : "#000000" }}>{a.a_ja}</td>
                 </tr>
               ))}
