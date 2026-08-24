@@ -246,6 +246,16 @@ function dobAnnotation(dob) {
   return [warekiFrom(dob), age === null ? null : `${age}歳`].filter(Boolean).join("・");
 }
 
+// 電話番号の表示用。DBには数字だけで保存されている（monshin_online は RPC が正規化）。
+// 国内番号はハイフン区切り、それ以外（Zoom英語の海外番号など）は国番号付きの +表記にする
+function fmtPhoneDisp(p) {
+  const s = String(p || "").replace(/[^0-9]/g, "");
+  if (!s) return "";
+  if (s.length === 11 && s.startsWith("0")) return `${s.slice(0, 3)}-${s.slice(3, 7)}-${s.slice(7)}`;
+  if (s.length === 10 && s.startsWith("0")) return `${s.slice(0, 3)}-${s.slice(3, 6)}-${s.slice(6)}`;
+  return `+${s}`;
+}
+
 // 生年月日は列に入っているのが基本だが、列が空の問診票（LPからの記入など）も
 // あるので、回答の中の生年月日欄も見にいく
 function formBirthdate(form) {
@@ -588,7 +598,7 @@ function MonshinPrintSheet({ row }) {
             {row.chart_number ? <strong>カルテ {row.chart_number}　</strong> : null}
             {row.name}
             {row.dob ? `（${row.dob}${dobAnnotation(row.dob) ? `　${dobAnnotation(row.dob)}` : ""}）` : ""}
-            {row.phone ? `　${row.phone}` : ""}
+            {row.phone ? `　電話 ${fmtPhoneDisp(row.phone)}` : ""}
             {row.email ? `　${row.email}` : ""}
           </div>
         </div>
@@ -2797,7 +2807,7 @@ export default function StaffView() {
                               {row.name}
                               {row.kana && <span className="block text-xs font-normal" style={{ color: "#B08A90" }}>{row.kana}</span>}
                               <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
-                                {row.dob || "—"}{anno ? `（${anno}）` : ""}　{row.phone || "—"}
+                                {row.dob || "—"}{anno ? `（${anno}）` : ""}　{fmtPhoneDisp(row.phone) || "—"}
                                 {row.chart ? `　診察券 ${row.chart}` : ""}
                               </span>
                             </td>
@@ -2918,7 +2928,7 @@ export default function StaffView() {
                             <td className="px-2 py-3 font-medium align-top">
                               {row.name}
                               <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}>
-                                {row.dob || "—"}{anno ? `（${anno}）` : ""}　{row.phone || "—"}
+                                {row.dob || "—"}{anno ? `（${anno}）` : ""}　{fmtPhoneDisp(row.phone) || "—"}
                               </span>
                               {row.email && (
                                 <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90" }}>{row.email}</span>
@@ -3812,6 +3822,7 @@ export default function StaffView() {
                     {selectedMonshin.reserve_at ? `予約 ${String(selectedMonshin.reserve_at).slice(0, 10)} ${hhmm(selectedMonshin.reserve_at)}${selectedMonshin.reserve_canceled ? "（キャンセル済）" : ""}　` : ""}
                     記入 {String(selectedMonshin.created_at).slice(0, 10)} {hhmm(selectedMonshin.created_at)}
                     {selectedMonshin.dob ? `　生年月日 ${selectedMonshin.dob}` : ""}
+                    {selectedMonshin.phone ? `　電話 ${fmtPhoneDisp(selectedMonshin.phone)}` : ""}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
