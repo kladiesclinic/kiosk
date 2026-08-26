@@ -146,6 +146,123 @@
   }
   .done-panel p { font-size: 14px; line-height: 1.75; color: #2E5C41; margin-top: 14px; }
   .done-panel p .ja { display: block; font-size: 12.5px; color: #4C7A5E; margin-top: 3px; }
+
+  /* ---- 低用量ピルの飲み方ガイド ----
+     送信後、受診理由に「低用量ピル」か「ニキビ・肌荒れ」があるときだけ表示する
+     （中身はJSの showPillGuide が組み立てる）。お渡しまでの待ち時間に読んでもらい、
+     項目ごとに「読みました」を押してもらう。 */
+  .pill-guide { display: none; margin-bottom: 28px; }
+  .pill-guide.show { display: block; }
+  .pg-lead {
+    background: #FCF1F0; border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px 20px; margin-bottom: 12px;
+  }
+  .pg-sent { font-size: 13px; font-weight: 700; color: #2E7D4F; margin-bottom: 6px; }
+  .pg-checkin-warn {
+    margin-top: 10px; padding: 12px 14px; border-radius: 10px;
+    background: #FFF4E5; border: 1px solid #F0D2A0; color: #8A5A11;
+    font-weight: 600; font-size: 12.5px; line-height: 1.7;
+  }
+  .pg-lead h2 { font-family: var(--serif); font-size: 18px; font-weight: 700; color: var(--ink); }
+  .pg-lead h2 .sub { display: block; font-family: 'Noto Sans JP', var(--sans); font-size: 12px; color: var(--faint); font-weight: 500; margin-top: 2px; }
+  .pg-lead p { font-size: 13px; line-height: 1.75; color: var(--soft); margin-top: 8px; }
+  .pg-count { font-size: 12px; font-weight: 700; color: var(--accent); margin-top: 8px; }
+  /* コースの区切り見出し（低用量ピルの飲み方／ニキビ・肌荒れの方へ など） */
+  .pg-sec {
+    font-family: var(--serif); font-size: 14.5px; font-weight: 700; color: var(--accent);
+    margin: 22px 2px 10px; padding-top: 16px; border-top: 2px solid var(--line);
+  }
+  .pg-sec span {
+    display: block; font-family: 'Noto Sans JP', var(--sans);
+    font-size: 11px; color: var(--faint); font-weight: 500; margin-top: 1px;
+  }
+  .pg-card {
+    background: #FFFFFF; border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px 20px; margin-bottom: 12px;
+  }
+  .pg-card.checked { border-color: #BFE3CC; background: #F4FBF6; }
+  .pg-card h3 { font-family: var(--serif); font-size: 15px; font-weight: 700; color: var(--ink); }
+  .pg-card h3 .sub { display: block; font-family: 'Noto Sans JP', var(--sans); font-size: 11px; color: var(--faint); font-weight: 500; margin-top: 1px; }
+  .pg-card p { font-size: 13.5px; line-height: 1.8; color: var(--soft); margin-top: 8px; }
+  .pg-card p strong { color: var(--ink); }
+  .pg-art { margin: 12px auto 0; max-width: 230px; }
+  .pg-art img { width: 100%; height: auto; display: block; }
+  /* アフターピル/低用量ピルの比較表（院内配布シートと同じ内容） */
+  .pg-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; line-height: 1.6; }
+  .pg-table th, .pg-table td { border: 1px solid #F2DFE4; padding: 7px 8px; text-align: left; vertical-align: top; }
+  .pg-table thead th { background: #FFEDEC; font-weight: 700; text-align: center; color: var(--ink); }
+  .pg-table td:first-child { background: #FFF8F7; font-weight: 700; white-space: nowrap; color: var(--soft); width: 4.5em; }
+  .pg-table td strong { color: var(--accent); }
+  .pg-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .pg-chip {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    background: #F2FAF6; border: 1.5px solid #CDE8DA; border-radius: 10px;
+    padding: 8px 10px; font-size: 12px; font-weight: 600; color: var(--ink); line-height: 1.45;
+  }
+  .pg-chip svg { flex: 0 0 auto; }
+  .pg-chip span:first-of-type { flex: 1; }
+  .pg-chip-q {
+    flex: 0 0 auto; width: 17px; height: 17px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #FFFFFF; border: 1.5px solid #9CC9B4; color: #0F8B8D;
+    font-size: 11px; font-weight: 700;
+  }
+  .pg-chip.open { border-color: #0F8B8D; background: #E7F4EE; }
+  .pg-chip.open .pg-chip-q { background: #0F8B8D; border-color: #0F8B8D; color: #FFFFFF; }
+  .pg-chip-detail {
+    display: none; margin-top: 10px; padding: 11px 13px;
+    background: #F4FAF7; border-left: 3px solid #0F8B8D; border-radius: 0 10px 10px 0;
+    font-size: 12.5px; line-height: 1.85; color: var(--soft);
+  }
+  @media (max-width: 400px) { .pg-chips { grid-template-columns: 1fr; } }
+  /* 「アルダクトンも処方してほしい」ボタン */
+  .pg-want {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    margin-top: 12px; padding: 12px; border-radius: 10px; cursor: pointer;
+    font-family: var(--sans); font-size: 14px; font-weight: 700;
+    background: #0F8B8D; color: #FFFFFF; border: none;
+  }
+  .pg-want.done {
+    background: #E8F5EC; color: #1F5B37; border: 1.5px solid #BFE3CC; cursor: default;
+  }
+  /* 折りたたみカード（任意読み）。見出しタップで開閉 */
+  .pg-fold-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+  .pg-fold-head h3 { flex: 1; min-width: 0; }
+  .pg-fold-arrow { flex: 0 0 auto; color: var(--accent); font-size: 15px; transition: transform 0.2s ease; }
+  .pg-fold.open .pg-fold-arrow { transform: rotate(180deg); }
+  .pg-fold-body { display: none; }
+  .pg-fold.open .pg-fold-body { display: block; }
+  .pg-art svg { width: 100%; height: auto; display: block; }
+  .pg-art-row { display: flex; gap: 14px; margin-top: 12px; }
+  .pg-art-row > div { flex: 1; min-width: 0; text-align: center; }
+  .pg-art-row .cap { font-size: 12px; font-weight: 700; color: var(--ink); margin-top: 5px; }
+  .pg-order { font-size: 11px; line-height: 1.7; color: var(--soft); margin-top: 3px; }
+  .pg-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.14); vertical-align: -1px; margin-right: 1px;
+  }
+  .pg-warn { border-color: #F0B9B4; background: #FDF3F2; }
+  .pg-warn ul { margin: 10px 0 0; padding: 0; list-style: none; }
+  .pg-warn li {
+    font-size: 13.5px; line-height: 1.85; color: #A03B33; font-weight: 600;
+    padding-left: 16px; position: relative;
+  }
+  .pg-warn li::before {
+    content: ""; position: absolute; left: 2px; top: 10px;
+    width: 7px; height: 7px; border-radius: 50%; background: #D64550;
+  }
+  .pg-chk {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    margin-top: 14px; padding: 12px; border-radius: 10px; cursor: pointer;
+    font-family: var(--sans); font-size: 14px; font-weight: 700;
+    background: #FFFFFF; color: var(--accent); border: 1.5px solid var(--accent);
+  }
+  .pg-card.checked .pg-chk { background: #2E7D4F; border-color: #2E7D4F; color: #FFFFFF; }
+  .pg-done {
+    display: none; background: #E8F5EC; border: 1px solid #BFE3CC; border-radius: 16px;
+    padding: 18px 20px; font-size: 13.5px; line-height: 1.75; color: #2E5C41; font-weight: 600;
+  }
+  .pg-done.show { display: block; }
   /* Locked after submitting, but the PDF button has to stay clickable. */
   .form-locked { pointer-events: none; }
   .form-locked .print-btn { pointer-events: auto; }
@@ -193,7 +310,7 @@
     body { background: #FFFFFF; color: #000000; font-size: 10px; }
     header, footer, .page-head, .note-box, .submit-btn, .print-btn,
     .form-status, .hp-field, .hint, .visit-note, .skip-tag,
-    .done-panel { display: none !important; }
+    .done-panel, .pill-guide { display: none !important; }
     .wrap { max-width: none; padding: 0; }
     .print-header {
       display: flex; align-items: center; justify-content: space-between;
@@ -291,6 +408,9 @@
       <strong>Print / save as PDF</strong> button at the bottom of the form.
       <span class="ja">回答は下に表示されたままです。控えが必要な場合は、フォーム下部のボタンからPDF保存できます。</span></p>
     </div>
+
+    <!-- 低用量ピルの飲み方ガイド（送信後、対象の方だけJSが中身を入れて表示する） -->
+    <div class="pill-guide" id="pill-guide" aria-live="polite"></div>
 
     <form id="intake-form" novalidate>
 
@@ -1872,6 +1992,8 @@
 
     submitBtn.disabled = true;
     function postIntake(withCheckin) {
+      // ガイドの「アルダクトンもほしい」ボタンが、送信済みの行に書き足せるようIDを控える
+      window.LAST_FORM_ID = "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
       return fetch(SUPABASE_URL + "/rest/v1/intake_forms", {
         method: "POST",
         headers: {
@@ -1881,7 +2003,7 @@
           Prefer: "return=minimal",
         },
         body: JSON.stringify({
-          id: "f-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+          id: window.LAST_FORM_ID,
           patient_name: data.name,
           date_of_birth: data.date_of_birth,
           checkin_id: withCheckin ? CHECKIN_ID || null : null,
@@ -1924,8 +2046,48 @@
             : "これで受付は完了していません。ご来院時に、受付カウンターのQRコードを読み取って受付をお願いします。";
           done.appendChild(warn);
         }
+        // 受診理由（ピル系）と行IDを端末に控える。事前記入の人が当日
+        // 受付完了画面からガイド（?guide=1）を開いたとき、記入時と同じ
+        // 絞り込みで表示し、「アルダクトンもほしい」も書き足せるようにする
+        try {
+          localStorage.setItem("klcs_pill_guide", JSON.stringify({
+            at: Date.now(),
+            formId: window.LAST_FORM_ID || "",
+            reasons: [].map.call(document.querySelectorAll('input[name="reason"]:checked'), function (b) { return b.value; }),
+          }));
+        } catch (e2) { /* no-op */ }
+        // ガイドは「当日・待合室」でだけ見せる（受付済み＝CHECKIN_IDあり）。
+        // 事前記入の送信では出さない — 来院前に読んでも当日には薄れるのと、
+        // 「当日は受付QRを」の注意を読み物で埋もれさせないため。
+        // 代わりに完了画面へ「当日ご案内します」の予告を添える（下のteaser）。
+        // ガイドが出せなくても送信は成立しているので、失敗は握りつぶす
+        var guideShown = false;
+        if (CHECKIN_ID) {
+          try { guideShown = showPillGuide(); } catch (e) { /* no-op */ }
+        } else {
+          var pillReasons = ["Birth control pills", "Acne / skin", "Period shifting", "Mini-pill (progestogen-only)", "Morning-after pill / Plan B"];
+          var hasPill = [].some.call(
+            document.querySelectorAll('input[name="reason"]:checked'),
+            function (b) { return pillReasons.indexOf(b.value) !== -1; }
+          );
+          if (hasPill) {
+            var tease = document.createElement("p");
+            tease.style.cssText = "margin-top:10px;font-size:13px;color:#2E5C41;font-weight:600;";
+            tease.innerHTML = PAGE_LANG === "en"
+              ? "On the day of your visit, after check-in, we'll show you a guide to taking your medicine on your phone."
+              : "ご来院当日、受付のあとに「お薬の飲み方ガイド」をスマホでご案内します。";
+            done.appendChild(tease);
+          }
+        }
+        // "show" は付けたままにする（ウィザード解除＝全問の再表示の合図に使っている）
         done.classList.add("show");
-        done.scrollIntoView({ behavior: "smooth", block: "center" });
+        if (guideShown) {
+          done.style.display = "none";
+          var guideEl = document.getElementById("pill-guide");
+          if (guideEl) guideEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          done.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
       })
       .catch(function () {
         statusEl.textContent = "We couldn't send your answers. Please show this screen to our reception staff. ／ 送信できませんでした。お手数ですがこの画面を受付スタッフにお見せください。";
@@ -1933,6 +2095,934 @@
       })
       .finally(function () { submitBtn.disabled = false; });
   });
+</script>
+
+<script>
+  /* ---- 低用量ピルの飲み方ガイド ----
+     問診票の送信後、受診理由で「低用量ピル」または「ニキビ・肌荒れ」を選んだ方に
+     表示する（intake.html を使うのは初診と再診・新しい症状の方だけなので、
+     対象の絞り込みはこの2条件で足りる）。お渡しまでの待ち時間に読んでもらい、
+     項目ごとに「読みました」を押してもらう。チェックは画面の中だけの仕組みで、
+     どこにも送信しない。
+     シートの絵は受付（booking-app checkinArt.jsx）と同じ配色・並びで描き、
+     手元のシートと見比べられるようにしている。 */
+  // opts.standalone: 問診票を経由しない「ガイドだけ」表示（?guide=1）。
+  // 当日の受付完了画面から、事前記入済みの方が待合室で開く用。
+  // opts.reasons: 事前記入のときに端末へ控えた受診理由（同じスマホなら
+  // 記入時と同じ絞り込みで出せる）。無ければ低用量ピル＋肌荒れのフルセット
+  function showPillGuide(opts) {
+    var standalone = !!(opts && opts.standalone);
+    var savedReasons = !!(opts && opts.reasons && opts.reasons.length);
+    var reasons = savedReasons ? opts.reasons : [].map.call(
+      document.querySelectorAll('input[name="reason"]:checked'),
+      function (b) { return b.value; }
+    );
+    var wantsOc = (standalone && !savedReasons) || reasons.indexOf("Birth control pills") !== -1;
+    var wantsAcne = (standalone && !savedReasons) || reasons.indexOf("Acne / skin") !== -1;
+    var wantsShift = reasons.indexOf("Period shifting") !== -1;
+    var wantsMini = reasons.indexOf("Mini-pill (progestogen-only)") !== -1;
+    var wantsEc = reasons.indexOf("Morning-after pill / Plan B") !== -1;
+    if (!wantsOc && !wantsAcne && !wantsShift && !wantsMini && !wantsEc) return false;
+
+    var en = PAGE_LANG === "en";
+    var mount = document.getElementById("pill-guide");
+    if (!mount) return false;
+    // 「うれしい効果」チップをタップしたとき開く仕組みの説明文（クリック処理から参照する）
+    var chipDetails = [];
+
+    // ---- 絵（インラインSVG） ----
+    // PTPシート。錠剤ごとの色は tab(i) が返す
+    function sheet(kind) {
+      var box, cols, rows, tint, edge, bump, tab;
+      if (kind === "aldactone") {
+        box = { x: 33, y: 1.5, w: 46, h: 73 }; cols = { n: 2, gap: 22 }; rows = { n: 5, gap: 14 };
+        tint = "#EFDCA6"; edge = "#CDB271"; bump = "#F7EBC8";
+        tab = function () { return { r: 5.2, fill: "#FFFFFF", stroke: "#D3CBB6" }; };
+      } else if (kind === "slinda") {
+        // スリンダ28錠: 白24錠（有効成分）→ 緑4錠（お休み用）
+        box = { x: 1.5, y: 1.5, w: 109, h: 73 }; cols = { n: 7, gap: 14 }; rows = { n: 4, gap: 16 };
+        tint = "#F7F5FB"; edge = "#C9C4D6"; bump = "#FFFFFF";
+        tab = function (i) {
+          return i === 0 ? { r: 4.7, fill: "#FFFFFF", stroke: "#6B5FA8", width: 2 }
+            : i < 24 ? { r: 4.7, fill: "#FFFFFF", stroke: "#C9C4D6" }
+              : { r: 4.7, fill: "#C9D9A6", stroke: "#A5BC7E" };
+        };
+      } else {
+        box = { x: 1.5, y: 1.5, w: 109, h: 73 }; cols = { n: 7, gap: 14 }; rows = { n: 4, gap: 16 };
+        edge = "#C9D2D8"; bump = "#FFFFFF";
+        if (kind === "triquilar") {
+          tint = "#F7FAFB";
+          tab = function (i) {
+            return i < 6 ? { r: 4.7, fill: "#C8433E", stroke: "#A5332F" }
+              : i < 11 ? { r: 4.7, fill: "#FFFFFF", stroke: "#C9D2D8" }
+                : i < 21 ? { r: 4.7, fill: "#E5A03A", stroke: "#C1822A" }
+                  : { r: 4.7, fill: "#FFFFFF", stroke: "#C9D2D8" };
+          };
+        } else {
+          tint = "#F5F9FD";
+          tab = function (i) {
+            return i === 0 ? { r: 4.7, fill: "#FFFFFF", stroke: "#2F6BB0", width: 2 }
+              : i < 21 ? { r: 4.7, fill: "#FFFFFF", stroke: "#C3D0DC" }
+                : { r: 4.7, fill: "#C9D9A6", stroke: "#A5BC7E" };
+          };
+        }
+      }
+      var cx0 = box.x + box.w / 2 - (cols.n - 1) * cols.gap / 2;
+      var cy0 = box.y + box.h / 2 - (rows.n - 1) * rows.gap / 2;
+      var cells = "";
+      for (var r = 0; r < rows.n; r++) {
+        for (var c = 0; c < cols.n; c++) {
+          var i = r * cols.n + c, cx = cx0 + c * cols.gap, cy = cy0 + r * rows.gap;
+          var t = tab(i);
+          cells +=
+            '<circle cx="' + cx + '" cy="' + cy + '" r="' + t.r * 1.25 + '" fill="' + bump + '" stroke="' + edge + '" stroke-width="1"/>' +
+            '<circle cx="' + cx + '" cy="' + cy + '" r="' + t.r + '" fill="' + t.fill + '" stroke="' + t.stroke + '" stroke-width="' + (t.width || 1) + '"/>';
+        }
+      }
+      return '<svg viewBox="0 0 112 76" role="img" aria-hidden="true">' +
+        '<rect x="' + box.x + '" y="' + box.y + '" width="' + box.w + '" height="' + box.h + '" rx="8" fill="' + tint + '" stroke="' + edge + '" stroke-width="2"/>' +
+        cells + '</svg>';
+    }
+    // 錠剤1粒（ふくらみ付き）。挿絵の中で共通に使う
+    function pillAt(cx, cy, r) {
+      return '<circle cx="' + cx + '" cy="' + cy + '" r="' + r * 1.35 + '" fill="#FFFFFF" stroke="#C9D2D8" stroke-width="1.5"/>' +
+        '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="#FDECEC" stroke="#E8A5A5" stroke-width="1.5"/>';
+    }
+    // 寝る前の目覚まし時計（21時）と、水・錠剤（毎日同じ時間に）
+    var ART_CLOCK =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      '<circle cx="32" cy="22" r="8" fill="#FFEDEC" stroke="#E5807E" stroke-width="2.5"/>' +
+      '<circle cx="76" cy="22" r="8" fill="#FFEDEC" stroke="#E5807E" stroke-width="2.5"/>' +
+      '<path d="M38 80 l-9 10 M70 80 l9 10" stroke="#E5807E" stroke-width="3" stroke-linecap="round"/>' +
+      '<circle cx="54" cy="52" r="32" fill="#FFFFFF" stroke="#E5807E" stroke-width="3"/>' +
+      '<path d="M54 26 v6 M54 72 v6 M28 52 h6 M74 52 h6" stroke="#F3B8B6" stroke-width="2.5" stroke-linecap="round"/>' +
+      '<path d="M54 52 V34 M54 52 H40" stroke="#FF6766" stroke-width="3.5" stroke-linecap="round"/>' +
+      '<circle cx="54" cy="52" r="2.5" fill="#FF6766"/>' +
+      '<path d="M108 42 h26 l-3 36 h-20 z" fill="#FFFFFF" stroke="#9FBFD0" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M110.5 54 h21 l-2 21 h-17 z" fill="#DDEFF7"/>' +
+      pillAt(150, 80, 7) +
+      "</svg>";
+    // カレンダー: 1日目に飲み始め、最初の1週間は錠剤の印、盾=他の避妊法の併用
+    var ART_CAL =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      '<path d="M31 18 h98 a9 9 0 0 1 9 9 v9 h-116 v-9 a9 9 0 0 1 9 -9 z" fill="#FFEDEC"/>' +
+      '<rect x="22" y="18" width="116" height="70" rx="9" fill="none" stroke="#E5807E" stroke-width="2.5"/>' +
+      '<path d="M22 36 h116" stroke="#E5807E" stroke-width="2"/>' +
+      '<path d="M48 18 V10 M112 18 V10" stroke="#E5807E" stroke-width="3.5" stroke-linecap="round"/>' +
+      '<circle cx="35" cy="48" r="7.5" fill="#FF6766"/>' +
+      '<text x="35" y="51.6" text-anchor="middle" font-size="9" font-weight="700" fill="#FFFFFF" font-family="sans-serif">1</text>' +
+      '<g fill="#FDECEC" stroke="#E8A5A5" stroke-width="1.3">' +
+      '<circle cx="51" cy="48" r="4.5"/><circle cx="67" cy="48" r="4.5"/><circle cx="83" cy="48" r="4.5"/>' +
+      '<circle cx="99" cy="48" r="4.5"/><circle cx="115" cy="48" r="4.5"/><circle cx="131" cy="48" r="4.5"/>' +
+      "</g>" +
+      '<g fill="#F3C6C5">' +
+      '<circle cx="35" cy="63" r="2.5"/><circle cx="51" cy="63" r="2.5"/><circle cx="67" cy="63" r="2.5"/><circle cx="83" cy="63" r="2.5"/><circle cx="99" cy="63" r="2.5"/>' +
+      '<circle cx="35" cy="77" r="2.5"/><circle cx="51" cy="77" r="2.5"/><circle cx="67" cy="77" r="2.5"/>' +
+      "</g>" +
+      '<path d="M124 58 q10 -6 20 0 v12 q0 12 -10 16 q-10 -4 -10 -16 z" fill="#DFF1EE" stroke="#0F8B8D" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M128 70 l5 6 l9 -11" fill="none" stroke="#0F8B8D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+      "</svg>";
+    // 飲み忘れ（1か所だけ空いたシートと「!」の吹き出し）
+    var ART_MISS =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      '<rect x="26" y="34" width="108" height="50" rx="12" fill="#F7FAFB" stroke="#C9D2D8" stroke-width="2.5"/>' +
+      pillAt(44, 48, 6.5) +
+      '<circle cx="68" cy="48" r="6.5" fill="none" stroke="#D64550" stroke-width="2.2" stroke-dasharray="3.5 3"/>' +
+      pillAt(92, 48, 6.5) + pillAt(116, 48, 6.5) +
+      pillAt(44, 70, 6.5) + pillAt(68, 70, 6.5) + pillAt(92, 70, 6.5) + pillAt(116, 70, 6.5) +
+      '<circle cx="68" cy="14" r="11" fill="#FF6766"/>' +
+      '<path d="M63 23 L68 32 L73 23 z" fill="#FF6766"/>' +
+      '<text x="68" y="19" text-anchor="middle" font-size="15" font-weight="700" fill="#FFFFFF" font-family="sans-serif">!</text>' +
+      "</svg>";
+    // 2時間以内に吐いたら → 水と一緒にもう1錠
+    var ART_VOMIT =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      '<circle cx="36" cy="50" r="24" fill="#FFFFFF" stroke="#E5807E" stroke-width="3"/>' +
+      '<text x="36" y="56" text-anchor="middle" font-size="15" font-weight="700" fill="#FF6766" font-family="sans-serif">2h</text>' +
+      '<path d="M70 50 H90" stroke="#B08A90" stroke-width="3" stroke-linecap="round"/>' +
+      '<path d="M84 43 L92 50 L84 57" fill="none" stroke="#B08A90" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M104 38 h22 l-2.5 34 h-17 z" fill="#FFFFFF" stroke="#9FBFD0" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M106.5 50 h17 l-1.8 19.5 h-13.4 z" fill="#DDEFF7"/>' +
+      pillAt(146, 64, 8) +
+      '<path d="M146 26 v14 M139 33 h14" stroke="#2E7D4F" stroke-width="3.5" stroke-linecap="round"/>' +
+      "</svg>";
+    // 注意（血栓症のサイン）と「すぐ電話」
+    var ART_WARN =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      '<path d="M52 14 L92 80 q2 4 -3 4 H15 q-5 0 -3 -4 z" fill="#FDF3F2" stroke="#D64550" stroke-width="3.5" stroke-linejoin="round"/>' +
+      '<path d="M52 36 v20" stroke="#D64550" stroke-width="5" stroke-linecap="round"/>' +
+      '<circle cx="52" cy="66" r="3.2" fill="#D64550"/>' +
+      '<rect x="112" y="24" width="32" height="58" rx="8" fill="#FFFFFF" stroke="#B03A44" stroke-width="2.5"/>' +
+      '<path d="M120 32 h16" stroke="#F3B8B6" stroke-width="2.5" stroke-linecap="round"/>' +
+      '<circle cx="128" cy="72" r="3" fill="#B03A44"/>' +
+      '<path d="M150 18 q7 9 0 18 M145 22 q3.5 5 0 10" fill="none" stroke="#D64550" stroke-width="2.5" stroke-linecap="round"/>' +
+      "</svg>";
+
+    var dot = function (color) {
+      return '<span class="pg-dot" style="background:' + color + '"></span>';
+    };
+    var chkLabel = en ? "I've read this" : "読みました";
+    var chkDone = en ? "✓ Read" : "✓ 確認済み";
+
+    function card(o) {
+      // folded: 見出しだけ見せて、タップで中身を開く補足カード。
+      // 必読ではないので「読みました」ボタンは付けず、チェック数にも数えない
+      if (o.folded) {
+        return '<div class="pg-card pg-fold">' +
+          '<div class="pg-fold-head"><h3>' + o.title + "</h3>" +
+          '<span class="pg-fold-arrow">▾</span></div>' +
+          '<div class="pg-fold-body">' +
+          (o.body ? "<p>" + o.body + "</p>" : "") +
+          (o.extra || "") +
+          "</div></div>";
+      }
+      return '<div class="pg-card' + (o.warn ? ' pg-warn' : '') + '">' +
+        '<h3>' + o.title + '</h3>' +
+        (o.body ? '<p>' + o.body + '</p>' : '') +
+        (o.extra || '') +
+        '<button type="button" class="pg-chk">' + chkLabel + '</button>' +
+        '</div>';
+    }
+    // コースの区切り見出し（.pg-card ではないのでチェック数には数えない）
+    // 見出しは表示中の言語だけを出す（日英併記はしない）
+    function secLabel(ja, enTxt) {
+      return '<div class="pg-sec">' + (en ? enTxt : ja) + "</div>";
+    }
+
+    var cards = [];
+
+    // 肌荒れで来た方には、飲み方の前に「なぜピルが肌に効くのか」から入る。
+    // 効果が出るまで2〜3ヶ月かかる薬なので、仕組みと期間を先に知ってもらえると
+    // 「効かないからやめた」を減らせる
+    if (wantsAcne) {
+      // 顔（髪つき）を描く。spots=ニキビの数、happy=にっこり＋つやマーク
+      var girlFace = function (cx, cy, spots, happy) {
+        var s =
+          '<circle cx="' + cx + '" cy="' + cy + '" r="20" fill="#FFF6EF" stroke="#E5807E" stroke-width="2.5"/>' +
+          '<path d="M' + (cx - 20) + " " + cy + " a20 20 0 0 1 40 0 q-3 -13 -20 -13 q-17 0 -20 13 z\" fill=\"#8D6E63\"/>" +
+          '<path d="M' + (cx - 20) + " " + cy + " v11 q0 6 6 6 M" + (cx + 20) + " " + cy + ' v11 q0 6 -6 6" fill="none" stroke="#8D6E63" stroke-width="4" stroke-linecap="round"/>' +
+          '<circle cx="' + (cx - 7) + '" cy="' + cy + '" r="1.7" fill="#6B4F45"/>' +
+          '<circle cx="' + (cx + 7) + '" cy="' + cy + '" r="1.7" fill="#6B4F45"/>';
+        var dots = [[cx - 11, cy + 6], [cx + 11, cy + 5], [cx - 5, cy - 7], [cx + 6, cy - 8]];
+        for (var i = 0; i < spots && i < dots.length; i++) {
+          s += '<circle cx="' + dots[i][0] + '" cy="' + dots[i][1] + '" r="2.2" fill="#E06A63"/>';
+        }
+        if (happy) {
+          s += '<ellipse cx="' + (cx - 10) + '" cy="' + (cy + 7) + '" rx="3.5" ry="2" fill="#FFD9D3"/>' +
+            '<ellipse cx="' + (cx + 10) + '" cy="' + (cy + 7) + '" rx="3.5" ry="2" fill="#FFD9D3"/>' +
+            '<path d="M' + (cx - 6) + " " + (cy + 8) + ' q6 5 12 0" fill="none" stroke="#FF6766" stroke-width="2.2" stroke-linecap="round"/>';
+        } else {
+          s += '<path d="M' + (cx - 5) + " " + (cy + 10) + ' q5 -3 10 0" fill="none" stroke="#E5807E" stroke-width="2" stroke-linecap="round"/>';
+        }
+        return s;
+      };
+      // ---- 水彩線画ふうの顔（見本タッチ）。仕組みカードと「よくなるまでのペース」で共用 ----
+      // 手描きのゆらぎは feTurbulence＋feDisplacementMap（WC_FILTER）で出す。
+      // softFaceInner は 64x74 の座標系で顔1つ分のパスを返し、呼び出し側で配置する
+      var WC_FILTER = '<defs><filter id="pgwc" x="-10%" y="-10%" width="120%" height="120%">' +
+        '<feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="3" seed="7" result="n"/>' +
+        '<feDisplacementMap in="SourceGraphic" in2="n" scale="1.8"/>' +
+        "</filter></defs>";
+      var softFaceInner = function (spots, happy) {
+        var s =
+          '<path d="M13 38 Q11 11 32 11 Q53 11 51 38 Q51 54 45 60 L43 42 Q38 47 32 47 Q26 47 21 42 L19 60 Q13 54 13 38 z" fill="#DCC9AC"/>' +
+          '<path d="M17 30 Q18 18 27 14 Q20 21 20 34 Q19 44 21 52 Q17 45 17 30 z" fill="#CBB490" opacity="0.55"/>' +
+          '<path d="M47 30 Q46 18 38 14 Q44 21 44 32 Q45 43 43 52 Q47 45 47 30 z" fill="#CBB490" opacity="0.45"/>' +
+          '<ellipse cx="32" cy="35" rx="13.5" ry="14.5" fill="#FFFDFA" stroke="#4C3B33" stroke-width="1.5"/>' +
+          '<path d="M32 14 Q23 14.5 19.5 22 Q17.5 26.5 18.5 34 Q20 22 28 18.5 Q31 17.5 32 17.5 Q33 17.5 36 18.5 Q44 22 45.5 34 Q46.5 26.5 44.5 22 Q41 14.5 32 14 z" fill="#DCC9AC"/>' +
+          '<path d="M32 14.5 Q31 16 30.5 18 M47 36 Q48.5 45 45.5 53 M17 36 Q15.5 45 18.5 53" fill="none" stroke="#B9A386" stroke-width="1" stroke-linecap="round"/>' +
+          '<path d="M23 30 q3 -1.6 5.5 -0.8 M35.5 29.2 q2.5 -0.8 5.5 0.8" fill="none" stroke="#8A7362" stroke-width="1" stroke-linecap="round" opacity="0.8"/>' +
+          '<path d="M24 35.5 q2.6 2.6 5.2 0 M34.8 35.5 q2.6 2.6 5.2 0" fill="none" stroke="#4C3B33" stroke-width="1.5" stroke-linecap="round"/>' +
+          '<path d="M23.6 36.6 l-1.1 1 M40.4 36.6 l1.1 1" stroke="#4C3B33" stroke-width="1.1" stroke-linecap="round"/>' +
+          '<path d="M32 39 q1 1.4 0 2.4" fill="none" stroke="#C7A08E" stroke-width="1" stroke-linecap="round"/>' +
+          '<ellipse cx="23" cy="40.5" rx="3" ry="1.9" fill="#F4CFC5" opacity="0.75"/>' +
+          '<ellipse cx="41" cy="40.5" rx="3" ry="1.9" fill="#F4CFC5" opacity="0.75"/>';
+        var dots = [[23, 34.5], [41.5, 34], [27, 46], [37.5, 46.5]];
+        for (var i = 0; i < spots && i < dots.length; i++) {
+          s += '<circle cx="' + dots[i][0] + '" cy="' + dots[i][1] + '" r="1.7" fill="#E09B90" opacity="0.9"/>';
+        }
+        if (happy) {
+          s += '<path d="M28.8 43.5 q3.2 3.2 6.4 0" fill="none" stroke="#C96B62" stroke-width="1.7" stroke-linecap="round"/>' +
+            '<path d="M20 46 Q12.5 44.5 11 52 Q10 59 16.5 61 Q22 62.5 24.5 56.5 Q25.5 50.5 20 46 z" fill="#FFFDFA" stroke="#4C3B33" stroke-width="1.4" stroke-linejoin="round"/>' +
+            '<path d="M17 46.5 Q15.5 52 16.5 59 M20.8 47.5 Q19.5 53 20.5 59.5" fill="none" stroke="#4C3B33" stroke-width="0.9" opacity="0.65"/>' +
+            '<path d="M44 46 Q51.5 44.5 53 52 Q54 59 47.5 61 Q42 62.5 39.5 56.5 Q38.5 50.5 44 46 z" fill="#FFFDFA" stroke="#4C3B33" stroke-width="1.4" stroke-linejoin="round"/>' +
+            '<path d="M47 46.5 Q48.5 52 47.5 59 M43.2 47.5 Q44.5 53 43.5 59.5" fill="none" stroke="#4C3B33" stroke-width="0.9" opacity="0.65"/>' +
+            '<path d="M55 16 v7 M51.5 19.5 h7 M9 25 v4.5 M6.8 27.2 h4.5" stroke="#C9A24B" stroke-width="1.4" stroke-linecap="round"/>';
+        } else {
+          s += '<path d="M29.3 44 q2.7 1.2 5.4 0" fill="none" stroke="#C96B62" stroke-width="1.5" stroke-linecap="round"/>';
+        }
+        return s;
+      };
+      // 仕組み: 荒れた肌の顔 → ピル → つや肌の顔（両手をほほに）
+      var ART_SKIN =
+        '<svg viewBox="0 0 172 62" role="img" aria-hidden="true">' + WC_FILTER +
+        '<g filter="url(#pgwc)">' +
+        '<g transform="translate(2 1) scale(0.78)">' + softFaceInner(4, false) + "</g>" +
+        '<path d="M75 32 H91" stroke="#B08A90" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M86 25 L94 32 L86 39" fill="none" stroke="#B08A90" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        pillAt(84.5, 13, 6) +
+        '<g transform="translate(120 1) scale(0.78)">' + softFaceInner(0, true) + "</g>" +
+        "</g></svg>";
+      cards.push(card({
+        title: en ? "Why the pill helps your skin" : "なぜピルが肌荒れに効くの？",
+        sub: en ? "なぜピルが肌荒れに効くの？" : "Why the pill helps your skin",
+        body: en
+          ? "One of the main drivers of acne is <strong>androgen (“male hormone”) activity</strong>, which makes your skin produce more oil. A low-dose pill steadies your hormone cycle and suppresses androgen activity, so your skin makes <strong>less oil and breakouts form less easily</strong>. The effect builds up slowly: most people notice clearer skin after <strong>2–3 sheets (about 2–3 months)</strong> — so even if nothing changes at first, keeping it up is what makes it work."
+          : "ニキビ・肌荒れの大きな原因のひとつは、<strong>男性ホルモン（アンドロゲン）の働きで皮脂が増える</strong>ことです。低用量ピルはホルモンの波を整えて男性ホルモンの働きを抑えるため、<strong>皮脂が減ってニキビができにくく</strong>なります。効果はゆっくり現れます。<strong>シート2〜3枚（2〜3ヶ月）</strong>続けた頃に実感する方が多いので、すぐに変化がなくても続けることが大切です。",
+        // かねこさん提供のフリー素材（メカニズム図解 Downloads/S__41762831.jpg）。
+        // 横長1枚だとスマホで文字が読めないので、3コマに割って縦に積む
+        extra:
+          '<div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;max-width:190px;margin-left:auto;margin-right:auto">' +
+          '<img src="assets/guide/mech1.jpg" alt="" style="width:100%;height:auto;display:block;border-radius:12px">' +
+          '<img src="assets/guide/mech2.jpg" alt="" style="width:100%;height:auto;display:block;border-radius:12px">' +
+          '<img src="assets/guide/mech3.jpg" alt="" style="width:100%;height:auto;display:block;border-radius:12px">' +
+          "</div>",
+      }));
+    }
+
+    // ---- 低用量ピル（トリキュラー・マーベロン）の基本 ----
+    // ニキビ・肌荒れの方の処方も低用量ピルなので、同じ基本セットを見せる
+    var showOcCourse = standalone || wantsOc || wantsAcne;
+    if (showOcCourse) {
+    // 「ピルとは何か」。子宮・卵巣の絵に①排卵お休み ②内膜を薄く ③粘液でブロック の番号を振り、
+    // 本文の①②③と対応させる
+    var ART_HOW =
+      '<svg viewBox="0 0 160 110" role="img" aria-hidden="true">' +
+      // 卵管と卵巣（左右）
+      '<path d="M58 38 Q40 30 30 40 M102 38 Q120 30 130 40" fill="none" stroke="#E5807E" stroke-width="2.5" stroke-linecap="round"/>' +
+      '<circle cx="26" cy="47" r="7.5" fill="#FDECEC" stroke="#E8A5A5" stroke-width="2"/>' +
+      '<circle cx="134" cy="47" r="7.5" fill="#FDECEC" stroke="#E8A5A5" stroke-width="2"/>' +
+      '<circle cx="26" cy="47" r="2.5" fill="#FFFFFF" stroke="#E8A5A5" stroke-width="1.2"/>' +
+      '<circle cx="134" cy="47" r="2.5" fill="#FFFFFF" stroke="#E8A5A5" stroke-width="1.2"/>' +
+      // 子宮本体と、薄く保たれた内膜
+      '<path d="M58 36 Q80 22 102 36 Q114 60 92 74 Q86 78 86 86 v8 h-12 v-8 Q74 78 68 74 Q46 60 58 36 z" fill="#FFEDEC" stroke="#E5807E" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M70 42 Q80 35 90 42 Q94 56 82 64 h-4 Q66 56 70 42 z" fill="#FFFFFF" stroke="#F3B8B6" stroke-width="1.5"/>' +
+      // 番号: ①卵巣（排卵お休み） ②内膜 ③入り口の粘液
+      '<circle cx="26" cy="28" r="6.5" fill="#FF6766"/><text x="26" y="31.6" text-anchor="middle" font-size="8.5" font-weight="700" fill="#FFFFFF" font-family="sans-serif">1</text>' +
+      '<circle cx="80" cy="52" r="6.5" fill="#FF6766"/><text x="80" y="55.6" text-anchor="middle" font-size="8.5" font-weight="700" fill="#FFFFFF" font-family="sans-serif">2</text>' +
+      '<circle cx="80" cy="101" r="6.5" fill="#FF6766"/><text x="80" y="104.6" text-anchor="middle" font-size="8.5" font-weight="700" fill="#FFFFFF" font-family="sans-serif">3</text>' +
+      // 毎日のピル
+      pillAt(146, 14, 6) +
+      "</svg>";
+    cards.push(card({
+      title: en ? "What is the pill, exactly?" : "低用量ピルってどんな薬？",
+      sub: en ? "低用量ピルってどんな薬？" : "What is the pill, exactly?",
+      body: en
+        ? "A low-dose pill tops up small amounts of the female hormones (estrogen and progestogen). Taken every day, your body senses the hormones are already there, so <strong>① ovulation takes a rest</strong>. It also <strong>② keeps the womb lining thin</strong> and <strong>③ thickens the mucus at the entrance of the womb</strong> so sperm can't pass. Together these give <strong>over 99% protection</strong> when taken correctly — and because the hormone waves flatten out, period pain and PMS ease too."
+        : "低用量ピルは、女性ホルモン（エストロゲン・プロゲステロン）を少しずつ補うお薬です。毎日飲むと体が「ホルモンは足りている」と判断して、<strong>①排卵がお休みになります</strong>。さらに<strong>②子宮内膜が厚くならず</strong>、<strong>③子宮の入り口の粘液が変わって精子が通りにくく</strong>なります。この3つで、正しく飲めば<strong>99%以上の避妊効果</strong>があります。ホルモンの波が小さくなるので、生理痛やPMSが軽くなるのもこのしくみのおかげです。",
+      extra: '<div class="pg-art">' + ART_HOW + "</div>",
+    }));
+    // 避妊以外のメリット。「なぜ飲み続けるのか」が腹落ちすると毎日の継続につながる。
+    // 各チップはタップで「なぜそうなるのか」の仕組みが下のパネルに開く
+    chipDetails = [];
+    var chip = function (icon, ja, enTxt, whyJa, whyEn) {
+      chipDetails.push(en ? whyEn : whyJa);
+      return '<div class="pg-chip" data-chip="' + (chipDetails.length - 1) + '">' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" role="img" aria-hidden="true">' + icon + "</svg>" +
+        "<span>" + (en ? enTxt : ja) + "</span>" +
+        '<span class="pg-chip-q">?</span></div>';
+    };
+    cards.push(card({
+      title: en ? "Good things the pill does" : "低用量ピルのうれしい効果",
+      sub: en ? "低用量ピルのうれしい効果" : "Good things the pill does",
+      body: en
+        ? "The pill isn't only for contraception — taken every day, it can also bring changes like these. <strong>Tap an item</strong> to see why it happens."
+        : "避妊のためだけのお薬ではありません。毎日続けることで、こんなうれしい変化も期待できます。<strong>気になる項目をタップ</strong>すると、なぜそうなるのかの仕組みが見られます。",
+      extra: '<div class="pg-chips">' +
+        chip('<path d="M12 20 l-7 -6.3 q-3.6 -3.6 0 -6.8 q3.6 -2.7 7 1.4 q3.4 -4.1 7 -1.4 q3.6 3.2 0 6.8 z" fill="#FF6766"/>',
+          "生理痛がやわらぐ", "Less period pain",
+          "生理痛のおもな原因は、はがれる内膜から出る「プロスタグランジン」という、子宮をぎゅっと収縮させる物質です。ピルで内膜がうすく保たれるとこの物質の量が減り、収縮＝痛みが軽くなります。",
+          "Period pain mainly comes from prostaglandins — substances released by the shedding lining that make the womb cramp. On the pill the lining stays thin, so less prostaglandin is made and the cramps ease.") +
+        chip('<path d="M12 3.5 q6.5 9.5 0 14.5 q-6.5 -5 0 -14.5 z" fill="#D64550"/><path d="M9.5 13 q0 3 2 3.8" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round"/>',
+          "経血量が減って貧血の改善に", "Lighter periods, less anaemia",
+          "経血の正体は、はがれ落ちた子宮内膜です。ピルを飲んでいる間は内膜が厚くならないため、はがれる量＝経血そのものが減ります。失われる鉄分が減るので、貧血の改善にもつながります。",
+          "Period blood is the womb lining being shed. On the pill the lining never thickens, so there is simply less to shed — lighter periods, less iron lost, and so less anaemia.") +
+        chip('<rect x="4" y="6" width="16" height="14" rx="2.5" fill="#FFFFFF" stroke="#E5807E" stroke-width="1.8"/><path d="M4 10.5 h16 M8.5 6 V3.5 M15.5 6 V3.5" stroke="#E5807E" stroke-width="1.8" stroke-linecap="round"/><path d="M8.5 14.5 l2.5 2.8 l4.5 -5" fill="none" stroke="#0F8B8D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+          "生理の日が予測しやすくなる", "A regular, predictable cycle",
+          "ピルの間は、自前のホルモンの波ではなく「シートを飲むリズム」で出血が起こります。お休み錠の時期に出血が来るので、生理の日が事前に分かり、旅行や仕事の予定が立てやすくなります。",
+          "On the pill, bleeding follows the rhythm of the sheet rather than your own hormone waves: it arrives during the rest-tablet week. So you know in advance when your period will come.") +
+        chip('<circle cx="12" cy="12" r="8.5" fill="#FFF6EF" stroke="#E5807E" stroke-width="1.8"/><circle cx="9" cy="10.5" r="1" fill="#6B4F45"/><circle cx="15" cy="10.5" r="1" fill="#6B4F45"/><path d="M8.5 14 q3.5 3 7 0" fill="none" stroke="#FF6766" stroke-width="1.8" stroke-linecap="round"/>',
+          "PMS・気分の不調がやわらぐ", "Milder PMS and mood swings",
+          "PMSは、排卵のあとに起こるホルモンの急な上がり下がりが引き金と考えられています。ピルでホルモンの波が平らになるため、気分の揺れ・むくみ・頭痛などが起こりにくくなります。",
+          "PMS is thought to be triggered by the sharp hormone swings after ovulation. The pill flattens those waves, so mood swings, bloating and headaches have less to feed on.") +
+        chip('<path d="M12 3 l1.8 6.2 l6.2 1.8 l-6.2 1.8 l-1.8 6.2 l-1.8 -6.2 l-6.2 -1.8 l6.2 -1.8 z" fill="#E5A03A"/><circle cx="19.5" cy="5" r="1.3" fill="#E5A03A"/>',
+          "ニキビ・肌荒れの改善", "Clearer skin",
+          "ニキビの一因は、男性ホルモン（アンドロゲン）の働きで皮脂が増えることです。ピルは男性ホルモンの働きを抑えるため、皮脂が減ってニキビができにくくなります。",
+          "One driver of acne is androgen (“male hormone”) activity boosting oil production. The pill suppresses androgen activity, so your skin makes less oil and breakouts form less easily.") +
+        chip('<path d="M12 3 l8 3 v6 q0 7 -8 9.5 q-8 -2.5 -8 -9.5 v-6 z" fill="#DFF1EE" stroke="#0F8B8D" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.5 12 l2.5 3 l4.5 -5.5" fill="none" stroke="#0F8B8D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+          "卵巣がん・子宮体がんのリスクを下げる", "Lower ovarian & uterine cancer risk",
+          "排卵のたびに卵巣の表面は小さく傷つき、修復を繰り返しています。ピルで排卵がお休みになるとその傷が減り、卵巣がんのリスクが下がります。子宮体がんも、内膜が厚くならないことで起こりにくくなります。長く続けた方ほど効果が大きいと報告されています。",
+          "Each ovulation slightly injures the ovary's surface, which then has to repair itself. With ovulation resting, those injuries stop building up — lowering ovarian cancer risk. A lining that never overgrows also means less uterine cancer. The longer the use, the larger the reported effect.") +
+        chip('<path d="M12 21 v-8" fill="none" stroke="#3D9C82" stroke-width="2" stroke-linecap="round"/><path d="M12 13 q0 -6 -7 -7 q0 7 7 7 z" fill="#8FD0B8" stroke="#3D9C82" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 13 q0 -6 7 -7 q0 7 -7 7 z" fill="#C4E8D8" stroke="#3D9C82" stroke-width="1.6" stroke-linejoin="round"/><path d="M6 21 q6 3 12 0" fill="none" stroke="#3D9C82" stroke-width="2" stroke-linecap="round"/>',
+          "将来妊娠したいときのために", "Protects your future fertility",
+          "ピルはやめれば排卵が数ヶ月以内に戻るので、将来の妊娠のしやすさを損ないません。それどころか、不妊の大きな原因になる「子宮内膜症」の進行を抑えるため、妊娠したくなったときのために子宮を守っておく効果も期待できます。",
+          "Stopping the pill lets ovulation return within a few months, so it does not reduce your chances of pregnancy later. Better still, it holds back endometriosis — a major cause of infertility — so it helps protect the womb for when you do want a baby.") +
+        "</div>" +
+        '<div class="pg-chip-detail"></div>',
+    }));
+    // 保険適用ピル（LEP）との違い。当院のトリキュラー・マーベロンは自費なので、
+    // 「保険が使えない＝損」に見えないよう、自費ならではの良さを伝える。
+    // 必読の飲み方・副作用と混ざらないよう、ガイドの最後に折りたたみで置く
+    //（push はこの下の「あわせて気をつけてほしいこと」のあと）
+    var insuranceCard = card({
+      folded: true,
+      title: en ? "Why not an insurance-covered pill?" : "保険のピルとの違いは？",
+      sub: en ? "保険のピルとの違いは？" : "Why not an insurance-covered pill?",
+      body: en
+        ? "Our low-dose pills (Triquilar / Marvelon) are private-pay. That's not a loss — paying privately has advantages of its own. <strong>Tap an item</strong> to see why. We're happy to discuss which suits you at your consultation."
+        : "当院の低用量ピル（トリキュラー・マーベロン）は自費のお薬です。「保険が使えないのは損」に見えますが、自費ならではの良さがあります。<strong>気になる項目をタップ</strong>してください。どちらが合うかは診察でもご相談いただけます。",
+      extra: '<div class="pg-chips">' +
+        chip('<rect x="7" y="7" width="13" height="12" rx="2" fill="#FFFFFF" stroke="#E5807E" stroke-width="1.6"/><rect x="4" y="4" width="13" height="12" rx="2" fill="#FFEDEC" stroke="#E5807E" stroke-width="1.6"/><path d="M4 8 h13" stroke="#E5807E" stroke-width="1.4"/><circle cx="8" cy="12" r="1.3" fill="#E8A5A5"/><circle cx="12.5" cy="12" r="1.3" fill="#E8A5A5"/>',
+          "まとめて処方できて通院が少ない", "Fewer visits — sheets in advance",
+          "保険の処方には日数や来院間隔のルールがあり、こまめな通院が必要になりがちです。自費なら体調に問題がなければ数ヶ月分をまとめてお渡しできるので、忙しくても続けやすくなります。",
+          "Insurance prescriptions come with rules on quantities and visit intervals, which tends to mean frequent trips to the clinic. Privately we can hand you several months' worth at once, so a busy schedule doesn't break your routine.") +
+        chip('<circle cx="12" cy="12" r="8.5" fill="#FFFFFF" stroke="#FF6766" stroke-width="1.8"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="#FF6766" stroke-width="1.6"/><circle cx="12" cy="12" r="1.6" fill="#FF6766"/>',
+          "避妊・肌など目的を選ばない", "Use it for any goal you have",
+          "保険のピルは「月経困難症などの治療」にしか使えず、避妊目的では保険がききません。自費のピルは、避妊・ニキビや肌荒れ・生理の悩みまで、目的を問わず使えます。",
+          "Insurance only covers the pill as treatment for conditions like dysmenorrhoea — never for contraception. A private pill can serve any goal: contraception, skin, or period problems alike.") +
+        chip('<path d="M6 16 a6 6 0 0 1 12 0 z" fill="#FFEDEC" stroke="#E5807E" stroke-width="1.8" stroke-linejoin="round"/><path d="M4.5 16.5 h15" stroke="#E5807E" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="8.5" r="1.5" fill="#E5807E"/>',
+          "2回目からは受付でお渡し", "Quick pick-up from visit two",
+          "体調に変わりがなければ、2回目以降は受付でお薬だけを受け取れます。毎回の診察や薬局の待ち時間がなく、数分で受け取りが終わります。",
+          "If you're doing well on the pill, from your second visit you can simply pick it up at reception — no consultation every time, no pharmacy queue. You're done in minutes.") +
+        chip('<rect x="7" y="3.5" width="10" height="17" rx="2.5" fill="#FFFFFF" stroke="#0F8B8D" stroke-width="1.8"/><circle cx="12" cy="17.5" r="1" fill="#0F8B8D"/><circle cx="12" cy="10" r="2.6" fill="#FDECEC" stroke="#E8A5A5" stroke-width="1.3"/>',
+          "オンライン診療でも続けられる", "Continue online, delivered home",
+          "当院は同じピルをオンライン診療（自宅配送）でも処方しています。忙しくて来院できない月や、引っ越しのあとも、同じお薬をそのまま続けられます。",
+          "We prescribe the same pills through our online consultations, delivered to your door. A busy month or a house move doesn't have to interrupt your routine.") +
+        chip('<circle cx="12" cy="12" r="8.5" fill="#FFF3DC" stroke="#E5A03A" stroke-width="1.8"/><text x="12" y="15.8" text-anchor="middle" font-size="10" font-weight="700" fill="#C1822A" font-family="sans-serif">¥</text>',
+          "料金が明朗で見通しやすい", "Simple, predictable pricing",
+          "保険の3割負担でも、診察料・処方箋料・薬局の調剤料を合わせると、自費とあまり変わらないことも多いです。当院のピルは1シート3,300円（税込）の分かりやすい料金なので、月々の見通しが立てやすくなります。",
+          "Even with a 30% insurance copay, consultation, prescription and pharmacy fees often add up to about the same as a private pill. Our pills are a simple ¥3,300 (tax included) per sheet — easy to plan around.") +
+        chip('<circle cx="12" cy="12" r="8.5" fill="#FFFFFF" stroke="#0F8B8D" stroke-width="1.8"/><ellipse cx="12" cy="12" rx="4" ry="8.5" fill="none" stroke="#0F8B8D" stroke-width="1.3"/><path d="M3.5 12 h17 M5 7.5 h14 M5 16.5 h14" fill="none" stroke="#0F8B8D" stroke-width="1.3"/>',
+          "世界で使われてきた定番薬", "A worldwide classic",
+          "トリキュラー・マーベロンは、世界中で数十年使われてきた定番の低用量ピルで、安全性のデータが豊富です。海外でも同じ成分の薬が広く売られているので、留学や海外赴任の先でも続けやすいお薬です。",
+          "Triquilar and Marvelon are classics used around the world for decades, with a deep safety record. The same formulations are sold in many countries, so you can keep taking them if you study or work abroad.") +
+        "</div>" +
+        '<div class="pg-chip-detail"></div>',
+    });
+    cards.push(secLabel("低用量ピルの飲み方", "Taking your low-dose pill"));
+
+    cards.push(card({
+      title: en ? "One tablet a day, at the same time" : "毎日1錠、なるべく同じ時間に",
+      sub: en ? "毎日1錠、なるべく同じ時間に" : "One tablet a day, at the same time",
+      body: en
+        ? "Take <strong>one tablet a day</strong>, at about the same time each day. Pairing it with a daily habit — bedtime, brushing your teeth, breakfast — makes it hard to forget."
+        : "1日1錠、毎日なるべく同じ時間に飲みます。<strong>寝る前・歯みがき・朝食後</strong>など、毎日必ずすることとセットにすると忘れにくくなります。",
+      extra: '<div class="pg-art">' + ART_CLOCK + "</div>",
+    }));
+
+    cards.push(card({
+      title: en ? "Follow the order on the sheet" : "シートは順番どおりに",
+      sub: en ? "シートは順番どおりに" : "Follow the order on the sheet",
+      body: en
+        ? "Take the tablets in the order of the arrows and numbers on the sheet — never out of order. The last 7 tablets (white on Triquilar, green on Marvelon) contain no hormone: your period-like bleeding comes during this week. <strong>When a sheet is finished, start the next one the very next day</strong> — no break in between. Triquilar's progestogen (levonorgestrel) is reported to carry the lowest blood-clot risk of any low-dose pill."
+        : "シートの矢印・番号のとおりに、順番を変えずに飲みます。最後の7錠（トリキュラーの白・マーベロンの緑）は成分の入っていない「お休み用」の錠剤で、この間に生理のような出血がきます。<strong>28錠飲み終わったら、休まず翌日から次のシート</strong>を始めてください。なお、トリキュラーの黄体ホルモン（レボノルゲストレル）は、低用量ピルの中で血栓症のリスクが最も低いタイプと報告されています。",
+      extra:
+        '<div class="pg-art-row">' +
+        "<div>" + sheet("triquilar") +
+        '<div class="cap">' + (en ? "Triquilar" : "トリキュラー") + "</div>" +
+        '<div class="pg-order">' +
+        dot("#C8433E") + (en ? "red 6" : "赤6錠") + " → " +
+        dot("#FFFFFF") + (en ? "white 5" : "白5錠") + " → " +
+        dot("#E5A03A") + (en ? "orange 10" : "橙10錠") + " → " +
+        dot("#FFFFFF") + (en ? "white 7 (rest)" : "白7錠（お休み用）") +
+        "</div></div>" +
+        "<div>" + sheet("marvelon") +
+        '<div class="cap">' + (en ? "Marvelon" : "マーベロン") + "</div>" +
+        '<div class="pg-order">' +
+        dot("#FFFFFF") + (en ? "white 21" : "白21錠") + " → " +
+        dot("#C9D9A6") + (en ? "green 7 (rest)" : "緑7錠（お休み用）") +
+        "</div></div></div>",
+    }));
+
+    cards.push(card({
+      title: en ? "Starting the pill" : "飲み始めと効果",
+      sub: en ? "飲み始めと効果" : "Starting the pill",
+      body: en
+        ? "We'll tell you when to start at your consultation. For the <strong>first 7 days</strong> after you start, please also use another method of contraception (such as condoms)."
+        : "いつから飲み始めるかは診察でご案内します。飲み始めてから<strong>最初の7日間</strong>は、コンドームなど他の避妊法を併用してください。",
+      extra: '<div class="pg-art">' + ART_CAL + "</div>",
+    }));
+
+    cards.push(card({
+      title: en ? "If you miss a tablet" : "飲み忘れたとき",
+      sub: en ? "飲み忘れたとき" : "If you miss a tablet",
+      body: en
+        ? "<strong>One tablet (less than 24 hours late):</strong> take it as soon as you remember, and take today's tablet at the usual time — two in one day is fine. <strong>Two or more tablets:</strong> take only the most recently missed one, then continue as usual, and use another method of contraception until you have taken <strong>7 tablets in a row</strong>. Call us whenever you are unsure."
+        : "<strong>1錠だけ（24時間以内）</strong>：気づいたときにすぐ1錠飲み、その日の分もいつもの時間に飲みます（1日2錠になっても大丈夫です）。<strong>2錠以上（2日以上）</strong>：いちばん最近の飲み忘れ分だけをすぐ飲み、残りはいつも通りに。避妊効果が下がっているので、<strong>7日間続けて飲めるまで</strong>は他の避妊法を併用してください。迷ったときはお電話ください。",
+      extra: '<div class="pg-art">' + ART_MISS + "</div>",
+    }));
+
+
+    cards.push(secLabel("副作用について", "Side effects"));
+
+    // よくある軽い副作用。「知らずに驚いてやめてしまう」のを防ぐのが目的なので、
+    // どれも「慣れれば落ち着く・やめなくていい」をセットで伝える
+    cards.push(card({
+      title: en ? "Common, mild side effects at the start" : "飲み始めによくある軽い副作用",
+      sub: en ? "飲み始めによくある軽い副作用" : "Common, mild side effects at the start",
+      body: en
+        ? "In the first 1–3 months, mild side effects can appear while your body gets used to the hormones. Most settle by themselves within 2–3 sheets, and you don't need to stop the pill. <strong>Tap a symptom</strong> to see why it happens and what helps. If something is hard to bear or won't settle, switching to a different pill often fixes it — just ask us."
+        : "飲み始めの1〜3ヶ月は、体がホルモンに慣れるまでの軽い副作用が出ることがあります。ほとんどは2〜3シートで自然に落ち着き、飲むのをやめる必要はありません。<strong>気になる症状をタップ</strong>すると、なぜ起こるか・どうすればいいかが見られます。つらいとき・続くときは、ピルの種類を変えると良くなることも多いので、遠慮なくご相談ください。",
+      extra: '<div class="pg-chips">' +
+        chip('<circle cx="12" cy="12" r="8.5" fill="#FFF6EF" stroke="#E5807E" stroke-width="1.8"/><circle cx="9" cy="10" r="1" fill="#6B4F45"/><circle cx="15" cy="10" r="1" fill="#6B4F45"/><path d="M8.5 15 q1.75 -2.2 3.5 0 q1.75 2.2 3.5 0" fill="none" stroke="#E5807E" stroke-width="1.8" stroke-linecap="round"/>',
+          "吐き気・むかつき", "Nausea",
+          "ホルモンに体が慣れるまでの反応で、いちばん多い副作用です。食後や寝る前に飲むと軽くなります。多くは1〜2シートで消えます。つらいときは吐き気止めを一緒に出すこともできるのでご相談ください。",
+          "The most common start-up effect, while your body adjusts. Taking the tablet after a meal or at bedtime makes it milder, and it usually fades within 1–2 sheets. If it's rough, we can prescribe an anti-nausea medicine alongside — just ask.") +
+        chip('<path d="M12 5 q5.5 8 0 12.5 q-5.5 -4.5 0 -12.5 z" fill="#FDECEC" stroke="#E8A5A5" stroke-width="1.8" stroke-linejoin="round"/>',
+          "少量の不正出血", "Light spotting",
+          "子宮内膜が新しいホルモンのリズムに慣れる途中で起こる、少量の出血です。飲むのをやめず、いつも通り続けて大丈夫です。2〜3シートで落ち着くことがほとんどで、続く場合はご相談ください。",
+          "A little bleeding while the womb lining adjusts to its new rhythm. Don't stop — keep taking the pill as usual. It almost always settles within 2–3 sheets; talk to us if it doesn't.") +
+        chip('<circle cx="11" cy="13" r="7.5" fill="#FFF6EF" stroke="#E5807E" stroke-width="1.8"/><path d="M17.5 4 l-2.5 4 h3 l-2.5 4" fill="none" stroke="#E5A03A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+          "頭痛・むくみ", "Headache / bloating",
+          "ホルモンの変化による一時的なもので、体が慣れると落ち着きます。市販の頭痛薬を使っても構いません。ただし、今までに経験のない激しい頭痛は下の「すぐご連絡ください」に当てはまるので、我慢せずご連絡ください。",
+          "A temporary effect of the hormone change that settles as you adjust. Ordinary painkillers are fine to use. But a severe headache unlike any you've had before belongs in the red card below — contact us rather than waiting it out.") +
+        chip('<path d="M12 20 l-7 -6.3 q-3.6 -3.6 0 -6.8 q3.6 -2.7 7 1.4 q3.4 -4.1 7 -1.4 q3.6 3.2 0 6.8 z" fill="none" stroke="#FF6766" stroke-width="1.8" stroke-linejoin="round"/>',
+          "胸の張り", "Breast tenderness",
+          "エストロゲンの働きで、生理前と同じような胸の張りを感じることがあります。体が慣れる1〜2シートのうちに落ち着くことがほとんどです。",
+          "Estrogen can bring the same breast tenderness you may know from before a period. It usually eases within the first 1–2 sheets as your body adjusts.") +
+        chip('<path d="M7 15 a4 4 0 0 1 0 -8 a5 5 0 0 1 9.5 -1 a4.5 4.5 0 0 1 0.5 9 z" fill="#FFFFFF" stroke="#9FBFD0" stroke-width="1.8" stroke-linejoin="round"/>',
+          "気分の落ち込み・変化", "Mood changes",
+          "一部の方で、飲み始めに気分の変化を感じることがあります。多くは一時的ですが、続くときは黄体ホルモンの種類が合っていない可能性があり、別のピルに変えると良くなることがあります。ご相談ください。",
+          "Some people notice mood changes at the start. It's usually temporary — but if it lingers, the progestogen type may not suit you, and switching pills often helps. Tell us.") +
+        "</div>" +
+        '<div class="pg-chip-detail"></div>',
+    }));
+
+    // 血栓症の解説。「ピル=血栓が怖い」というイメージに、実際の頻度
+    //（妊娠・出産のほうがずっと高い）を棒グラフで添えて安心してもらう。
+    // 数字（1万人・1年あたり 非服用1-5 / OC 3-9 / 妊娠中5-20 / 産後12週40-65）は
+    // FDA公表値。ASRMガイドライン(2016)・NZ Medsafe患者向け資料も同じ値を引用。
+    // 日本のOC・LEPガイドライン2020（日産婦）も「非服用者の約2倍・妊婦の約1/5」で整合
+    var vteRow = function (y, label, value, w, color) {
+      return '<text x="88" y="' + (y + 9) + '" text-anchor="end" font-size="10.5" fill="#5A4A4E" font-family="sans-serif">' + label + "</text>" +
+        '<rect x="94" y="' + y + '" width="' + w + '" height="12" rx="3" fill="' + color + '"/>' +
+        '<text x="' + (100 + w) + '" y="' + (y + 9.5) + '" font-size="10" font-weight="700" fill="#5A4A4E" font-family="sans-serif">' + value + "</text>";
+    };
+    var ART_VTE =
+      '<svg viewBox="0 0 320 124" role="img" aria-hidden="true">' +
+      '<text x="6" y="12" font-size="10" fill="#8A7378" font-family="sans-serif">' +
+      (en ? "People who develop a clot per year (per 10,000, approx.)" : "1年間に血栓症になる人（1万人あたり・目安）") + "</text>" +
+      vteRow(24, en ? "Not on the pill" : "飲んでいない人", en ? "1–5" : "1〜5人", 10, "#C9D2D8") +
+      vteRow(50, en ? "On the pill" : "ピルを服用中", en ? "3–9" : "3〜9人", 20, "#0F8B8D") +
+      vteRow(76, en ? "Pregnant" : "妊娠中", en ? "5–20" : "5〜20人", 42, "#E5A03A") +
+      vteRow(102, en ? "12 wks after birth" : "出産後12週間", en ? "40–65" : "40〜65人", 168, "#D64550") +
+      "</svg>";
+    cards.push(card({
+      title: en ? "About blood clots (thrombosis)" : "血栓症ってなに？",
+      sub: en ? "血栓症ってなに？" : "About blood clots (thrombosis)",
+      body: en
+        ? "A thrombosis is blood clotting inside a vessel — usually a leg vein — and it's the side effect the pill is best known for, because a clot that travels to the lungs is dangerous. It is rare, though: about <strong>3–9 per 10,000 pill users per year</strong>. Pregnancy (5–20) and the 12 weeks after birth (40–65) carry a <strong>far higher risk than the pill</strong> — so the pill's added risk is small compared with pregnancy itself. Know the warning signs below, and a clot can be caught and treated early."
+        : "血栓症とは、血管の中で血のかたまり（血栓）ができることです。足の静脈にできやすく、肺に流れると危険なため、ピルでいちばん気をつける副作用とされています。ただし頻度はまれで、ピルを飲んでいる人でも<strong>1年間に1万人あたり3〜9人</strong>ほど。実は<strong>妊娠中（5〜20人）や出産後12週間（40〜65人）のほうがずっと高く</strong>、ピルのリスクは妊娠・出産に比べれば小さなものです。下の「すぐご連絡ください」のサインを知っておけば、早く見つけてきちんと治療できます。",
+      extra: '<div class="pg-art" style="max-width:330px">' + ART_VTE + "</div>",
+    }));
+
+    cards.push(card({
+      warn: true,
+      title: en ? "Call us straight away if…" : "こんなときはすぐご連絡ください",
+      sub: en ? "こんなときはすぐご連絡ください" : "Call us straight away if…",
+      body: en
+        ? "These can be signs of a blood clot — rare, but not something to wait out. Stop taking the pill and contact us (or see a doctor) straight away."
+        : "血栓症のサインのことがあります。まれですが、様子を見ずに服用をやめて、すぐ当院へご連絡・受診してください。",
+      extra:
+        "<ul>" +
+        (en
+          ? "<li>A sudden, severe headache</li><li>Chest pain or shortness of breath</li><li>Pain or swelling in your calf</li><li>Blurred vision or flashing lights</li><li>Severe stomach pain</li>"
+          : "<li>激しい頭痛</li><li>胸の痛み・息苦しさ</li><li>ふくらはぎの痛み・むくみ</li><li>目が見えにくい・チカチカする</li><li>激しい腹痛</li>") +
+        "</ul>" +
+        '<div class="pg-art" style="max-width:120px">' + ART_WARN + "</div>",
+    }));
+
+    // ---- 安全のために知っておいてほしいこと（飲み合わせ・タバコ・性感染症）----
+    cards.push(secLabel("あわせて気をつけてほしいこと", "Also important to know"));
+
+    // 飲み合わせ: ほとんどはOKで、ダメなものだけ具体名で覚えてもらう
+    var ART_MIX =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      pillAt(38, 50, 10) +
+      '<text x="72" y="58" text-anchor="middle" font-size="20" font-weight="700" fill="#B08A90" font-family="sans-serif">&#215;</text>' +
+      '<g transform="rotate(-25 108 50)">' +
+      '<rect x="88" y="42" width="40" height="17" rx="8.5" fill="#FFFFFF" stroke="#C9D2D8" stroke-width="2"/>' +
+      '<path d="M108 42 v17" stroke="#C9D2D8" stroke-width="1.5"/>' +
+      '<path d="M92 42.5 h16 v16 h-16 z" fill="#E5A03A" opacity="0.85" rx="8"/>' +
+      "</g>" +
+      '<path d="M138 22 L153 46 H123 Z" fill="#FFF3DC" stroke="#E5A03A" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M138 30 v7" stroke="#C1822A" stroke-width="2.5" stroke-linecap="round"/><circle cx="138" cy="41.5" r="1.5" fill="#C1822A"/>' +
+      "</svg>";
+    cards.push(card({
+      title: en ? "Medicines that don't mix well" : "飲み合わせの注意",
+      sub: en ? "飲み合わせの注意" : "Medicines that don't mix well",
+      body: en
+        ? "Most medicines — ordinary painkillers, stomach medicine, hay-fever tablets — are fine with the pill. But <strong>some epilepsy medicines, the antibiotic rifampicin, and the supplement St John's Wort</strong> can weaken its effect. Whenever you see another doctor or a pharmacist, tell them you take an oral contraceptive — noting it in your medicine notebook makes it automatic."
+        : "市販の頭痛薬・胃薬・花粉症の薬など、ほとんどのお薬はピルと併用できます。ただし、<strong>一部のてんかんのお薬・抗生剤のリファンピシン・サプリの「セント・ジョーンズ・ワート（セイヨウオトギリソウ）」</strong>は、ピルの効果を弱めることがあります。ほかの病院や薬局にかかるときは「低用量ピルを飲んでいます」と伝えてください。お薬手帳に書いておくと確実です。",
+    }));
+
+    // タバコ: 血栓リスクの掛け算になることと、35歳・15本の処方基準
+    var ART_SMOKE =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      '<rect x="42" y="44" width="66" height="13" rx="4" fill="#FFFFFF" stroke="#B0A6A8" stroke-width="2"/>' +
+      '<rect x="96" y="44" width="12" height="13" rx="3" fill="#E5A03A" stroke="#C1822A" stroke-width="1.5"/>' +
+      '<path d="M36 40 q-4 -6 0 -12 M30 42 q-3 -4 0 -9" fill="none" stroke="#B0A6A8" stroke-width="2" stroke-linecap="round"/>' +
+      '<circle cx="75" cy="50" r="38" fill="none" stroke="#D64550" stroke-width="5"/>' +
+      '<path d="M48 23 L102 77" stroke="#D64550" stroke-width="5" stroke-linecap="round"/>' +
+      "</svg>";
+    cards.push(card({
+      title: en ? "Smoking and the pill" : "タバコとピル",
+      sub: en ? "タバコとピル" : "Smoking and the pill",
+      body: en
+        ? "Smoking damages blood vessels, and together with the pill it multiplies the risk of blood clots. For safety, <strong>from age 35 the pill cannot be prescribed to anyone smoking 15 or more cigarettes a day</strong> — heated tobacco counts too. If you smoke and want to stay on the pill, this is a genuinely good reason to quit."
+        : "タバコは血管を傷つけ、ピルと重なると血栓症のリスクを大きく上げてしまいます。安全のため、<strong>35歳以上で1日15本以上吸う方にはピルを処方できません</strong>（加熱式タバコも同じ扱いです）。ピルを続けたい方は、これを機会に禁煙をおすすめします。",
+      extra: '<div class="pg-art" style="max-width:170px">' + ART_SMOKE + "</div>",
+    }));
+
+    // 性感染症はピルでは防げない。検査の案内までつなげる
+    var ART_STI =
+      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+      '<path d="M52 14 q14 -8 28 0 v22 q0 26 -14 34 q-14 -8 -14 -34 z" fill="#DFF1EE" stroke="#0F8B8D" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M58 38 l6 8 l12 -14" fill="none" stroke="#0F8B8D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<circle cx="122" cy="46" r="13" fill="#FDECEC" stroke="#E06A63" stroke-width="2"/>' +
+      '<path d="M122 27 v6 M122 59 v6 M103 46 h6 M135 46 h6 M109 33 l4 4 M131 55 l4 4 M135 33 l-4 4 M113 55 l-4 4" stroke="#E06A63" stroke-width="2" stroke-linecap="round"/>' +
+      '<text x="122" y="51" text-anchor="middle" font-size="12" font-weight="700" fill="#B03A44" font-family="sans-serif">?</text>' +
+      "</svg>";
+    cards.push(card({
+      title: en ? "What the pill doesn't protect against" : "ピルで防げないもの（性感染症）",
+      sub: en ? "ピルで防げないもの（性感染症）" : "What the pill doesn't protect against",
+      body: en
+        ? "The pill is excellent contraception, but it <strong>does not protect against sexually transmitted infections</strong> — chlamydia, gonorrhoea, syphilis, HIV and others. Use condoms with a new partner or whenever you're unsure. We offer STI testing at the clinic, so if anything worries you, just ask."
+        : "ピルは避妊には高い効果がありますが、<strong>性感染症（クラミジア・淋菌・梅毒・HIVなど）は防げません</strong>。新しいパートナーとのときや心配があるときは、コンドームを併用してください。当院では性感染症の検査もできます。気になることがあれば、お気軽にご相談ください。",
+    }));
+
+    // 保険のピルとの違い（折りたたみ・読みたい人だけ）
+    cards.push(insuranceCard);
+
+    }
+
+    // ---- ニキビ・肌荒れの方向け: 経過の目安・スキンケア・アルダクトン ----
+    if (wantsAcne) {
+      cards.push(secLabel("ニキビ・肌荒れの方へ", "For acne & skin"));
+      // 顔のイラスト（ニキビの数で経過を表す）。仕組みカードと同じ水彩線画の顔を使う
+      var faceArt = function (spots, happy) {
+        return '<svg viewBox="0 0 64 74" role="img" aria-hidden="true">' + WC_FILTER +
+          '<g filter="url(#pgwc)">' + softFaceInner(spots, happy) + "</g></svg>";
+      };
+      cards.push(card({
+        title: en ? "How quickly your skin improves" : "よくなるまでのペース",
+        sub: en ? "よくなるまでのペース" : "How quickly your skin improves",
+        body: en
+          ? "Improvement happens in stages. In <strong>month 1</strong> there is little visible change — as your hormones adjust, some people even break out a little more (that's OK, keep going). By <strong>months 2–3</strong>, your skin makes less oil and fewer new pimples form. By <strong>months 3–6</strong>, marks and redness also start to fade."
+          : "効果の出方には順番があります。<strong>1ヶ月目</strong>はまだ大きな変化がなく、ホルモンが切り替わる時期のため一時的にニキビが増える方もいます（そのまま続けて大丈夫です）。<strong>2〜3ヶ月</strong>で皮脂が減って新しいニキビができにくくなり、<strong>3〜6ヶ月</strong>でニキビ跡や赤みも少しずつ落ち着いていきます。",
+        // かねこさん提供のフリー素材（3段階の経過を1枚で。Downloads/S__41762829.jpg を縮小）。
+        // 説明のラベルは画像の3人の下に3列で重ねる
+        extra:
+          '<div style="margin-top:12px"><img src="assets/guide/pace.jpg" alt="" style="width:100%;height:auto;display:block;border-radius:12px"></div>' +
+          '<div class="pg-art-row" style="margin-top:8px;gap:8px">' +
+          '<div><div class="cap">' + (en ? "Month 1" : "1ヶ月目") + '</div><div class="pg-order">' + (en ? "little change yet" : "まだ変化なし") + "</div></div>" +
+          '<div><div class="cap">' + (en ? "Months 2–3" : "2〜3ヶ月") + '</div><div class="pg-order">' + (en ? "fewer new breakouts" : "新しいニキビが減る") + "</div></div>" +
+          '<div><div class="cap">' + (en ? "Months 3–6" : "3〜6ヶ月") + '</div><div class="pg-order">' + (en ? "marks fade too" : "跡・赤みも薄く") + "</div></div>" +
+          "</div>",
+      }));
+      // 日焼け止め（太陽・チューブ）と保湿（しずく）
+      var ART_SUN =
+        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+        '<circle cx="34" cy="34" r="14" fill="#FFF3DC" stroke="#E5A03A" stroke-width="2.5"/>' +
+        '<g stroke="#E5A03A" stroke-width="2.5" stroke-linecap="round">' +
+        '<path d="M34 10 v8 M34 50 v8 M10 34 h8 M50 34 h8 M17 17 l5.5 5.5 M45.5 45.5 l5.5 5.5 M45.5 22.5 l5.5 -5.5 M17 51 l5.5 -5.5"/></g>' +
+        '<rect x="74" y="36" width="34" height="48" rx="7" fill="#FFFFFF" stroke="#0F8B8D" stroke-width="2.5"/>' +
+        '<rect x="81" y="24" width="20" height="12" rx="3" fill="#DFF1EE" stroke="#0F8B8D" stroke-width="2.5"/>' +
+        '<circle cx="91" cy="58" r="6.5" fill="none" stroke="#E5A03A" stroke-width="2"/>' +
+        '<path d="M91 48.5 v3 M91 64.5 v3 M81.5 58 h3 M97.5 58 h3" stroke="#E5A03A" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M136 38 q14 20 0 30 q-14 -10 0 -30 z" fill="#DDEFF7" stroke="#6FA8C4" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<path d="M131 56 q0 5 3.5 6" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"/>' +
+        "</svg>";
+      cards.push(card({
+        title: en ? "Skincare to pair with the pill" : "ピルと一緒にやってほしいスキンケア",
+        sub: en ? "ピルと一緒にやってほしいスキンケア" : "Skincare to pair with the pill",
+        body: en
+          ? "<strong>Don't over-wash</strong> (twice a day, no scrubbing), <strong>moisturise well</strong>, and wear <strong>sunscreen every day</strong>. And try not to squeeze pimples — squeezing is what leaves marks. We also carry a <strong>medical-grade high-strength vitamin C lotion (¥6,600)</strong> and <strong>Hirudoid moisturising lotion (¥1,660)</strong> — used alongside the pill they work remarkably well. Ask at your consultation."
+          : "<strong>洗いすぎない</strong>（洗顔は1日2回まで・ゴシゴシこすらない）、<strong>保湿はしっかり</strong>、そして<strong>日焼け止めを毎日</strong>。ニキビを潰すと跡に残るので、触らないのも大事なケアです。当院では<strong>医療用の高濃度VCローション（6,600円）</strong>と<strong>ヒルドイドローション（1,660円）</strong>も扱っており、ピルと併用すると効果抜群です。気になる方は診察でご相談ください。",
+        // かねこさん提供のフリー素材（Downloads/27024451.jpg をトリミング・縮小）
+        extra: '<div class="pg-art" style="max-width:120px"><img src="assets/guide/skincare.jpg" alt=""></div>',
+      }));
+      // 作用機序の根拠: StatPearls "Spironolactone" (NCBI NBK554421) —
+      // DHTのアンドロゲン受容体への結合をブロックし皮脂腺細胞の増殖を抑える。
+      // 本文の「肌に届かないようにブロック」はこの受容体拮抗の平易な言い換え
+      cards.push(card({
+        title: en ? "If the pill alone isn't enough / you want faster results" : "ピルだけでは治らなかった場合・急いで治したい方へ",
+        sub: en ? "ピルだけでは治らなかった場合・急いで治したい方へ" : "If the pill alone isn't enough / you want faster results",
+        body: en
+          ? "If the pill alone isn't enough, or you want faster results, we can add a tablet called <strong>Aldactone</strong>. Acne is driven by male hormones: the pill <strong>reduces them</strong>, and Aldactone <strong>blocks them from reaching your skin</strong>. This <strong>double effect</strong> cuts oil further, so it works even on stubborn spots. We'll explain the dose at your consultation. It can't be used during pregnancy, so keep taking the pill alongside it. Aldactone for acne is private-pay: <strong>¥8,800 (tax included) for one month</strong>."
+          : "ピルだけで良くならないときや、早く治したいときは、<strong>アルダクトン</strong>という飲み薬をピルと一緒に処方できます。ニキビのもとになる男性ホルモンを、ピルは<strong>「減らし」</strong>、アルダクトンは<strong>「肌に届かないようにブロック」</strong>します。<strong>ダブルの効果</strong>で皮脂が減るので、しつこいニキビにも効果が期待できます。飲む量は診察でご説明します。妊娠中は使えないお薬なので、ピルとセットで続けることが大切です。ニキビ治療のアルダクトンは保険適応外の自費で、<strong>1ヶ月分 8,800円（税込）</strong>です。",
+        extra: '<div class="pg-art" style="max-width:120px">' + sheet("aldactone") + "</div>" +
+          // 希望ボタン。送信済みの問診票に「アルダクトン希望」の行を書き足し、
+          // 受付一覧・印刷にそのまま出る（RPC add_intake_interest）
+          '<button type="button" class="pg-want" data-want="aldactone">' + (en ? "I'd like Aldactone too" : "アルダクトンも処方してほしい") + "</button>",
+      }));
+    }
+
+    // ---- 月経移動（中用量ピル） ----
+    if (wantsShift) {
+      cards.push(secLabel("月経移動（生理をずらしたい方）", "Moving your period"));
+      // 飲んでいる間（帯の中の錠剤）に大事な予定（ハート）→ 飲み終えて2〜3日で生理（しずく）
+      var ART_SHIFT =
+        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+        '<rect x="10" y="40" width="100" height="26" rx="13" fill="#FFEDEC" stroke="#E5807E" stroke-width="2"/>' +
+        pillAt(26, 53, 5.5) + pillAt(44, 53, 5.5) + pillAt(62, 53, 5.5) + pillAt(78, 53, 5.5) +
+        '<path d="M96 60 l-7 -6.5 q-4 -4 0 -7.5 q4 -3 7 1.5 q3 -4.5 7 -1.5 q4 3.5 0 7.5 z" fill="#FF6766"/>' +
+        '<path d="M118 53 h14" stroke="#B08A90" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M127 46 L135 53 L127 60" fill="none" stroke="#B08A90" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M148 38 q11 17 0 26 q-11 -9 0 -26 z" fill="#D64550"/>' +
+        "</svg>";
+      cards.push(card({
+        title: en ? "Two ways to move your period" : "遅らせる？早める？（2つの方法）",
+        sub: en ? "遅らせる？早める？（2つの方法）" : "Two ways to move your period",
+        body: en
+          ? "<strong>To delay it:</strong> start about 5 days before your expected period and take one tablet every day until the last day you don't want it. Your period comes 2–3 days after you stop. <strong>To bring it forward:</strong> start within day 5 of your current period and take one tablet daily for 10–14 days — your period comes 2–3 days after you stop, well before the important date. We'll decide the best method together at your consultation."
+          : "<strong>遅らせる方法</strong>：生理予定日の約5日前から飲み始め、来てほしくない日の最後まで毎日1錠。<strong>飲み終えて2〜3日で生理</strong>が来ます。<strong>早める方法</strong>：今の生理が始まって5日目までに飲み始め、10〜14日間毎日1錠。飲み終えて2〜3日で生理が来るので、大事な予定の頃には生理が終わっています。どちらが合うかは診察でご相談ください。",
+        extra: '<div class="pg-art">' + ART_SHIFT + "</div>",
+      }));
+      cards.push(card({
+        title: en ? "While you're taking it" : "飲んでいる間の注意",
+        sub: en ? "飲んでいる間の注意" : "While you're taking it",
+        body: en
+          ? "This medicine (a medium-dose pill) causes nausea more easily than a low-dose pill — we can prescribe anti-nausea medicine with it if you're worried. If you miss a day, bleeding may start earlier than planned, so take it every day without fail. Note that this course is <strong>not a contraceptive</strong>."
+          : "このお薬（中用量ピル）は低用量ピルより<strong>吐き気が出やすい</strong>お薬です。心配な方には吐き気止めも一緒に処方できますので、診察でお申し付けください。<strong>飲み忘れると予定より早く出血が始まってしまう</strong>ことがあるので、毎日忘れずに飲んでください。なお、月経移動の服用は<strong>避妊のためのお薬ではありません</strong>。",
+      }));
+    }
+
+    // ---- ミニピル（スリンダ） ----
+    if (wantsMini) {
+      cards.push(secLabel("ミニピル（スリンダ）", "Mini-pill (Slinda)"));
+      cards.push(card({
+        title: en ? "The Slinda sheet and how to take it" : "スリンダのシートと飲み方",
+        sub: en ? "スリンダのシートと飲み方" : "The Slinda sheet and how to take it",
+        body: en
+          ? "Slinda has <strong>24 white tablets (active) then 4 green ones (rest)</strong>. Take one a day at the same time, keep going through the green ones, and <strong>start the next sheet the very next day</strong>. It contains no estrogen, so the blood-clot risk is low and it suits people who are breastfeeding, smoke, or have migraines. Some months you may not bleed during the green tablets — that's nothing to worry about."
+          : "スリンダは<strong>白い24錠（有効成分）→ 緑の4錠（お休み用）</strong>の順で、1日1錠・毎日同じ時間に飲みます。緑の4錠も飲む習慣を保つために続けて飲み、<strong>飲み終えたら休まず翌日から次のシート</strong>へ。エストロゲンを含まないため血栓症のリスクが低く、授乳中・喫煙される方・片頭痛のある方にも使いやすいお薬です。緑の錠剤の間に出血が来ない月もありますが、心配いりません。",
+        extra:
+          '<div class="pg-art-row"><div style="max-width:220px;margin:0 auto">' + sheet("slinda") +
+          '<div class="pg-order">' + dot("#FFFFFF") + (en ? "white 24" : "白24錠") + " → " + dot("#C9D9A6") + (en ? "green 4 (rest)" : "緑4錠（お休み用）") + "</div></div></div>",
+      }));
+      cards.push(card({
+        title: en ? "If you miss a tablet or vomit" : "飲み忘れ・吐いてしまったとき",
+        sub: en ? "飲み忘れ・吐いてしまったとき" : "If you miss a tablet or vomit",
+        body: en
+          ? "Take the missed tablet as soon as you remember. If you are <strong>more than 24 hours late</strong>, take the most recent missed tablet, keep going as usual, and use another method of contraception (such as condoms) for <strong>7 days</strong>. If you vomit within 2 hours of taking a tablet, take one more."
+          : "気づいたときにすぐ1錠飲んでください。<strong>24時間以上</strong>遅れた場合は、直近の1錠だけを飲んでそのまま続けつつ、<strong>7日間</strong>はコンドームなど他の避妊法を併用してください。飲んでから2時間以内に吐いてしまったときは、もう1錠飲んでください。",
+        extra: '<div class="pg-art">' + ART_MISS + "</div>",
+      }));
+    }
+
+    // ---- アフターピル ----
+    if (wantsEc) {
+      cards.push(secLabel("アフターピル", "Morning-after pill"));
+      // 急ぎの時計（72h）→ 水と一緒に1錠
+      var ART_EC =
+        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+        '<path d="M8 36 h12 M4 50 h12 M8 64 h12" stroke="#F3B8B6" stroke-width="3" stroke-linecap="round"/>' +
+        '<circle cx="52" cy="50" r="26" fill="#FFFFFF" stroke="#FF6766" stroke-width="3"/>' +
+        '<text x="52" y="56" text-anchor="middle" font-size="15" font-weight="700" fill="#FF6766" font-family="sans-serif">72h</text>' +
+        '<path d="M88 50 H106" stroke="#B08A90" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M100 43 L108 50 L100 57" fill="none" stroke="#B08A90" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M116 38 h22 l-2.5 34 h-17 z" fill="#FFFFFF" stroke="#9FBFD0" stroke-width="2.5" stroke-linejoin="round"/>' +
+        '<path d="M118.5 50 h17 l-1.8 19.5 h-13.4 z" fill="#DDEFF7"/>' +
+        pillAt(151, 70, 7.5) +
+        "</svg>";
+      cards.push(card({
+        title: en ? "Take it as soon as you can" : "できるだけ早く1錠",
+        sub: en ? "できるだけ早く1錠" : "Take it as soon as you can",
+        body: en
+          ? "The morning-after pill works better the sooner you take it (within <strong>72 hours</strong> as a guide). Please take it as soon as possible. If you <strong>vomit within 2 hours</strong>, the tablet may not have worked — contact us, as you'll need another."
+          : "アフターピルは、性行為からの時間が短いほど効果が高いお薬です（目安は<strong>72時間以内</strong>）。できるだけ早く1錠飲んでください。飲んでから<strong>2時間以内に吐いてしまった</strong>場合は効果が落ちるため、もう1錠必要です。当院へご連絡ください。",
+        extra: '<div class="pg-art">' + ART_EC + "</div>",
+      }));
+      // 妊娠検査薬と「3週間」のカレンダー
+      var ART_TEST =
+        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+        '<rect x="14" y="46" width="82" height="20" rx="10" fill="#FFFFFF" stroke="#C9D2D8" stroke-width="2.5"/>' +
+        '<rect x="14" y="46" width="22" height="20" rx="10" fill="#DFF1EE" stroke="#C9D2D8" stroke-width="2"/>' +
+        '<rect x="48" y="50" width="24" height="12" rx="2.5" fill="#FDF3F2" stroke="#E8A5A5" stroke-width="1.5"/>' +
+        '<circle cx="84" cy="56" r="3.5" fill="#FDECEC" stroke="#E8A5A5" stroke-width="1.2"/>' +
+        '<rect x="112" y="26" width="40" height="48" rx="7" fill="#FFFFFF" stroke="#E5807E" stroke-width="2.5"/>' +
+        '<path d="M112 40 h40" stroke="#E5807E" stroke-width="2"/>' +
+        '<path d="M122 26 v-6 M142 26 v-6" stroke="#E5807E" stroke-width="3" stroke-linecap="round"/>' +
+        '<text x="132" y="62" text-anchor="middle" font-size="11" font-weight="700" fill="#FF6766" font-family="sans-serif">' + (en ? "1 mo" : "1ヶ月") + "</text>" +
+        "</svg>";
+      cards.push(card({
+        title: en ? "What happens afterwards" : "飲んだあとの経過",
+        sub: en ? "飲んだあとの経過" : "What happens afterwards",
+        body: en
+          ? "Bleeding (like an early period) usually comes within a few days to 3 weeks. If your period has <strong>not come after 1 month</strong>, take a pregnancy test and contact us."
+          : "服用後、数日〜3週間ほどで出血（早めの生理のような出血）が来ることが多いです。<strong>1ヶ月たっても生理が来ない</strong>場合は、市販の妊娠検査薬で確認のうえ、当院へご相談ください。",
+        extra: '<div class="pg-art">' + ART_TEST + "</div>",
+      }));
+      // アフターピルと低用量ピルの比較表（院内配布の案内シートと同じ内容）
+      var ecRow = function (label, a, b) {
+        return "<tr><td>" + label + "</td><td>" + a + "</td><td>" + b + "</td></tr>";
+      };
+      var ecTable =
+        '<table class="pg-table"><thead><tr><th></th>' +
+        "<th>" + (en ? "Morning-after pill" : "アフターピル") + "</th>" +
+        "<th>" + (en ? "Low-dose pill" : "低用量ピル") + "</th></tr></thead><tbody>" +
+        ecRow(en ? "Purpose" : "使用目的",
+          en ? "Emergency backup" : "緊急時の手段",
+          en ? "Ongoing contraception, cycle control" : "継続的な避妊・生理周期のコントロール") +
+        ecRow(en ? "How to take" : "服用方法",
+          en ? "One tablet within 72 hours" : "性行為後72時間以内に服用",
+          en ? "One tablet daily at a set time" : "毎日決まった時間に服用") +
+        ecRow(en ? "Effectiveness" : "避妊効果",
+          en ? "About 99%" : "約99%",
+          en ? "Nearly 100% (if no missed pills)" : "ほぼ100%（飲み忘れがない場合）") +
+        ecRow(en ? "Side effects" : "副作用",
+          en ? "Stronger" : "強い",
+          en ? "Milder" : "弱い") +
+        ecRow(en ? "Cost" : "費用",
+          en ? "¥12,000" : "12,000円",
+          en ? "<strong>¥3,300</strong>" : "<strong>3,300円</strong>") +
+        "</tbody></table>";
+      cards.push(card({
+        title: en ? "Contraception from now on" : "これからの避妊について",
+        sub: en ? "これからの避妊について" : "Contraception from now on",
+        body: en
+          ? "The morning-after pill is for emergencies — it is less reliable than a daily low-dose pill, and much more expensive per use. If you'd like ongoing contraception, a <strong>low-dose pill</strong> is a good option:"
+          : "アフターピルはあくまで緊急用のお薬です。避妊を続けたい方には、毎日1錠の<strong>低用量ピル</strong>をおすすめしています。違いはこちら:",
+        extra: ecTable +
+          // 希望ボタン。問診票に「低用量ピル希望」の行を書き足して医師に伝わる
+          '<button type="button" class="pg-want" data-want="oc">' + (en ? "I'm interested in the low-dose pill" : "低用量ピルも気になる") + "</button>",
+      }));
+    }
+
+    // 完了画面の代わりにガイドへ直行するので、「送信できた」ことと、
+    // 事前記入（受付未済）の人への受付の注意はここで伝える。
+    // ガイド専用モードでは送信していないので、どちらも出さない
+    var noCheckin = !standalone && typeof CHECKIN_ID !== "undefined" && !CHECKIN_ID;
+    mount.innerHTML =
+      '<div class="pg-lead">' +
+      (standalone ? "" : '<div class="pg-sent">' + (en ? "✓ Your questionnaire has been sent" : "✓ 問診票を送信しました") + "</div>") +
+      "<h2>" + (en ? "Your pill guide" : "ピルの飲み方ガイド") + "</h2>" +
+      (noCheckin
+        ? '<div class="pg-checkin-warn">' + (en
+            ? "This is not a check-in. When you arrive, please scan the check-in QR code at the reception counter."
+            : "これで受付は完了していません。ご来院時に、受付カウンターのQRコードを読み取って受付をお願いします。") + "</div>"
+        : "") +
+      "<p>" + (standalone
+        ? (en
+          ? "A guide to taking your pill. Please read it while you wait for your consultation, and tap “" + chkLabel + "” on each item. Feel free to ask the doctor or our staff anything during your visit."
+          : "お薬の飲み方のご案内です。診察までの間にご覧いただき、読み終えた項目は「読みました」を押してください。ご不明な点は、診察のときに医師・スタッフへお気軽におたずねください。")
+        : (en
+          ? "A guide matched to what you told us in the questionnaire. Please read it while you wait, and tap “" + chkLabel + "” on each item. Feel free to ask the doctor or our staff anything during your visit."
+          : "問診票のご回答に合わせた、お薬の飲み方のご案内です。お呼び出しまでの間にご覧いただき、読み終えた項目は「読みました」を押してください。ご不明な点は、診察やお渡しのときにお気軽におたずねください。")) + "</p>" +
+      '<div class="pg-count" id="pg-count"></div>' +
+      "</div>" +
+      cards.join("") +
+      '<div class="pg-done" id="pg-done">' + (en
+        ? "Thank you for reading everything. If anything is unclear, just ask the doctor or our staff during your visit."
+        : "すべてご確認いただき、ありがとうございました。ご不明な点は、診察やお渡しのときにお気軽におたずねください。") + "</div>";
+    mount.classList.add("show");
+
+    var countEl = document.getElementById("pg-count");
+    var doneEl = document.getElementById("pg-done");
+    function refresh() {
+      // 折りたたみカード（.pg-fold）は任意読みなので、ボタンのあるカードだけ数える
+      var all = mount.querySelectorAll(".pg-card .pg-chk").length;
+      var read = mount.querySelectorAll(".pg-card.checked").length;
+      countEl.textContent = (en ? "Read " : "確認済み ") + read + " / " + all;
+      doneEl.classList.toggle("show", read === all);
+    }
+    mount.addEventListener("click", function (e) {
+      // closest() を使わず親をたどる（このページの他の処理と同じ書き方に合わせる）
+      var n = e.target, chk = null, chipEl = null, foldHead = null, wantBtn = null;
+      while (n && n !== mount) {
+        if (n.classList && n.classList.contains("pg-chk")) { chk = n; break; }
+        if (n.classList && n.classList.contains("pg-chip")) { chipEl = n; break; }
+        if (n.classList && n.classList.contains("pg-fold-head")) { foldHead = n; break; }
+        if (n.classList && n.classList.contains("pg-want")) { wantBtn = n; break; }
+        n = n.parentNode;
+      }
+      // 折りたたみカードの見出し: タップで開閉
+      if (foldHead) {
+        foldHead.parentNode.classList.toggle("open");
+        return;
+      }
+      // 希望ボタン（アルダクトン/低用量ピル）: 送信済みの問診票に希望の行を書き足す。
+      // もう一度タップすると取り消し（行を消す）。書き足せない場合（ガイド単体表示など）
+      // でも、診察で伝えてもらう案内に変える
+      if (wantBtn) {
+        if (wantBtn.disabled) return;
+        var turningOff = wantBtn.classList.contains("done");
+        // 取り消しで戻すため、最初のラベルを覚えておく
+        if (!wantBtn.getAttribute("data-label")) wantBtn.setAttribute("data-label", wantBtn.textContent);
+        wantBtn.disabled = true;
+        var finishWant = function (saved) {
+          wantBtn.disabled = false;
+          if (turningOff) {
+            wantBtn.classList.remove("done");
+            wantBtn.textContent = wantBtn.getAttribute("data-label");
+            return;
+          }
+          wantBtn.classList.add("done");
+          wantBtn.textContent = saved
+            ? (en ? "✓ Noted on your questionnaire (tap again to cancel)" : "✓ 問診票に希望を書き添えました（もう一度タップで取り消し）")
+            : (en ? "✓ Please tell the doctor at your consultation (tap to undo)" : "✓ 診察のときに医師へお伝えください（もう一度タップで取り消し）");
+        };
+        if (!window.LAST_FORM_ID) { finishWant(false); return; }
+        fetch(SUPABASE_URL + "/rest/v1/rpc/add_intake_interest", {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: "Bearer " + SUPABASE_ANON_KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            p_form_id: window.LAST_FORM_ID,
+            p_kind: wantBtn.getAttribute("data-want") || "",
+            p_on: !turningOff,
+          }),
+        }).then(function (res) { return res.ok ? res.json() : false; })
+          .then(function (saved) { finishWant(saved === true); })
+          .catch(function () { finishWant(false); });
+        return;
+      }
+      // うれしい効果のチップ: タップで「なぜそうなるのか」を下のパネルに開閉する
+      if (chipEl) {
+        var grid = chipEl.parentNode;
+        var detail = grid.nextElementSibling;
+        if (!detail || !detail.classList.contains("pg-chip-detail")) return;
+        var wasOpen = chipEl.classList.contains("open");
+        [].forEach.call(grid.querySelectorAll(".pg-chip.open"), function (c2) { c2.classList.remove("open"); });
+        if (wasOpen) { detail.style.display = "none"; return; }
+        chipEl.classList.add("open");
+        detail.textContent = chipDetails[+chipEl.getAttribute("data-chip")] || "";
+        detail.style.display = "block";
+        return;
+      }
+      if (!chk) return;
+      var c = chk.parentNode;
+      c.classList.toggle("checked");
+      chk.textContent = c.classList.contains("checked") ? chkDone : chkLabel;
+      refresh();
+    });
+    refresh();
+    return true;
+  }
+
+  // ガイド専用モード（?guide=1）。当日の受付完了画面のボタンから開く。
+  // 問診票のフォームは出さず、ガイドだけを表示する。
+  // 事前記入のときに端末へ控えた受診理由・行ID（klcs_pill_guide）があれば、
+  // 記入時と同じ絞り込みで出し、「アルダクトンもほしい」も問診票に書き足せる
+  (function () {
+    if (new URLSearchParams(window.location.search).get("guide") !== "1") return;
+    var form = document.getElementById("intake-form");
+    if (form) form.style.display = "none";
+    document.title = PAGE_LANG === "en"
+      ? "Your pill guide | K Ladies Clinic Shinjuku"
+      : "ピルの飲み方ガイド | ケイ・レディースクリニック新宿";
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem("klcs_pill_guide") || "null"); } catch (e) { /* no-op */ }
+    // 期限はRPC（アルダクトン希望の書き足し）と同じ7日間にそろえる
+    var fresh = saved && Date.now() - (saved.at || 0) < 7 * 24 * 3600 * 1000;
+    if (fresh && saved.formId) window.LAST_FORM_ID = saved.formId;
+    showPillGuide({ standalone: true, reasons: fresh ? saved.reasons : null });
+    window.scrollTo(0, 0);
+  })();
 </script>
 
 <script>
