@@ -2084,7 +2084,7 @@
         if (CHECKIN_ID) {
           try { guideShown = showPillGuide(); } catch (e) { /* no-op */ }
         } else {
-          var pillReasons = ["Birth control pills", "Acne / skin", "Period shifting", "Mini-pill (progestogen-only)", "Morning-after pill / Plan B"];
+          var pillReasons = ["Birth control pills", "Acne / skin", "Period shifting", "Mini-pill (progestogen-only)", "Morning-after pill / Plan B", "Menstrual pain", "Irregular period", "PMS / mood"];
           var hasPill = [].some.call(
             document.querySelectorAll('input[name="reason"]:checked'),
             function (b) { return pillReasons.indexOf(b.value) !== -1; }
@@ -2141,12 +2141,18 @@
     var wantsShift = reasons.indexOf("Period shifting") !== -1;
     var wantsMini = reasons.indexOf("Mini-pill (progestogen-only)") !== -1;
     var wantsEc = reasons.indexOf("Morning-after pill / Plan B") !== -1;
-    if (!wantsOc && !wantsAcne && !wantsShift && !wantsMini && !wantsEc) return false;
+    // 症状で来た方（生理痛・生理不順・PMS）にも、その症状がピルで
+    // どう良くなるかの導入カード＋低用量ピルコースを見せる
+    var wantsPain = reasons.indexOf("Menstrual pain") !== -1;
+    var wantsIrregular = reasons.indexOf("Irregular period") !== -1;
+    var wantsPms = reasons.indexOf("PMS / mood") !== -1;
+    var wantsSymptom = wantsPain || wantsIrregular || wantsPms;
+    if (!wantsOc && !wantsAcne && !wantsShift && !wantsMini && !wantsEc && !wantsSymptom) return false;
     // アフターピルだけの人: 急ぎのアフターピルを先頭に出し、
     // 低用量ピルコースは折りたたみで下に置く（興味が出たら開く）
-    var ecFirst = wantsEc && !wantsOc && !wantsAcne && !wantsShift && !wantsMini;
+    var ecFirst = wantsEc && !wantsOc && !wantsAcne && !wantsShift && !wantsMini && !wantsSymptom;
     // ミニピルだけの人も同じ扱い: ミニピル専用コースを先頭に、低用量ピルは折りたたみ
-    var miniOnly = wantsMini && !wantsOc && !wantsAcne && !wantsShift && !wantsEc;
+    var miniOnly = wantsMini && !wantsOc && !wantsAcne && !wantsShift && !wantsEc && !wantsSymptom;
 
     var en = PAGE_LANG === "en";
     var mount = document.getElementById("pill-guide");
@@ -2315,6 +2321,77 @@
 
     var cards = [];
 
+    // 症状（生理痛・生理不順・PMS）で来た方には、飲み方の前に
+    // 「その症状がピルでどう良くなるのか」から入る。肌荒れの導入と同じ考え方で、
+    // 仕組みが腹落ちすると毎日の継続につながる
+    if (wantsPain) {
+      // 痛みの稲妻つきのおなか → ピル → おだやかなハート
+      var ART_PAIN =
+        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+        '<circle cx="38" cy="52" r="24" fill="#FDECEC" stroke="#E5807E" stroke-width="2.5"/>' +
+        '<path d="M40 38 l-8 11 h10 l-8 11" fill="none" stroke="#D64550" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M13 33 l-7 -4 M19 25 l-5 -7 M63 33 l7 -4 M57 25 l5 -7" fill="none" stroke="#D64550" stroke-width="2.5" stroke-linecap="round"/>' +
+        '<path d="M74 52 H92" stroke="#B08A90" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M86 45 L94 52 L86 59" fill="none" stroke="#B08A90" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        pillAt(84, 22, 6) +
+        '<path d="M124 66 l-14 -12.6 q-7.2 -7.2 0 -13.6 q7.2 -5.4 14 2.8 q6.8 -8.2 14 -2.8 q7.2 6.4 0 13.6 z" fill="#FF9C9B" stroke="#E5807E" stroke-width="2"/>' +
+        "</svg>";
+      cards.push(card({
+        title: en ? "Why the pill helps period pain" : "なぜピルが生理痛に効くの？",
+        sub: en ? "なぜピルが生理痛に効くの？" : "Why the pill helps period pain",
+        body: en
+          ? "Period pain mainly comes from <strong>prostaglandins</strong>. They are released by the shedding womb lining and make the womb squeeze hard. Taken every day the pill <strong>keeps the lining thin</strong> so your body makes less of them and <strong>the pain eases at its source</strong>. Your flow usually gets lighter too. Painkillers calm pain after it starts. The pill cuts down on what causes it."
+          : "生理痛のおもな原因は、はがれ落ちる子宮内膜から出る<strong>プロスタグランジン</strong>という、子宮をぎゅっと収縮させる物質です。ピルを毎日飲むと<strong>内膜がうすく保たれる</strong>ため、この物質の量が減り、<strong>痛みのもとから軽く</strong>なります。経血の量も減るので、量が多くてつらい方にも向いています。鎮痛剤が「痛くなってから抑える」薬なのに対して、ピルは痛みの材料を作らせないお薬です。",
+        extra: '<div class="pg-art">' + ART_PAIN + "</div>",
+      }));
+    }
+    if (wantsIrregular) {
+      // バラバラなカレンダー → ピル → そろったカレンダー
+      var ART_CYCLE =
+        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+        '<rect x="6" y="28" width="56" height="46" rx="8" fill="#FFFFFF" stroke="#E5807E" stroke-width="2.5"/>' +
+        '<path d="M6 40 h56" stroke="#F3B8B6" stroke-width="2"/>' +
+        '<circle cx="17" cy="50" r="3.4" fill="#E06A63"/>' +
+        '<circle cx="27" cy="64" r="3.4" fill="#E06A63"/>' +
+        '<circle cx="52" cy="46" r="3.4" fill="#E06A63"/>' +
+        '<path d="M70 52 H88" stroke="#B08A90" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M82 45 L90 52 L82 59" fill="none" stroke="#B08A90" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        pillAt(80, 22, 6) +
+        '<rect x="98" y="28" width="56" height="46" rx="8" fill="#FFFFFF" stroke="#7FA98F" stroke-width="2.5"/>' +
+        '<path d="M98 40 h56" stroke="#CFE2D6" stroke-width="2"/>' +
+        '<circle cx="110" cy="52" r="3.4" fill="#E06A63"/>' +
+        '<circle cx="126" cy="52" r="3.4" fill="#E06A63"/>' +
+        '<circle cx="142" cy="52" r="3.4" fill="#E06A63"/>' +
+        "</svg>";
+      cards.push(card({
+        title: en ? "Why the pill makes your cycle regular" : "なぜピルで生理不順が整うの？",
+        sub: en ? "なぜピルで生理不順が整うの？" : "Why the pill makes your cycle regular",
+        body: en
+          ? "An irregular cycle mainly happens when ovulation loses its rhythm and the hormone waves become uneven. The pill tops up a steady amount of hormones every day so <strong>your bleeding comes on a set schedule</strong> while you take it. <strong>No more guessing when the next one will come</strong> so trips and plans get much easier. If your period has stayed away for a long time an early consultation also helps protect the womb lining."
+          : "生理不順のおもな原因は、排卵のリズムが乱れてホルモンの波がばらつくことです。ピルは毎日決まった量のホルモンを補うので、<strong>飲んでいる間は出血が決まったタイミングで来る</strong>ようになります。<strong>「次がいつ来るか分からない」がなくなる</strong>ので、旅行や仕事の予定も立てやすくなります。生理が長く来ていない方は、子宮内膜を守る意味でも早めのご相談がおすすめです。",
+        extra: '<div class="pg-art">' + ART_CYCLE + "</div>",
+      }));
+    }
+    if (wantsPms) {
+      // 大きくアップダウンする波 → ピル → なだらかな波
+      var ART_WAVE =
+        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
+        '<path d="M8 56 q7 -34 14 0 q7 34 14 0 q7 -34 14 0 q4 19 8 8" fill="none" stroke="#D64550" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M74 52 H92" stroke="#B08A90" stroke-width="3" stroke-linecap="round"/>' +
+        '<path d="M86 45 L94 52 L86 59" fill="none" stroke="#B08A90" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
+        pillAt(84, 22, 6) +
+        '<path d="M100 54 q13 -9 26 0 q13 9 26 0" fill="none" stroke="#2E7D4F" stroke-width="3" stroke-linecap="round"/>' +
+        "</svg>";
+      cards.push(card({
+        title: en ? "Why the pill helps PMS and low moods" : "なぜピルがPMS・気分の不調に効くの？",
+        sub: en ? "なぜピルがPMS・気分の不調に効くの？" : "Why the pill helps PMS and low moods",
+        body: en
+          ? "PMS irritability, low moods, bloating and sore breasts happen because <strong>hormones swing up and down sharply after ovulation</strong>. On the pill ovulation takes a rest and the waves become much smaller so for many people <strong>the days before their period get easier as a whole</strong>. If mood symptoms hit you hard please tell the doctor. We can talk about which pill suits you best."
+          : "PMSのイライラや落ち込み・むくみ・胸の張りは、<strong>排卵のあとにホルモンが大きくアップダウンする</strong>ことで起こります。ピルを飲むと排卵がお休みになってホルモンの波が小さくなるため、<strong>生理前のつらさがまるごと軽く</strong>なる方が多いです。気分の症状が強い方は、診察でぜひそのままお伝えください。お薬の種類も一緒に相談できます。",
+        extra: '<div class="pg-art">' + ART_WAVE + "</div>",
+      }));
+    }
+
     // 肌荒れで来た方には、飲み方の前に「なぜピルが肌に効くのか」から入る。
     // 効果が出るまで2〜3ヶ月かかる薬なので、仕組みと期間を先に知ってもらえると
     // 「効かないからやめた」を減らせる
@@ -2406,7 +2483,7 @@
 
     // ---- 低用量ピル（トリキュラー・マーベロン）の基本 ----
     // ニキビ・肌荒れの方の処方も低用量ピルなので、同じ基本セットを見せる
-    var showOcCourse = standalone || wantsOc || wantsAcne || ecFirst || miniOnly;
+    var showOcCourse = standalone || wantsOc || wantsAcne || wantsSymptom || ecFirst || miniOnly;
     var ocStart = cards.length;
     if (showOcCourse) {
     // 「ピルとは何か」。子宮・卵巣の絵に①排卵お休み ②内膜を薄く ③粘液でブロック の番号を振り、
@@ -3057,6 +3134,9 @@
       shift: "Period shifting",
       mini: "Mini-pill (progestogen-only)",
       ec: "Morning-after pill / Plan B",
+      pain: "Menstrual pain",
+      irregular: "Irregular period",
+      pms: "PMS / mood",
     };
     var forced = (new URLSearchParams(window.location.search).get("r") || "")
       .split(",").map(function (k) { return REASON_KEYS[k.trim()]; }).filter(Boolean);
