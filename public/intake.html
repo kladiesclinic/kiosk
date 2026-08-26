@@ -2633,30 +2633,8 @@
     }));
 
     // ---- 安全のために知っておいてほしいこと（飲み合わせ・タバコ・性感染症）----
-    cards.push(secLabel("あわせて気をつけてほしいこと", "Also important to know"));
-
-    // 飲み合わせ: ほとんどはOKで、ダメなものだけ具体名で覚えてもらう
-    var ART_MIX =
-      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
-      pillAt(38, 50, 10) +
-      '<text x="72" y="58" text-anchor="middle" font-size="20" font-weight="700" fill="#B08A90" font-family="sans-serif">&#215;</text>' +
-      '<g transform="rotate(-25 108 50)">' +
-      '<rect x="88" y="42" width="40" height="17" rx="8.5" fill="#FFFFFF" stroke="#C9D2D8" stroke-width="2"/>' +
-      '<path d="M108 42 v17" stroke="#C9D2D8" stroke-width="1.5"/>' +
-      '<path d="M92 42.5 h16 v16 h-16 z" fill="#E5A03A" opacity="0.85" rx="8"/>' +
-      "</g>" +
-      '<path d="M138 22 L153 46 H123 Z" fill="#FFF3DC" stroke="#E5A03A" stroke-width="2.5" stroke-linejoin="round"/>' +
-      '<path d="M138 30 v7" stroke="#C1822A" stroke-width="2.5" stroke-linecap="round"/><circle cx="138" cy="41.5" r="1.5" fill="#C1822A"/>' +
-      "</svg>";
-    cards.push(card({
-      title: en ? "Medicines that don't mix well" : "飲み合わせの注意",
-      sub: en ? "飲み合わせの注意" : "Medicines that don't mix well",
-      body: en
-        ? "Most medicines — ordinary painkillers, stomach medicine, hay-fever tablets — are fine with the pill. But <strong>some epilepsy medicines, the antibiotic rifampicin, and the supplement St John's Wort</strong> can weaken its effect. Whenever you see another doctor or a pharmacist, tell them you take an oral contraceptive — noting it in your medicine notebook makes it automatic."
-        : "市販の頭痛薬・胃薬・花粉症の薬など、ほとんどのお薬はピルと併用できます。ただし、<strong>一部のてんかんのお薬・抗生剤のリファンピシン・サプリの「セント・ジョーンズ・ワート（セイヨウオトギリソウ）」</strong>は、ピルの効果を弱めることがあります。ほかの病院や薬局にかかるときは「低用量ピルを飲んでいます」と伝えてください。お薬手帳に書いておくと確実です。",
-    }));
-
-    // タバコ: 血栓リスクの掛け算になることと、35歳・15本の処方基準
+    // ページが長くなりすぎるので、保険との違いと同じ折りたたみに1本化。
+    // 読了チェックの対象からは外れる（開きたい人だけ読む位置づけ）
     var ART_SMOKE =
       '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
       '<rect x="42" y="44" width="66" height="13" rx="4" fill="#FFFFFF" stroke="#B0A6A8" stroke-width="2"/>' +
@@ -2665,30 +2643,36 @@
       '<circle cx="75" cy="50" r="38" fill="none" stroke="#D64550" stroke-width="5"/>' +
       '<path d="M48 23 L102 77" stroke="#D64550" stroke-width="5" stroke-linecap="round"/>' +
       "</svg>";
+    var noteBlock = function (t, b, extraHtml) {
+      return '<div style="margin-top:14px"><div style="font-weight:700;margin-bottom:4px">' + t + "</div>" +
+        "<p style=\"margin:0\">" + b + "</p>" + (extraHtml || "") + "</div>";
+    };
     cards.push(card({
-      title: en ? "Smoking and the pill" : "タバコとピル",
-      sub: en ? "タバコとピル" : "Smoking and the pill",
+      folded: true,
+      title: en ? "Also important to know" : "あわせて気をつけてほしいこと",
       body: en
-        ? "Smoking damages blood vessels, and together with the pill it multiplies the risk of blood clots. For safety, <strong>from age 35 the pill cannot be prescribed to anyone smoking 15 or more cigarettes a day</strong> — heated tobacco counts too. If you smoke and want to stay on the pill, this is a genuinely good reason to quit."
-        : "タバコは血管を傷つけ、ピルと重なると血栓症のリスクを大きく上げてしまいます。安全のため、<strong>35歳以上で1日15本以上吸う方にはピルを処方できません</strong>（加熱式タバコも同じ扱いです）。ピルを続けたい方は、これを機会に禁煙をおすすめします。",
-      extra: '<div class="pg-art" style="max-width:170px">' + ART_SMOKE + "</div>",
-    }));
-
-    // 性感染症はピルでは防げない。検査の案内までつなげる
-    var ART_STI =
-      '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
-      '<path d="M52 14 q14 -8 28 0 v22 q0 26 -14 34 q-14 -8 -14 -34 z" fill="#DFF1EE" stroke="#0F8B8D" stroke-width="2.5" stroke-linejoin="round"/>' +
-      '<path d="M58 38 l6 8 l12 -14" fill="none" stroke="#0F8B8D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>' +
-      '<circle cx="122" cy="46" r="13" fill="#FDECEC" stroke="#E06A63" stroke-width="2"/>' +
-      '<path d="M122 27 v6 M122 59 v6 M103 46 h6 M135 46 h6 M109 33 l4 4 M131 55 l4 4 M135 33 l-4 4 M113 55 l-4 4" stroke="#E06A63" stroke-width="2" stroke-linecap="round"/>' +
-      '<text x="122" y="51" text-anchor="middle" font-size="12" font-weight="700" fill="#B03A44" font-family="sans-serif">?</text>' +
-      "</svg>";
-    cards.push(card({
-      title: en ? "What the pill doesn't protect against" : "ピルで防げないもの（性感染症）",
-      sub: en ? "ピルで防げないもの（性感染症）" : "What the pill doesn't protect against",
-      body: en
-        ? "The pill is excellent contraception, but it <strong>does not protect against sexually transmitted infections</strong> — chlamydia, gonorrhoea, syphilis, HIV and others. Use condoms with a new partner or whenever you're unsure. We offer STI testing at the clinic, so if anything worries you, just ask."
-        : "ピルは避妊には高い効果がありますが、<strong>性感染症（クラミジア・淋菌・梅毒・HIVなど）は防げません</strong>。新しいパートナーとのときや心配があるときは、コンドームを併用してください。当院では性感染症の検査もできます。気になることがあれば、お気軽にご相談ください。",
+        ? "Three short notes: other medicines, smoking, and STIs. Tap to read."
+        : "飲み合わせ・タバコ・性感染症の3つです。タップして目を通しておいてください。",
+      extra:
+        noteBlock(
+          en ? "Medicines that don't mix well" : "飲み合わせの注意",
+          en
+            ? "Most medicines — ordinary painkillers, stomach medicine, hay-fever tablets — are fine with the pill. But <strong>some epilepsy medicines, the antibiotic rifampicin, and the supplement St John's Wort</strong> can weaken its effect. Whenever you see another doctor or a pharmacist, tell them you take an oral contraceptive — noting it in your medicine notebook makes it automatic."
+            : "市販の頭痛薬・胃薬・花粉症の薬など、ほとんどのお薬はピルと併用できます。ただし、<strong>一部のてんかんのお薬・抗生剤のリファンピシン・サプリの「セント・ジョーンズ・ワート（セイヨウオトギリソウ）」</strong>は、ピルの効果を弱めることがあります。ほかの病院や薬局にかかるときは「低用量ピルを飲んでいます」と伝えてください。お薬手帳に書いておくと確実です。"
+        ) +
+        noteBlock(
+          en ? "Smoking and the pill" : "タバコとピル",
+          en
+            ? "Smoking damages blood vessels, and together with the pill it multiplies the risk of blood clots. For safety, <strong>from age 35 the pill cannot be prescribed to anyone smoking 15 or more cigarettes a day</strong> — heated tobacco counts too. If you smoke and want to stay on the pill, this is a genuinely good reason to quit."
+            : "タバコは血管を傷つけ、ピルと重なると血栓症のリスクを大きく上げてしまいます。安全のため、<strong>35歳以上で1日15本以上吸う方にはピルを処方できません</strong>（加熱式タバコも同じ扱いです）。ピルを続けたい方は、これを機会に禁煙をおすすめします。",
+          '<div class="pg-art" style="max-width:170px">' + ART_SMOKE + "</div>"
+        ) +
+        noteBlock(
+          en ? "What the pill doesn't protect against" : "ピルで防げないもの（性感染症）",
+          en
+            ? "The pill is excellent contraception, but it <strong>does not protect against sexually transmitted infections</strong> — chlamydia, gonorrhoea, syphilis, HIV and others. Use condoms with a new partner or whenever you're unsure. We offer STI testing at the clinic, so if anything worries you, just ask."
+            : "ピルは避妊には高い効果がありますが、<strong>性感染症（クラミジア・淋菌・梅毒・HIVなど）は防げません</strong>。新しいパートナーとのときや心配があるときは、コンドームを併用してください。当院では性感染症の検査もできます。気になることがあれば、お気軽にご相談ください。"
+        ),
     }));
 
     // 保険のピルとの違い（折りたたみ・読みたい人だけ）
@@ -2720,28 +2704,6 @@
           '<div><div class="cap">' + (en ? "Months 3–6" : "3〜6ヶ月") + '</div><div class="pg-order">' + (en ? "marks fade too" : "跡・赤みも薄く") + "</div></div>" +
           "</div>",
       }));
-      // 日焼け止め（太陽・チューブ）と保湿（しずく）
-      var ART_SUN =
-        '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
-        '<circle cx="34" cy="34" r="14" fill="#FFF3DC" stroke="#E5A03A" stroke-width="2.5"/>' +
-        '<g stroke="#E5A03A" stroke-width="2.5" stroke-linecap="round">' +
-        '<path d="M34 10 v8 M34 50 v8 M10 34 h8 M50 34 h8 M17 17 l5.5 5.5 M45.5 45.5 l5.5 5.5 M45.5 22.5 l5.5 -5.5 M17 51 l5.5 -5.5"/></g>' +
-        '<rect x="74" y="36" width="34" height="48" rx="7" fill="#FFFFFF" stroke="#0F8B8D" stroke-width="2.5"/>' +
-        '<rect x="81" y="24" width="20" height="12" rx="3" fill="#DFF1EE" stroke="#0F8B8D" stroke-width="2.5"/>' +
-        '<circle cx="91" cy="58" r="6.5" fill="none" stroke="#E5A03A" stroke-width="2"/>' +
-        '<path d="M91 48.5 v3 M91 64.5 v3 M81.5 58 h3 M97.5 58 h3" stroke="#E5A03A" stroke-width="2" stroke-linecap="round"/>' +
-        '<path d="M136 38 q14 20 0 30 q-14 -10 0 -30 z" fill="#DDEFF7" stroke="#6FA8C4" stroke-width="2.5" stroke-linejoin="round"/>' +
-        '<path d="M131 56 q0 5 3.5 6" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"/>' +
-        "</svg>";
-      cards.push(card({
-        title: en ? "Skincare to pair with the pill" : "ピルと一緒にやってほしいスキンケア",
-        sub: en ? "ピルと一緒にやってほしいスキンケア" : "Skincare to pair with the pill",
-        body: en
-          ? "<strong>Don't over-wash</strong> (twice a day, no scrubbing), <strong>moisturise well</strong>, and wear <strong>sunscreen every day</strong>. And try not to squeeze pimples — squeezing is what leaves marks. We also carry a <strong>medical-grade high-strength vitamin C lotion (¥6,600)</strong> and <strong>Hirudoid moisturising lotion (¥1,660)</strong> — used alongside the pill they work remarkably well. Ask at your consultation."
-          : "<strong>洗いすぎない</strong>（洗顔は1日2回まで・ゴシゴシこすらない）、<strong>保湿はしっかり</strong>、そして<strong>日焼け止めを毎日</strong>。ニキビを潰すと跡に残るので、触らないのも大事なケアです。当院では<strong>医療用の高濃度VCローション（6,600円）</strong>と<strong>ヒルドイドローション（1,660円）</strong>も扱っており、ピルと併用すると効果抜群です。気になる方は診察でご相談ください。",
-        // かねこさん提供のフリー素材（Downloads/27024451.jpg をトリミング・縮小）
-        extra: '<div class="pg-art" style="max-width:120px"><img src="assets/guide/skincare.jpg" alt=""></div>',
-      }));
       // 作用機序の根拠: StatPearls "Spironolactone" (NCBI NBK554421) —
       // DHTのアンドロゲン受容体への結合をブロックし皮脂腺細胞の増殖を抑える。
       // 本文の「肌に届かないようにブロック」はこの受容体拮抗の平易な言い換え
@@ -2755,6 +2717,16 @@
           // 希望ボタン。送信済みの問診票に「アルダクトン希望」の行を書き足し、
           // 受付一覧・印刷にそのまま出る（RPC add_intake_interest）
           '<button type="button" class="pg-want" data-want="aldactone">' + (en ? "I'd like to ask about Aldactone" : "アルダクトンについて聞いてみたい") + "</button>",
+      }));
+      // スキンケアは読みたい人だけ（折りたたみ・セクションの最後）
+      cards.push(card({
+        folded: true,
+        title: en ? "Skincare to pair with the pill" : "ピルと一緒にやってほしいスキンケア",
+        body: en
+          ? "<strong>Don't over-wash</strong> (twice a day, no scrubbing), <strong>moisturise well</strong>, and wear <strong>sunscreen every day</strong>. And try not to squeeze pimples — squeezing is what leaves marks. We also carry a <strong>medical-grade high-strength vitamin C lotion (¥6,600)</strong> and <strong>Hirudoid moisturising lotion (¥1,660)</strong> — used alongside the pill they work remarkably well. Ask at your consultation."
+          : "<strong>洗いすぎない</strong>（洗顔は1日2回まで・ゴシゴシこすらない）、<strong>保湿はしっかり</strong>、そして<strong>日焼け止めを毎日</strong>。ニキビを潰すと跡に残るので、触らないのも大事なケアです。当院では<strong>医療用の高濃度VCローション（6,600円）</strong>と<strong>ヒルドイドローション（1,660円）</strong>も扱っており、ピルと併用すると効果抜群です。気になる方は診察でご相談ください。",
+        // かねこさん提供のフリー素材（Downloads/27024451.jpg をトリミング・縮小）
+        extra: '<div class="pg-art" style="max-width:120px"><img src="assets/guide/skincare.jpg" alt=""></div>',
       }));
     }
 
