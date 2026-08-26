@@ -548,25 +548,39 @@ function ClosedTab({ showToast }) {
     }
   };
 
-  const toggleSlot = async (time) => {
-    if (closedSlots.has(time)) {
-      const { error } = await supabase.from("visit_closed_slots").delete().eq("date", slotDate).eq("time", time);
-      if (!error) setClosedSlots((prev) => { const next = new Set(prev); next.delete(time); return next; });
-    } else {
-      const { error } = await supabase.from("visit_closed_slots").insert({ date: slotDate, time });
-      if (!error) setClosedSlots((prev) => new Set(prev).add(time));
-    }
-  };
-
-  const slotTimes = useMemo(() => {
+  // 表示は診察の枠（20分刻みなど）に合わせる。薬受け取りは 11:10 のような
+  // 細かい刻み（10分）を持っているので、1枠の中に入る受け取りの時刻を
+  // subTimes として抱えておき、止める/開けるときはまとめて書き込む。
+  // 休憩明けの端数（14:30 受け取りなど）は、いちばん近い後ろの枠に含める
+  const slotGroups = useMemo(() => {
     if (!settings || !slotDate) return [];
     const [y, m, d] = slotDate.split("-").map(Number);
-    // 停止した枠は診察にも受け取りにも効くので、細かいほうの刻みで並べる。
-    // 粗いほうだけ出すと、受け取りの 11:10 のような枠を止められなくなる
-    const step = Math.min(settings.slotMinutes, settings.pickupSlotMinutes || settings.slotMinutes);
-    return buildSlotTimes(settings, new Date(y, m - 1, d),
-      (holidayDates || []).some((r) => r.date === slotDate), step);
+    const date = new Date(y, m - 1, d);
+    const isHoliday = (holidayDates || []).some((r) => r.date === slotDate);
+    const step = settings.slotMinutes;
+    const fine = Math.min(step, settings.pickupSlotMinutes || step);
+    const toMin = (s) => { const [hh, mm] = s.split(":").map(Number); return hh * 60 + mm; };
+    const groups = buildSlotTimes(settings, date, isHoliday, step).map((time) => ({ time, subTimes: [] }));
+    buildSlotTimes(settings, date, isHoliday, fine).forEach((ft) => {
+      const m0 = toMin(ft);
+      let g = groups.find((x) => m0 >= toMin(x.time) && m0 < toMin(x.time) + step);
+      if (!g) g = groups.find((x) => toMin(x.time) > m0) || groups[groups.length - 1];
+      if (g) g.subTimes.push(ft);
+    });
+    return groups;
   }, [settings, slotDate, holidayDates]);
+
+  const toggleSlot = async (group) => {
+    const allClosed = group.subTimes.every((t) => closedSlots.has(t));
+    if (allClosed) {
+      const { error } = await supabase.from("visit_closed_slots").delete().eq("date", slotDate).in("time", group.subTimes);
+      if (!error) setClosedSlots((prev) => { const next = new Set(prev); group.subTimes.forEach((t) => next.delete(t)); return next; });
+    } else {
+      const missing = group.subTimes.filter((t) => !closedSlots.has(t));
+      const { error } = await supabase.from("visit_closed_slots").insert(missing.map((t) => ({ date: slotDate, time: t })));
+      if (!error) setClosedSlots((prev) => { const next = new Set(prev); group.subTimes.forEach((t) => next.add(t)); return next; });
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -666,7 +680,7 @@ function ClosedTab({ showToast }) {
 
       <StaticCard>
         <div className="text-xs font-bold mb-1" style={{ color: T.muted }}>枠ごとの受付停止</div>
-        <p className="text-[11px] mb-3" style={{ color: T.faint }}>日付を選び、停止したい枠をタップしてください（赤 = 停止中）。</p>
+        <p className="text-[11px] mb-3" style={{ color: T.faint }}>日付を選び、停止したい枠をタップしてください（赤 = 停止中）。止めた枠は診察と、その時間帯の薬受け取り（細かい刻み）の両方に効きます。</p>
         <input
           type="date"
           value={slotDate}
@@ -674,25 +688,29 @@ function ClosedTab({ showToast }) {
           className="p-2 rounded-lg text-sm outline-none mb-3"
           style={{ background: T.bg, border: `1px solid ${T.line}` }}
         />
-        {slotTimes.length === 0 ? (
+        {slotGroups.length === 0 ? (
           <p className="text-xs" style={{ color: T.faint }}>この日は受付時間がありません（休診曜日）</p>
         ) : (
           <div className="grid grid-cols-4 gap-2">
-            {slotTimes.map((time) => {
-              const closed = closedSlots.has(time);
+            {slotGroups.map((group) => {
+              // 一部だけ止まっている（昔の10分単位の停止が残っている）枠は
+              // 薄い赤にして、タップで残りも止まる → もう一度で全部開く
+              const closedCount = group.subTimes.filter((t) => closedSlots.has(t)).length;
+              const closed = closedCount > 0 && closedCount === group.subTimes.length;
+              const partial = closedCount > 0 && !closed;
               return (
                 <button
-                  key={time}
-                  onClick={() => toggleSlot(time)}
+                  key={group.time}
+                  onClick={() => toggleSlot(group)}
                   className="py-2 rounded-lg text-xs font-bold"
                   style={{
                     fontFamily: FONTS.mono,
-                    background: closed ? T.alertBg : T.surface,
-                    border: `1.5px solid ${closed ? T.alert : T.line}`,
-                    color: closed ? T.alert : T.ink,
+                    background: closed || partial ? T.alertBg : T.surface,
+                    border: `1.5px solid ${closed ? T.alert : partial ? "#E5B96F" : T.line}`,
+                    color: closed || partial ? T.alert : T.ink,
                   }}
                 >
-                  {time}
+                  {group.time}
                 </button>
               );
             })}
