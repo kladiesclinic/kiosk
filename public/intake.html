@@ -140,12 +140,10 @@
   }
   .done-tick svg { width: 18px; height: 18px; color: #FFFFFF; }
   .done-panel h2 { font-family: var(--serif); font-size: 20px; font-weight: 700; color: #1F5B37; }
-  .done-panel h2 .ja {
-    display: block; font-family: 'Noto Sans JP', var(--sans);
-    font-size: 12px; color: #4C7A5E; margin-top: 2px;
-  }
   .done-panel p { font-size: 14px; line-height: 1.75; color: #2E5C41; margin-top: 14px; }
-  .done-panel p .ja { display: block; font-size: 12.5px; color: #4C7A5E; margin-top: 3px; }
+  /* 完了画面は読み物なので、表示中の言語だけにしてすっきりさせる
+     （言語入れ替え後の .ja にはもう一方の言語が入っている） */
+  .done-panel .ja { display: none; }
 
   /* ---- 低用量ピルの飲み方ガイド ----
      送信後、受診理由に「低用量ピル」か「ニキビ・肌荒れ」があるときだけ表示する
