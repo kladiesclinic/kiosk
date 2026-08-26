@@ -1004,6 +1004,16 @@
   // 受付画面で先に選んでもらった保険。渡ってきていれば問診票では聞き直さない
   var SELF_INS = new URLSearchParams(window.location.search).get("ins") || "";
   if (["mynumber", "hokensho", "self_pay", "forgot"].indexOf(SELF_INS) < 0) SELF_INS = "";
+  /* 診察のない日の初診アフターピル（?ec=1）。受付上はお渡し（visit=pickup）だが
+     初めての方なのでこのフル問診票を書いてもらう。受付行には薬名「アフターピル」と
+     受付画面で聞いた性行為日（?ecdate=）を載せ、受診理由は選択済みで開く */
+  var SELF_EC = new URLSearchParams(window.location.search).get("ec") === "1";
+  var SELF_EC_DATE = new URLSearchParams(window.location.search).get("ecdate") || "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(SELF_EC_DATE)) SELF_EC_DATE = "";
+  if (SELF_EC) {
+    var ecReasonBox = document.querySelector('input[name="reason"][value="Morning-after pill / Plan B"]');
+    if (ecReasonBox) ecReasonBox.checked = true;
+  }
   var CHECKIN_STORE = "keicuri-intake-checkin";
 
   // 受付を経由しない記入（LP・予約からの事前記入）と、受付画面で保険を
@@ -1059,6 +1069,8 @@
         p_insurance: insValue,
         p_visit_kind: SELF_KIND || null,
         p_return_reason: SELF_REASON || null,
+        p_medications: SELF_EC && SELF_VISIT === "pickup" ? ["アフターピル"] : null,
+        p_ec_intercourse_date: SELF_EC && SELF_VISIT === "pickup" ? SELF_EC_DATE || null : null,
         p_line_user_id: SELF_LINE || null,
         p_source: "phone",
       }),
