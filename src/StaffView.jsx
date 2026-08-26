@@ -1702,9 +1702,12 @@ export default function StaffView() {
     setBookingForms(bForms);
     setLastUpdated(new Date());
 
-    // 予定表で「×（受付なし）」を出すために、この日の閉じた枠を引く
+    // 予定表で「×（受付なし）」を出すために、この日の閉じた枠を引く。
+    // 休診日も一緒に読み直す（設定タブや別の端末での変更を10秒以内に拾う）
     supabase.from("visit_closed_slots").select("time").eq("date", dateKey)
       .then(({ data, error }) => setClosedSlotTimes(error ? new Set() : new Set((data || []).map((r) => r.time))));
+    supabase.from("visit_closed_dates").select("date")
+      .then(({ data, error }) => { if (!error) setVisitClosedDates(new Set((data || []).map((r) => r.date))); });
 
     // pillorderタブ: オンライン診療の問診票（monshin_online）。直近300件を取り、選択日
     // （reserve_at が無ければ created_at）が dateKey の分だけを予約時刻順（時系列）に並べる。
@@ -1826,7 +1829,10 @@ export default function StaffView() {
       .catch(() => {});
   }, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 予約の編集・代理予約に使う設定・メニュー・祝日は日付に依らないので一度だけ読む
+  // 予約の編集・代理予約に使う設定・メニュー・祝日。設定タブで休診日や診療時間を
+  // 変えたあと、開きっぱなしの予約一覧・予定表にも反映されるよう、タブを
+  // 切り替えるたびに読み直す（以前は開いたときの一度きりで、再読み込みするまで
+  // 休診設定が反映されなかった）
   const loadBookingConfig = () => {
     supabase.from("visit_menus").select("*").order("sort_order")
       .then(({ data, error }) => { if (!error) setMenusAll(data || []); });
@@ -1837,7 +1843,7 @@ export default function StaffView() {
     supabase.from("visit_closed_dates").select("date")
       .then(({ data, error }) => { if (!error) setVisitClosedDates(new Set((data || []).map((r) => r.date))); });
   };
-  useEffect(loadBookingConfig, []);
+  useEffect(loadBookingConfig, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 予約の状態を変える（来院済み / キャンセル / 予約中に戻す）。
   const updateBookingStatus = async (id, status) => {
