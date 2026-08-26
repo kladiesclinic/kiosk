@@ -3015,12 +3015,23 @@
     document.title = PAGE_LANG === "en"
       ? "Your pill guide | K Ladies Clinic Shinjuku"
       : "ピルの飲み方ガイド | ケイ・レディースクリニック新宿";
+    // スタッフ確認用: &r=oc,acne,shift,mini,ec で受診理由の絞り込みを再現できる
+    // （通常は端末に控えた記録から絞るのでURLには出ない）
+    var REASON_KEYS = {
+      oc: "Birth control pills",
+      acne: "Acne / skin",
+      shift: "Period shifting",
+      mini: "Mini-pill (progestogen-only)",
+      ec: "Morning-after pill / Plan B",
+    };
+    var forced = (new URLSearchParams(window.location.search).get("r") || "")
+      .split(",").map(function (k) { return REASON_KEYS[k.trim()]; }).filter(Boolean);
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem("klcs_pill_guide") || "null"); } catch (e) { /* no-op */ }
     // 期限はRPC（アルダクトン希望の書き足し）と同じ7日間にそろえる
     var fresh = saved && Date.now() - (saved.at || 0) < 7 * 24 * 3600 * 1000;
-    if (fresh && saved.formId) window.LAST_FORM_ID = saved.formId;
-    showPillGuide({ standalone: true, reasons: fresh ? saved.reasons : null });
+    if (fresh && saved.formId && !forced.length) window.LAST_FORM_ID = saved.formId;
+    showPillGuide({ standalone: true, reasons: forced.length ? forced : fresh ? saved.reasons : null });
     window.scrollTo(0, 0);
   })();
 </script>
