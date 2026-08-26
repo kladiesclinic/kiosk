@@ -233,9 +233,11 @@
   .pg-fold-body { display: none; }
   .pg-fold.open .pg-fold-body { display: block; }
   /* コースまるごとの折りたたみ（アフターピルのみの方の低用量ピルコース）。
-     中に通常のカード・区切り見出しがそのまま入る */
+     中に通常のカード・区切り見出しがそのまま入る。外側カードの余白のぶん
+     中身が一回り狭く見えないよう、開いた中身は外側の余白いっぱいまで広げる */
   .pg-fold-sec { background: #FFF8F7; }
-  .pg-fold-sec .pg-fold-body { padding-top: 10px; }
+  .pg-fold-sec .pg-fold-body { margin: 10px -19px -8px; }
+  .pg-fold-sec .pg-fold-body .pg-sec:first-child { margin-top: 4px; padding-top: 10px; }
   .pg-fold-sec .pg-fold-body .pg-card:last-child { margin-bottom: 0; }
   .pg-art svg { width: 100%; height: auto; display: block; }
   .pg-art-row { display: flex; gap: 14px; margin-top: 12px; }
