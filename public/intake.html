@@ -467,6 +467,12 @@
         </div>
       </div>
 
+      <!-- 受付を兼ねるとき（?selfcheckin=1）だけ表示。英語表示で開いていれば
+           最初からチェックが入る。受付一覧の名前の前に「英」タグとして出る -->
+      <div class="field" id="if-english-block">
+        <label class="choice"><input type="checkbox" id="if-english" /> I'd like English support during my consultation<span class="ja">診察で英語のサポートを希望する</span></label>
+      </div>
+
       <div class="field-row">
         <div class="field">
           <label for="if-phone">Phone number<span class="ja">電話番号</span></label>
@@ -1008,6 +1014,22 @@
   }
   var CHECKIN_STORE = "keicuri-intake-checkin";
 
+  /* 診察の英語サポート希望（?eng=1/0 は受付画面で選んだ値。無ければ英語表示なら
+     ON）。受付を兼ねるときだけ出す質問で、受付行の wants_english に入る */
+  var SELF_ENG = new URLSearchParams(window.location.search).get("eng");
+  (function () {
+    var block = document.getElementById("if-english-block");
+    if (!block) return;
+    if (!SELF_CHECKIN) {
+      if (block.parentNode) block.parentNode.removeChild(block);
+      return;
+    }
+    var box = document.getElementById("if-english");
+    // PAGE_LANG はこの時点ではまだ定義前なので、URLの ?lang= を直接見る
+    var selfEngLangEn = (new URLSearchParams(window.location.search).get("lang") || "ja").toLowerCase() === "en";
+    if (box) box.checked = SELF_ENG != null ? SELF_ENG === "1" : selfEngLangEn;
+  })();
+
   // 受付を経由しない記入（LP・予約からの事前記入）と、受付画面で保険を
   // 選び終えている場合は、保険の質問を出さない
   if (!SELF_CHECKIN || SELF_INS) {
@@ -1063,6 +1085,7 @@
         p_return_reason: SELF_REASON || null,
         p_medications: SELF_EC && SELF_VISIT === "pickup" ? ["アフターピル"] : null,
         p_ec_intercourse_date: SELF_EC && SELF_VISIT === "pickup" ? SELF_EC_DATE || null : null,
+        p_wants_english: !!(document.getElementById("if-english") && document.getElementById("if-english").checked),
         p_line_user_id: SELF_LINE || null,
         p_source: "phone",
       }),

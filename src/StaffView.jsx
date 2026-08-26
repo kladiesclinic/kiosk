@@ -3317,7 +3317,17 @@ export default function StaffView() {
                               )}
                             </td>
                             <td className="px-2 py-3">
-                              <div className="font-medium">{c.patient_name}</div>
+                              <div className="font-medium">
+                                {/* 診察で英語のサポートを希望した方（受付時のチェック。英語表示の方は既定ON） */}
+                                {c.wants_english && (
+                                  <span
+                                    className="inline-flex items-center justify-center mr-1.5 px-1.5 py-0.5 rounded text-[11px] font-bold align-middle"
+                                    style={{ background: "#E3EDFB", color: "#2B5FAB" }}
+                                    title="診察で英語のサポートを希望しています"
+                                  >英</span>
+                                )}
+                                {c.patient_name}
+                              </div>
                               {kana && (
                                 <div
                                   className="text-[11px] leading-tight"
