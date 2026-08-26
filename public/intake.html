@@ -2133,6 +2133,8 @@
     // アフターピルだけの人: 急ぎのアフターピルを先頭に出し、
     // 低用量ピルコースは折りたたみで下に置く（興味が出たら開く）
     var ecFirst = wantsEc && !wantsOc && !wantsAcne && !wantsShift && !wantsMini;
+    // ミニピルだけの人も同じ扱い: ミニピル専用コースを先頭に、低用量ピルは折りたたみ
+    var miniOnly = wantsMini && !wantsOc && !wantsAcne && !wantsShift && !wantsEc;
 
     var en = PAGE_LANG === "en";
     var mount = document.getElementById("pill-guide");
@@ -2149,12 +2151,12 @@
         tint = "#EFDCA6"; edge = "#CDB271"; bump = "#F7EBC8";
         tab = function () { return { r: 5.2, fill: "#FFFFFF", stroke: "#D3CBB6" }; };
       } else if (kind === "slinda") {
-        // スリンダ28錠: 白24錠（有効成分）→ 緑4錠（お休み用）
+        // スリンダ28錠: ピンクのシートに 白24錠（有効成分）→ 緑4錠（お休み用）
         box = { x: 1.5, y: 1.5, w: 109, h: 73 }; cols = { n: 7, gap: 14 }; rows = { n: 4, gap: 16 };
-        tint = "#F7F5FB"; edge = "#C9C4D6"; bump = "#FFFFFF";
+        tint = "#F9D9E3"; edge = "#DE9BB2"; bump = "#FDEFF4";
         tab = function (i) {
-          return i === 0 ? { r: 4.7, fill: "#FFFFFF", stroke: "#6B5FA8", width: 2 }
-            : i < 24 ? { r: 4.7, fill: "#FFFFFF", stroke: "#C9C4D6" }
+          return i === 0 ? { r: 4.7, fill: "#FFFFFF", stroke: "#C2547A", width: 2 }
+            : i < 24 ? { r: 4.7, fill: "#FFFFFF", stroke: "#D8A9BA" }
               : { r: 4.7, fill: "#C9D9A6", stroke: "#A5BC7E" };
         };
       } else {
@@ -2392,7 +2394,7 @@
 
     // ---- 低用量ピル（トリキュラー・マーベロン）の基本 ----
     // ニキビ・肌荒れの方の処方も低用量ピルなので、同じ基本セットを見せる
-    var showOcCourse = standalone || wantsOc || wantsAcne || ecFirst;
+    var showOcCourse = standalone || wantsOc || wantsAcne || ecFirst || miniOnly;
     var ocStart = cards.length;
     if (showOcCourse) {
     // 「ピルとは何か」。子宮・卵巣の絵に①排卵お休み ②内膜を薄く ③粘液でブロック の番号を振り、
@@ -2691,8 +2693,8 @@
 
     }
 
-    // アフターピルだけの人には、低用量ピルコースを1つの折りたたみにまとめる
-    if (ecFirst && cards.length > ocStart) {
+    // アフターピル・ミニピルだけの人には、低用量ピルコースを1つの折りたたみにまとめる
+    if ((ecFirst || miniOnly) && cards.length > ocStart) {
       var ocInner = cards.splice(ocStart).join("");
       cards.push('<div class="pg-card pg-fold pg-fold-sec">' +
         '<div class="pg-fold-head"><h3>' +
@@ -2782,26 +2784,43 @@
     }
 
     // ---- ミニピル（スリンダ） ----
+    // ミニピル専用のフルコース: どんな薬（仕組み）→ 低用量ピルとの違い → 飲み方 → 飲み忘れ。
+    // ミニピルだけの人は低用量ピルコースを見ないので、ここだけで完結する内容にする
+    var miniStart = cards.length;
     if (wantsMini) {
       cards.push(secLabel("ミニピル（スリンダ）", "Mini-pill (Slinda)"));
       cards.push(card({
-        title: en ? "The Slinda sheet and how to take it" : "スリンダのシートと飲み方",
-        sub: en ? "スリンダのシートと飲み方" : "The Slinda sheet and how to take it",
+        title: en ? "What is the mini-pill?" : "ミニピルってどんな薬？",
         body: en
-          ? "Slinda has <strong>24 white tablets (active) then 4 green ones (rest)</strong>. Take one a day at the same time, keep going through the green ones, and <strong>start the next sheet the very next day</strong>. It contains no estrogen, so the blood-clot risk is low and it suits people who are breastfeeding, smoke, or have migraines. Some months you may not bleed during the green tablets — that's nothing to worry about."
-          : "スリンダは<strong>白い24錠（有効成分）→ 緑の4錠（お休み用）</strong>の順で、1日1錠・毎日同じ時間に飲みます。緑の4錠も飲む習慣を保つために続けて飲み、<strong>飲み終えたら休まず翌日から次のシート</strong>へ。エストロゲンを含まないため血栓症のリスクが低く、授乳中・喫煙される方・片頭痛のある方にも使いやすいお薬です。緑の錠剤の間に出血が来ない月もありますが、心配いりません。",
+          ? "The mini-pill contains <strong>only a progestogen (drospirenone)</strong> — none of the estrogen found in combined pills. Taken daily, your body decides its hormones are topped up, so <strong>ovulation takes a rest</strong>, and the mucus at the entrance of the womb changes so <strong>sperm can't pass easily</strong>. Taken correctly it prevents pregnancy about as well as a combined pill, and many people find period pain and PMS ease as well."
+          : "ミニピルは、<strong>黄体ホルモン（ドロスピレノン）だけ</strong>でできたピルです。低用量ピルに入っているエストロゲンを含みません。毎日飲むと体が「ホルモンは足りている」と判断して<strong>排卵がお休み</strong>になり、さらに子宮の入り口の粘液が変わって<strong>精子が通りにくく</strong>なります。正しく飲めば低用量ピルと同じくらい高い避妊効果があり、生理痛やPMSが軽くなる方も多いお薬です。",
+      }));
+      cards.push(card({
+        title: en ? "How is it different from the low-dose pill?" : "低用量ピルとの違い",
+        body: en
+          ? "The biggest difference: <strong>no estrogen</strong>. That means it barely raises the risk of blood clots, so it suits people who can't take the combined pill — <strong>while breastfeeding, if you smoke, or if you have migraines</strong>. In exchange, your bleeding pattern changes: in the first 2–3 months you may spot between periods, or a month may pass with no bleeding at all. It settles as your body adjusts — tell us at your consultation if it worries you."
+          : "いちばんの違いは<strong>エストロゲンが入っていない</strong>こと。血栓症のリスクをほとんど上げないため、<strong>授乳中の方・タバコを吸う方・片頭痛のある方</strong>など、低用量ピルを使えない方でも飲めるのが強みです。そのかわり生理の出方が変わりやすく、飲み始めの2〜3ヶ月は不正出血が出たり、出血が来ない月もあります。体が慣れると落ち着いてきますので、気になるときは診察でご相談ください。",
+      }));
+      cards.push(card({
+        title: en ? "The Slinda sheet and how to take it" : "スリンダのシートと飲み方",
+        body: en
+          ? "Slinda has <strong>24 white tablets (active) then 4 green ones (rest)</strong>. Take one a day at the same time, keep going through the green ones, and <strong>start the next sheet the very next day</strong>. Some months you may not bleed during the green tablets — that's nothing to worry about."
+          : "スリンダは<strong>白い24錠（有効成分）→ 緑の4錠（お休み用）</strong>の順で、1日1錠・毎日同じ時間に飲みます。緑の4錠も飲む習慣を保つために続けて飲み、<strong>飲み終えたら休まず翌日から次のシート</strong>へ。緑の錠剤の間に出血が来ない月もありますが、心配いりません。",
         extra:
           '<div class="pg-art-row"><div style="max-width:220px;margin:0 auto">' + sheet("slinda") +
           '<div class="pg-order">' + dot("#FFFFFF") + (en ? "white 24" : "白24錠") + " → " + dot("#C9D9A6") + (en ? "green 4 (rest)" : "緑4錠（お休み用）") + "</div></div></div>",
       }));
       cards.push(card({
         title: en ? "If you miss a tablet or vomit" : "飲み忘れ・吐いてしまったとき",
-        sub: en ? "飲み忘れ・吐いてしまったとき" : "If you miss a tablet or vomit",
         body: en
           ? "Take the missed tablet as soon as you remember. If you are <strong>more than 24 hours late</strong>, take the most recent missed tablet, keep going as usual, and use another method of contraception (such as condoms) for <strong>7 days</strong>. If you vomit within 2 hours of taking a tablet, take one more."
           : "気づいたときにすぐ1錠飲んでください。<strong>24時間以上</strong>遅れた場合は、直近の1錠だけを飲んでそのまま続けつつ、<strong>7日間</strong>はコンドームなど他の避妊法を併用してください。飲んでから2時間以内に吐いてしまったときは、もう1錠飲んでください。",
         extra: '<div class="pg-art">' + ART_MISS + "</div>",
       }));
+    }
+    // ミニピルだけの人は、ミニピル専用コースを先頭へ（低用量ピルの折りたたみより前）
+    if (miniOnly) {
+      cards.unshift.apply(cards, cards.splice(miniStart));
     }
 
     // ---- アフターピル ----
