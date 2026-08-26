@@ -232,6 +232,11 @@
   .pg-fold.open .pg-fold-arrow { transform: rotate(180deg); }
   .pg-fold-body { display: none; }
   .pg-fold.open .pg-fold-body { display: block; }
+  /* コースまるごとの折りたたみ（アフターピルのみの方の低用量ピルコース）。
+     中に通常のカード・区切り見出しがそのまま入る */
+  .pg-fold-sec { background: #FFF8F7; }
+  .pg-fold-sec .pg-fold-body { padding-top: 10px; }
+  .pg-fold-sec .pg-fold-body .pg-card:last-child { margin-bottom: 0; }
   .pg-art svg { width: 100%; height: auto; display: block; }
   .pg-art-row { display: flex; gap: 14px; margin-top: 12px; }
   .pg-art-row > div { flex: 1; min-width: 0; text-align: center; }
@@ -2123,6 +2128,9 @@
     var wantsMini = reasons.indexOf("Mini-pill (progestogen-only)") !== -1;
     var wantsEc = reasons.indexOf("Morning-after pill / Plan B") !== -1;
     if (!wantsOc && !wantsAcne && !wantsShift && !wantsMini && !wantsEc) return false;
+    // アフターピルだけの人: 急ぎのアフターピルを先頭に出し、
+    // 低用量ピルコースは折りたたみで下に置く（興味が出たら開く）
+    var ecFirst = wantsEc && !wantsOc && !wantsAcne && !wantsShift && !wantsMini;
 
     var en = PAGE_LANG === "en";
     var mount = document.getElementById("pill-guide");
@@ -2382,7 +2390,8 @@
 
     // ---- 低用量ピル（トリキュラー・マーベロン）の基本 ----
     // ニキビ・肌荒れの方の処方も低用量ピルなので、同じ基本セットを見せる
-    var showOcCourse = standalone || wantsOc || wantsAcne;
+    var showOcCourse = standalone || wantsOc || wantsAcne || ecFirst;
+    var ocStart = cards.length;
     if (showOcCourse) {
     // 「ピルとは何か」。子宮・卵巣の絵に①排卵お休み ②内膜を薄く ③粘液でブロック の番号を振り、
     // 本文の①②③と対応させる
@@ -2680,6 +2689,16 @@
 
     }
 
+    // アフターピルだけの人には、低用量ピルコースを1つの折りたたみにまとめる
+    if (ecFirst && cards.length > ocStart) {
+      var ocInner = cards.splice(ocStart).join("");
+      cards.push('<div class="pg-card pg-fold pg-fold-sec">' +
+        '<div class="pg-fold-head"><h3>' +
+        (en ? "Curious about the low-dose pill?" : "低用量ピルの話も聞いてみたい方へ") +
+        '</h3><span class="pg-fold-arrow">▾</span></div>' +
+        '<div class="pg-fold-body">' + ocInner + "</div></div>");
+    }
+
     // ---- ニキビ・肌荒れの方向け: 経過の目安・スキンケア・アルダクトン ----
     if (wantsAcne) {
       cards.push(secLabel("ニキビ・肌荒れの方へ", "For acne & skin"));
@@ -2784,6 +2803,7 @@
     }
 
     // ---- アフターピル ----
+    var ecStart = cards.length;
     if (wantsEc) {
       cards.push(secLabel("アフターピル", "Morning-after pill"));
       // 急ぎの時計（72h）→ 水と一緒に1錠
@@ -2862,6 +2882,12 @@
       }));
     }
 
+    // アフターピルだけの人は、急ぎのアフターピルの説明を先頭へ動かす
+    // （この時点で cards は [低用量ピルの折りたたみ, アフターピル一式] の並び）
+    if (ecFirst) {
+      cards.unshift.apply(cards, cards.splice(ecStart));
+    }
+
     // 完了画面の代わりにガイドへ直行するので、「送信できた」ことと、
     // 事前記入（受付未済）の人への受付の注意はここで伝える。
     // ガイド専用モードでは送信していないので、どちらも出さない
@@ -2893,9 +2919,12 @@
     var countEl = document.getElementById("pg-count");
     var doneEl = document.getElementById("pg-done");
     function refresh() {
-      // 折りたたみカード（.pg-fold）は任意読みなので、ボタンのあるカードだけ数える
-      var all = mount.querySelectorAll(".pg-card .pg-chk").length;
-      var read = mount.querySelectorAll(".pg-card.checked").length;
+      // 折りたたみカード（.pg-fold）は任意読みなので、ボタンのあるカードだけ数える。
+      // コースまるごとの折りたたみ（.pg-fold-sec）の中身も同じ扱いで数えない
+      var all = mount.querySelectorAll(".pg-card .pg-chk").length -
+        mount.querySelectorAll(".pg-fold-sec .pg-chk").length;
+      var read = mount.querySelectorAll(".pg-card.checked").length -
+        mount.querySelectorAll(".pg-fold-sec .pg-card.checked").length;
       countEl.textContent = (en ? "Read " : "確認済み ") + read + " / " + all;
       doneEl.classList.toggle("show", read === all);
     }
