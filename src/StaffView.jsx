@@ -3272,6 +3272,11 @@ export default function StaffView() {
                           : mapFromForm(anyForm);
                         // タグに出すので、お薬の一覧からは外す
                         const meds = (c.medications || []).filter((m) => !(map && /アフターピル/.test(m)));
+                        // 飲み方ガイドの「〜もほしい／気になる」ボタンで問診票に書き足された希望。
+                        // 紙の問診票は先に印刷してしまうので、あとから押されてもここで気づける
+                        const wants = (anyForm?.answers || [])
+                          .filter((r) => /^(アルダクトン希望|低用量ピル希望)/.test(r?.label || ""))
+                          .map((r) => (r.label || "").split(" ／")[0]);
                         const booking = bookingById.get(c.booking_id);
                         const kana = kanaFor(c, anyForm, booking);
                         const isDone = c.chart_done && c.payment_done;
@@ -3344,8 +3349,22 @@ export default function StaffView() {
                             <td className="px-2 py-3 text-xs" style={{ color: "#8A7378" }}>
                               {/* アフターピルは薬名を並べるより MAP のタグで出す。
                                   再診は受付で日付を、初診は問診票で日時を聞いている */}
-                              {meds.join("、") || (map ? "" : "—")}
+                              {meds.join("、") || (map || wants.length ? "" : "—")}
                               {map && <MapTag date={map.date} timing={map.timing} />}
+                              {wants.length > 0 && (
+                                <div className="flex flex-col items-start gap-1 mt-1">
+                                  {wants.map((w) => (
+                                    <span
+                                      key={w}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold whitespace-nowrap"
+                                      style={{ background: "#FDF3E7", color: "#C0762C" }}
+                                      title="飲み方ガイドのボタンから追加された希望です（問診票の回答にも同じ行が入っています）"
+                                    >
+                                      {w}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </td>
                             <td className="px-2 py-3 text-xs">
                               <InsuranceTag id={c.insurance} />
