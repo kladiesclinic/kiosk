@@ -2067,29 +2067,11 @@
             reasons: [].map.call(document.querySelectorAll('input[name="reason"]:checked'), function (b) { return b.value; }),
           }));
         } catch (e2) { /* no-op */ }
-        // ガイドは「当日・待合室」でだけ見せる（受付済み＝CHECKIN_IDあり）。
-        // 事前記入の送信では出さない — 来院前に読んでも当日には薄れるのと、
-        // 「当日は受付QRを」の注意を読み物で埋もれさせないため。
-        // 代わりに完了画面へ「当日ご案内します」の予告を添える（下のteaser）。
+        // 事前記入でもガイドをそのまま出す（当日もう一度出る旨のリード付き。
+        // 受付QRの注意はガイド冒頭の pg-checkin-warn が引き受ける）。
         // ガイドが出せなくても送信は成立しているので、失敗は握りつぶす
         var guideShown = false;
-        if (CHECKIN_ID) {
-          try { guideShown = showPillGuide(); } catch (e) { /* no-op */ }
-        } else {
-          var pillReasons = ["Birth control pills", "Acne / skin", "Period shifting", "Mini-pill (progestogen-only)", "Morning-after pill / Plan B", "Menstrual pain", "Irregular period", "PMS / mood"];
-          var hasPill = [].some.call(
-            document.querySelectorAll('input[name="reason"]:checked'),
-            function (b) { return pillReasons.indexOf(b.value) !== -1; }
-          );
-          if (hasPill) {
-            var tease = document.createElement("p");
-            tease.style.cssText = "margin-top:10px;font-size:13px;color:#2E5C41;font-weight:600;";
-            tease.innerHTML = PAGE_LANG === "en"
-              ? "On the day of your visit, after check-in, we'll show you a guide to taking your medicine on your phone."
-              : "ご来院当日、受付のあとに「お薬の飲み方ガイド」をスマホでご案内します。";
-            done.appendChild(tease);
-          }
-        }
+        try { guideShown = showPillGuide(); } catch (e) { /* no-op */ }
         // "show" は付けたままにする（ウィザード解除＝全問の再表示の合図に使っている）
         done.classList.add("show");
         if (guideShown) {
@@ -3000,16 +2982,20 @@
       "<h2>" + (en ? "Your pill guide" : "ピルの飲み方ガイド") + "</h2>" +
       (noCheckin
         ? '<div class="pg-checkin-warn">' + (en
-            ? "This is not a check-in. When you arrive, please scan the check-in QR code at the reception counter."
-            : "これで受付は完了していません。ご来院時に、受付カウンターのQRコードを読み取って受付をお願いします。") + "</div>"
+            ? "When you arrive, please scan the check-in QR code at the reception counter."
+            : "ご来院時に、受付カウンターのQRコードを読み取って受付をお願いします。") + "</div>"
         : "") +
       "<p>" + (standalone
         ? (en
           ? "A guide to taking your pill. Please read it while you wait for your consultation, and tap “" + chkLabel + "” on each item. Feel free to ask the doctor or our staff anything during your visit."
           : "お薬の飲み方のご案内です。診察までの間にご覧いただき、読み終えた項目は「読みました」を押してください。ご不明な点は、診察のときに医師・スタッフへお気軽におたずねください。")
-        : (en
-          ? "A guide matched to what you told us in the questionnaire. Please read it while you wait, and tap “" + chkLabel + "” on each item. Feel free to ask the doctor or our staff anything during your visit."
-          : "問診票のご回答に合わせた、お薬の飲み方のご案内です。お呼び出しまでの間にご覧いただき、読み終えた項目は「読みました」を押してください。ご不明な点は、診察やお渡しのときにお気軽におたずねください。")) + "</p>" +
+        : noCheckin
+          ? (en
+            ? "A guide matched to what you told us in the questionnaire. We will show it to you again after you arrive on the day. You are welcome to read it in advance. Tap “" + chkLabel + "” on each item you finish."
+            : "問診票のご回答に合わせた、お薬の飲み方のご案内です。ご来院後にもお読みいただく内容ですが、先にお読みいただくこともできます。読み終えた項目は「読みました」を押してください。")
+          : (en
+            ? "A guide matched to what you told us in the questionnaire. Please read it while you wait, and tap “" + chkLabel + "” on each item. Feel free to ask the doctor or our staff anything during your visit."
+            : "問診票のご回答に合わせた、お薬の飲み方のご案内です。お呼び出しまでの間にご覧いただき、読み終えた項目は「読みました」を押してください。ご不明な点は、診察やお渡しのときにお気軽におたずねください。")) + "</p>" +
       '<div class="pg-count" id="pg-count"></div>' +
       "</div>" +
       cards.join("") +
