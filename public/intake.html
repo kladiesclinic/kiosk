@@ -2754,7 +2754,7 @@
         extra: '<div class="pg-art" style="max-width:120px">' + sheet("aldactone") + "</div>" +
           // 希望ボタン。送信済みの問診票に「アルダクトン希望」の行を書き足し、
           // 受付一覧・印刷にそのまま出る（RPC add_intake_interest）
-          '<button type="button" class="pg-want" data-want="aldactone">' + (en ? "I'd like Aldactone too" : "アルダクトンも処方してほしい") + "</button>",
+          '<button type="button" class="pg-want" data-want="aldactone">' + (en ? "I'd like to ask about Aldactone" : "アルダクトンについて聞いてみたい") + "</button>",
       }));
     }
 
@@ -2886,7 +2886,7 @@
           : "アフターピルはあくまで緊急用のお薬です。避妊を続けたい方には、毎日1錠の<strong>低用量ピル</strong>をおすすめしています。違いはこちら:",
         extra: ecTable +
           // 希望ボタン。問診票に「低用量ピル希望」の行を書き足して医師に伝わる
-          '<button type="button" class="pg-want" data-want="oc">' + (en ? "I'm interested in the low-dose pill" : "低用量ピルも気になる") + "</button>",
+          '<button type="button" class="pg-want" data-want="oc">' + (en ? "I'd like to ask about the low-dose pill" : "低用量ピルについて聞いてみたい") + "</button>",
       }));
     }
 
@@ -2960,7 +2960,7 @@
           }
           wantBtn.classList.add("done");
           wantBtn.textContent = saved
-            ? (en ? "✓ Noted on your questionnaire (tap again to cancel)" : "✓ 問診票に希望を書き添えました（もう一度タップで取り消し）")
+            ? (en ? "✓ Noted on your questionnaire (tap again to cancel)" : "✓ 問診票に書き添えました（もう一度タップで取り消し）")
             : (en ? "✓ Please tell the doctor at your consultation (tap to undo)" : "✓ 診察のときに医師へお伝えください（もう一度タップで取り消し）");
         };
         if (!window.LAST_FORM_ID) { finishWant(false); return; }

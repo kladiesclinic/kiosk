@@ -3272,10 +3272,10 @@ export default function StaffView() {
                           : mapFromForm(anyForm);
                         // タグに出すので、お薬の一覧からは外す
                         const meds = (c.medications || []).filter((m) => !(map && /アフターピル/.test(m)));
-                        // 飲み方ガイドの「〜もほしい／気になる」ボタンで問診票に書き足された希望。
+                        // 飲み方ガイドの「〜について聞いてみたい」ボタンで問診票に書き足された相談希望。
                         // 紙の問診票は先に印刷してしまうので、あとから押されてもここで気づける
                         const wants = (anyForm?.answers || [])
-                          .filter((r) => /^(アルダクトン希望|低用量ピル希望)/.test(r?.label || ""))
+                          .filter((r) => /^(アルダクトン|低用量ピル)聞いてみたい/.test(r?.label || ""))
                           .map((r) => (r.label || "").split(" ／")[0]);
                         const booking = bookingById.get(c.booking_id);
                         const kana = kanaFor(c, anyForm, booking);
