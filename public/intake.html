@@ -3184,6 +3184,21 @@
     if (fresh && saved.formId && !forced.length) window.LAST_FORM_ID = saved.formId;
     showPillGuide({ standalone: true, reasons: forced.length ? forced : fresh ? saved.reasons : null });
     window.scrollTo(0, 0);
+    // &embed=1: 別の問診票（Zoom英語・オンライン診療）の送信完了画面への埋め込み表示。
+    // こちらのヘッダーは隠し、内容の高さを親ページへ知らせて iframe をその高さに
+    // 合わせてもらう（枠の中でスクロールせず、受付機と同じくページの続きに見える）
+    if (new URLSearchParams(window.location.search).get("embed") === "1") {
+      var hd = document.querySelector("header");
+      if (hd) hd.style.display = "none";
+      var postH = function () {
+        try {
+          window.parent.postMessage({ klcsGuideHeight: document.body.scrollHeight }, "*");
+        } catch (e) { /* no-op */ }
+      };
+      if (window.ResizeObserver) new ResizeObserver(postH).observe(document.body);
+      window.addEventListener("load", postH);
+      setTimeout(postH, 300);
+    }
   })();
 </script>
 
