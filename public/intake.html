@@ -2843,6 +2843,7 @@
 
     // ---- 月経移動（低用量ピルで行う。中用量ピルは副作用が強いので当院では使わない） ----
     if (wantsShift) {
+      var shiftStart = cards.length;
       cards.push(secLabel("月経移動（生理をずらしたい方）", "Moving your period"));
       // 当院の方針: 中用量ピルではなく低用量ピルで移動する
       cards.push(card({
@@ -2869,9 +2870,22 @@
         title: en ? "Two ways to move your period" : "遅らせる？早める？（2つの方法）",
         sub: en ? "遅らせる？早める？（2つの方法）" : "Two ways to move your period",
         body: en
-          ? "<strong>To delay it:</strong> the low-dose pill works gently, so you start early — <strong>within day 5 of the period before your important date</strong> — and take one tablet every day until the last day you don't want your period. It comes 2–3 days after you stop. <strong>To bring it forward:</strong> start within day 5 of your current period and take one tablet daily for 10–14 days. Your period comes 2–3 days after you stop, well before the important date. The exact schedule depends on your cycle, so <strong>come and see us as soon as your plans are set</strong> — we'll work it out together at your consultation."
-          : "<strong>遅らせる方法</strong>：低用量ピルはやさしく効くお薬なので、早めに始めるのがコツです。<strong>ずらしたい生理の1つ前の生理が始まって5日目までに</strong>飲み始め、来てほしくない日の最後まで毎日1錠。<strong>飲み終えて2〜3日で生理</strong>が来ます。<strong>早める方法</strong>：今の生理が始まって5日目までに飲み始め、10〜14日間毎日1錠。飲み終えて2〜3日で生理が来るので、大事な予定の頃には生理が終わっています。ちょうどよいスケジュールは周期によって変わるので、<strong>ご予定が決まったらお早めに</strong>診察でご相談ください。",
-        extra: '<div class="pg-art">' + ART_SHIFT + "</div>",
+          ? "There are two ways. The low-dose pill works gently, so the key with both is to <strong>start from the period before your important date</strong>. The exact schedule depends on your cycle — <strong>come and see us as soon as your plans are set</strong>."
+          : "方法は2つあります。低用量ピルはやさしく効くお薬なので、どちらも<strong>「ずらしたい生理の1つ前の生理」から始める</strong>のがコツです。ちょうどよいスケジュールは周期によって変わるので、<strong>ご予定が決まったらお早めに</strong>診察でご相談ください。",
+        extra:
+          '<div style="margin-top:14px"><div style="font-weight:700;margin-bottom:4px">' +
+          (en ? "① To delay your period" : "① 遅らせたいとき") + "</div><p style=\"margin:0\">" +
+          (en
+            ? "Start <strong>within day 5 of the period before your important date</strong> and take one tablet every day until the last day you don't want your period. <strong>It comes 2–3 days after you stop.</strong>"
+            : "<strong>ずらしたい生理の1つ前の生理が始まって5日目までに</strong>飲み始め、来てほしくない日の最後まで毎日1錠。<strong>飲み終えて2〜3日で生理</strong>が来ます。") +
+          "</p></div>" +
+          '<div style="margin-top:14px"><div style="font-weight:700;margin-bottom:4px">' +
+          (en ? "② To bring your period forward" : "② 早めたいとき") + "</div><p style=\"margin:0\">" +
+          (en
+            ? "Start <strong>within day 5 of your current period</strong> and take one tablet daily for <strong>10–14 days</strong>. Your period comes <strong>2–3 days after you stop</strong>, so it's over well before the important date."
+            : "<strong>今の生理が始まって5日目までに</strong>飲み始め、<strong>10〜14日間</strong>毎日1錠。飲み終えて<strong>2〜3日で生理</strong>が来るので、大事な予定の頃には生理が終わっています。") +
+          "</p></div>" +
+          '<div class="pg-art">' + ART_SHIFT + "</div>",
       }));
       cards.push(card({
         title: en ? "While you're taking it" : "飲んでいる間の注意",
@@ -2880,6 +2894,8 @@
           ? "The low-dose pill is gentle, so nausea and other side effects are uncommon. The one thing that matters: <strong>if you miss a day, bleeding may start earlier than planned</strong>, so take it every day without fail. And if you find the pill suits you, you can simply keep taking it afterwards — for contraception, period pain and more. Feel free to ask at your consultation."
           : "低用量ピルは吐き気などの副作用が出にくい、やさしいお薬です。いちばん大事なのは飲み忘れないこと。<strong>飲み忘れると予定より早く出血が始まってしまう</strong>ことがあるので、毎日忘れずに飲んでください。なお、月経移動が終わったあとそのまま飲み続けて、避妊や生理痛の改善に使うこともできます。ご希望の方は診察でご相談ください。",
       }));
+      // 月経移動で来た方が最初に読みたいセクションなので、ガイドの先頭へ移す
+      Array.prototype.unshift.apply(cards, cards.splice(shiftStart));
     }
 
     // ---- ミニピル（スリンダ） ----
