@@ -2481,10 +2481,9 @@
     // ---- 低用量ピル（トリキュラー・マーベロン）の基本 ----
     // ニキビ・肌荒れの方の処方も低用量ピルなので、同じ基本セットを見せる
     var showOcCourse = standalone || wantsOc || wantsAcne || wantsSymptom || ecFirst || miniOnly;
-    var ocStart = cards.length;
-    if (showOcCourse) {
     // 「ピルとは何か」。子宮・卵巣の絵に①排卵お休み ②内膜を薄く ③粘液でブロック の番号を振り、
-    // 本文の①②③と対応させる
+    // 本文の①②③と対応させる。低用量ピルコースの先頭のほか、
+    // 月経移動だけの方（コースが出ない）にも同じカードを見せる
     var ART_HOW =
       '<svg viewBox="0 0 160 110" role="img" aria-hidden="true">' +
       // 卵管と卵巣（左右）
@@ -2503,14 +2502,17 @@
       // 毎日のピル
       pillAt(146, 14, 6) +
       "</svg>";
-    cards.push(card({
+    var howPillCard = card({
       title: en ? "What is the pill, exactly?" : "低用量ピルってどんな薬？",
       sub: en ? "低用量ピルってどんな薬？" : "What is the pill, exactly?",
       body: en
         ? "A low-dose pill tops up small amounts of the female hormones (estrogen and progestogen). Taken every day, your body senses the hormones are already there so <strong>① ovulation takes a rest</strong>. It also <strong>② keeps the womb lining thin</strong> and <strong>③ thickens the mucus at the entrance of the womb</strong> so sperm can't pass. Together these give <strong>over 99% protection</strong> when taken correctly. And because the hormone waves flatten out, period pain and PMS ease too."
         : "低用量ピルは、女性ホルモン（エストロゲン・プロゲステロン）を少しずつ補うお薬です。毎日飲むと体が「ホルモンは足りている」と判断して、<strong>①排卵がお休みになります</strong>。さらに<strong>②子宮内膜が厚くならず</strong>、<strong>③子宮の入り口の粘液が変わって精子が通りにくく</strong>なります。この3つで、正しく飲めば<strong>99%以上の避妊効果</strong>があります。ホルモンの波が小さくなるので、生理痛やPMSが軽くなるのもこのしくみのおかげです。",
       extra: '<div class="pg-art">' + ART_HOW + "</div>",
-    }));
+    });
+    var ocStart = cards.length;
+    if (showOcCourse) {
+    cards.push(howPillCard);
     // 避妊以外のメリット。「なぜ飲み続けるのか」が腹落ちすると毎日の継続につながる。
     // 各チップはタップで「なぜそうなるのか」の仕組みが下のパネルに開く
     chipDetails = [];
@@ -2839,9 +2841,20 @@
       }));
     }
 
-    // ---- 月経移動（中用量ピル） ----
+    // ---- 月経移動（低用量ピルで行う。中用量ピルは副作用が強いので当院では使わない） ----
     if (wantsShift) {
       cards.push(secLabel("月経移動（生理をずらしたい方）", "Moving your period"));
+      // 当院の方針: 中用量ピルではなく低用量ピルで移動する
+      cards.push(card({
+        title: en ? "We move your period with the low-dose pill" : "月経移動は低用量ピルでできます",
+        sub: en ? "月経移動は低用量ピルでできます" : "We move your period with the low-dose pill",
+        body: en
+          ? "Period shifting is often done with a <strong>medium-dose pill</strong>, but that type causes <strong>strong side effects such as nausea</strong> far more often, so <strong>we don't recommend it at our clinic</strong>. Instead we shift your period with the <strong>low-dose pill</strong> — the same gentle pill used every day for contraception and period problems. It moves your period just as well, with far milder side effects."
+          : "月経移動というと<strong>中用量ピル</strong>を使う方法が有名ですが、中用量ピルは<strong>吐き気などの副作用がとても強く出やすい</strong>お薬のため、<strong>当院ではおすすめしていません</strong>。当院の月経移動は、ふだん避妊や生理のお悩みに使われている<strong>低用量ピル</strong>で行います。副作用がずっと軽く、同じように生理をずらせます。",
+      }));
+      // 低用量ピルがどんな薬か（上に低用量ピルコースが出ている人には重複するので省く）
+      if (!showOcCourse) cards.push(howPillCard);
+      cards.push(secLabel("低用量ピルでの移動方法", "Shifting with the low-dose pill"));
       // 飲んでいる間（帯の中の錠剤）に大事な予定（ハート）→ 飲み終えて2〜3日で生理（しずく）
       var ART_SHIFT =
         '<svg viewBox="0 0 160 100" role="img" aria-hidden="true">' +
@@ -2856,16 +2869,16 @@
         title: en ? "Two ways to move your period" : "遅らせる？早める？（2つの方法）",
         sub: en ? "遅らせる？早める？（2つの方法）" : "Two ways to move your period",
         body: en
-          ? "<strong>To delay it:</strong> start about 5 days before your expected period and take one tablet every day until the last day you don't want it. Your period comes 2–3 days after you stop. <strong>To bring it forward:</strong> start within day 5 of your current period and take one tablet daily for 10–14 days. Your period comes 2–3 days after you stop, well before the important date. We'll decide the best method together at your consultation."
-          : "<strong>遅らせる方法</strong>：生理予定日の約5日前から飲み始め、来てほしくない日の最後まで毎日1錠。<strong>飲み終えて2〜3日で生理</strong>が来ます。<strong>早める方法</strong>：今の生理が始まって5日目までに飲み始め、10〜14日間毎日1錠。飲み終えて2〜3日で生理が来るので、大事な予定の頃には生理が終わっています。どちらが合うかは診察でご相談ください。",
+          ? "<strong>To delay it:</strong> the low-dose pill works gently, so you start early — <strong>within day 5 of the period before your important date</strong> — and take one tablet every day until the last day you don't want your period. It comes 2–3 days after you stop. <strong>To bring it forward:</strong> start within day 5 of your current period and take one tablet daily for 10–14 days. Your period comes 2–3 days after you stop, well before the important date. The exact schedule depends on your cycle, so <strong>come and see us as soon as your plans are set</strong> — we'll work it out together at your consultation."
+          : "<strong>遅らせる方法</strong>：低用量ピルはやさしく効くお薬なので、早めに始めるのがコツです。<strong>ずらしたい生理の1つ前の生理が始まって5日目までに</strong>飲み始め、来てほしくない日の最後まで毎日1錠。<strong>飲み終えて2〜3日で生理</strong>が来ます。<strong>早める方法</strong>：今の生理が始まって5日目までに飲み始め、10〜14日間毎日1錠。飲み終えて2〜3日で生理が来るので、大事な予定の頃には生理が終わっています。ちょうどよいスケジュールは周期によって変わるので、<strong>ご予定が決まったらお早めに</strong>診察でご相談ください。",
         extra: '<div class="pg-art">' + ART_SHIFT + "</div>",
       }));
       cards.push(card({
         title: en ? "While you're taking it" : "飲んでいる間の注意",
         sub: en ? "飲んでいる間の注意" : "While you're taking it",
         body: en
-          ? "This medicine (a medium-dose pill) causes nausea more easily than a low-dose pill so if you're worried we can prescribe anti-nausea medicine with it. If you miss a day, bleeding may start earlier than planned so take it every day without fail. Note that this course is <strong>not a contraceptive</strong>."
-          : "このお薬（中用量ピル）は低用量ピルより<strong>吐き気が出やすい</strong>お薬です。心配な方には吐き気止めも一緒に処方できますので、診察でお申し付けください。<strong>飲み忘れると予定より早く出血が始まってしまう</strong>ことがあるので、毎日忘れずに飲んでください。なお、月経移動の服用は<strong>避妊のためのお薬ではありません</strong>。",
+          ? "The low-dose pill is gentle, so nausea and other side effects are uncommon. The one thing that matters: <strong>if you miss a day, bleeding may start earlier than planned</strong>, so take it every day without fail. And if you find the pill suits you, you can simply keep taking it afterwards — for contraception, period pain and more. Feel free to ask at your consultation."
+          : "低用量ピルは吐き気などの副作用が出にくい、やさしいお薬です。いちばん大事なのは飲み忘れないこと。<strong>飲み忘れると予定より早く出血が始まってしまう</strong>ことがあるので、毎日忘れずに飲んでください。なお、月経移動が終わったあとそのまま飲み続けて、避妊や生理痛の改善に使うこともできます。ご希望の方は診察でご相談ください。",
       }));
     }
 
