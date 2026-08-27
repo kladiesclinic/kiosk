@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>ピルの飲み方ガイド 医師向けマニュアル</title>
+<style>
+  :root {
+    --ink: #3A2E30;
+    --sub: #8A7378;
+    --teal: #0F8B8D;
+    --coral: #FF6766;
+    --line: #F2DFE4;
+    --bg-soft: #FFF8F7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
+    color: var(--ink);
+    background: #EDE6E4;
+    font-size: 10.5pt;
+    line-height: 1.65;
+  }
+  .page {
+    width: 210mm;
+    min-height: 296mm;
+    margin: 0 auto 10mm;
+    background: #FFFFFF;
+    padding: 14mm 15mm 16mm;
+    position: relative;
+    break-after: page;
+    page-break-after: always;
+  }
+  .page:last-child { break-after: auto; page-break-after: auto; }
+  @page { size: A4 portrait; margin: 0; }
+  @media print {
+    body { background: #FFFFFF; }
+    .page { margin: 0 auto; min-height: 0; }
+    .no-print { display: none; }
+  }
+  .no-print {
+    max-width: 210mm; margin: 8mm auto; padding: 10px 16px;
+    background: #FFF3DC; border: 1px solid #E5A03A; border-radius: 10px; font-size: 10pt;
+  }
+
+  /* ---- 見出しまわり ---- */
+  .doc-head { border-bottom: 3px solid var(--teal); padding-bottom: 10px; margin-bottom: 14px; }
+  .doc-head .kicker { color: var(--teal); font-weight: 700; font-size: 9.5pt; letter-spacing: 0.08em; }
+  .doc-head h1 { font-size: 17pt; margin-top: 2px; }
+  .doc-head .meta { color: var(--sub); font-size: 9pt; margin-top: 4px; }
+  h2 {
+    font-size: 12.5pt; margin: 16px 0 8px;
+    padding: 4px 10px; background: var(--bg-soft);
+    border-left: 5px solid var(--coral); border-radius: 3px;
+  }
+  h2 .tag {
+    display: inline-block; font-size: 8.5pt; font-weight: 700; color: #FFFFFF;
+    background: var(--teal); border-radius: 20px; padding: 0 8px; margin-right: 6px; vertical-align: 2px;
+  }
+  h3 { font-size: 10.5pt; margin: 10px 0 3px; color: var(--teal); }
+  p.note { color: var(--sub); font-size: 9pt; }
+  strong { color: #C1454B; }
+
+  /* ---- 表 ---- */
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; font-size: 9.5pt; }
+  th, td { border: 1px solid #D9C8CC; padding: 4px 7px; vertical-align: top; text-align: left; }
+  th { background: var(--bg-soft); font-size: 9pt; }
+  td.c, th.c { text-align: center; }
+  .dot { color: var(--coral); font-weight: 700; }
+  .fold-mark { color: var(--teal); font-weight: 700; }
+  .url { font-family: Menlo, Consolas, monospace; font-size: 8pt; word-break: break-all; color: #2F6BB0; }
+
+  /* ---- カード要約 ---- */
+  .cardlist { margin: 4px 0 10px; }
+  .cardrow { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px dashed #E7D8DB; }
+  .cardrow:last-child { border-bottom: none; }
+  .cardrow .cname { flex: 0 0 44mm; font-weight: 700; font-size: 9.5pt; }
+  .cardrow .cbody { flex: 1; font-size: 9.5pt; }
+  .cardrow .cname .lbl {
+    display: inline-block; font-size: 7.5pt; font-weight: 700; border-radius: 4px;
+    padding: 0 5px; margin-right: 4px; vertical-align: 1px;
+  }
+  .lbl.fold { background: #DFF1EE; color: var(--teal); border: 1px solid var(--teal); }
+  .lbl.warn { background: #FDF3F2; color: #D64550; border: 1px solid #D64550; }
+  .lbl.btn  { background: #FFF3DC; color: #C1822A; border: 1px solid #E5A03A; }
+
+  .callout {
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 12px; margin: 8px 0; font-size: 9.5pt;
+  }
+  .callout.teal { background: #F0F8F8; border-color: #BFDEDE; }
+  ul { margin: 2px 0 8px 1.4em; font-size: 9.5pt; }
+  li { margin: 1px 0; }
+
+  .foot {
+    position: absolute; left: 15mm; right: 15mm; bottom: 8mm;
+    display: flex; justify-content: space-between;
+    color: var(--sub); font-size: 8pt; border-top: 1px solid var(--line); padding-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  印刷方法: iPadのSafariなら 共有 → プリント（またはPDFとして保存）。このボックスは印刷されません。全7ページです。
+</div>
+
+<!-- ================= 1ページ目: 概要・出しわけ対応表 ================= -->
+<div class="page">
+  <div class="doc-head">
+    <div class="kicker">K Ladies Clinic 新宿 ｜ 院内マニュアル（医師・スタッフ向け）</div>
+    <h1>ピルの飲み方ガイド — 患者さんが待合室で読んでいる内容</h1>
+    <div class="meta">2026年8月27日版 ／ 問診票アプリ（kladiesclinic.github.io/kiosk）内蔵のガイドの解説書</div>
+  </div>
+
+  <h2>このガイドはいつ・誰に表示されるか</h2>
+  <ul>
+    <li><strong>問診票を送信した直後</strong>、完了画面の代わりに表示され、待合室でそのまま読みます。事前記入の方は当日の受付完了画面の「ピルの飲み方ガイド」ボタンからも開けます。</li>
+    <li>問診票の「受診理由」のチェックに合わせて<strong>表示セクションが自動で変わります</strong>（下表）。英語表示の問診票では同内容の英語版が出ます。</li>
+  </ul>
+
+  <h2>出しわけ対応表（受診理由 → 表示セクション）</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>受診理由（問診票のチェック）</th>
+        <th class="c">Ⓐ 月経移動</th>
+        <th class="c">Ⓑ 症状の導入</th>
+        <th class="c">Ⓒ 低用量ピル<br>コース</th>
+        <th class="c">Ⓓ ニキビ・<br>肌荒れ</th>
+        <th class="c">Ⓔ ミニピル</th>
+        <th class="c">Ⓕ アフター<br>ピル</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>低用量ピル</td><td class="c"></td><td class="c"></td><td class="c dot">●</td><td class="c"></td><td class="c"></td><td class="c"></td></tr>
+      <tr><td>ニキビ・肌荒れ</td><td class="c"></td><td class="c dot">●肌</td><td class="c dot">●</td><td class="c dot">●</td><td class="c"></td><td class="c"></td></tr>
+      <tr><td>生理痛</td><td class="c"></td><td class="c dot">●痛</td><td class="c dot">●</td><td class="c"></td><td class="c"></td><td class="c"></td></tr>
+      <tr><td>生理不順</td><td class="c"></td><td class="c dot">●順</td><td class="c dot">●</td><td class="c"></td><td class="c"></td><td class="c"></td></tr>
+      <tr><td>PMS・気分の不調</td><td class="c"></td><td class="c dot">●P</td><td class="c dot">●</td><td class="c"></td><td class="c"></td><td class="c"></td></tr>
+      <tr><td>月経移動 <span style="color:#8A7378">（単独）</span></td><td class="c dot">●</td><td class="c"></td><td class="c">※1</td><td class="c"></td><td class="c"></td><td class="c"></td></tr>
+      <tr><td>ミニピル <span style="color:#8A7378">（単独）</span></td><td class="c"></td><td class="c"></td><td class="c fold-mark">▾折</td><td class="c"></td><td class="c dot">●先頭</td><td class="c"></td></tr>
+      <tr><td>アフターピル <span style="color:#8A7378">（単独）</span></td><td class="c"></td><td class="c"></td><td class="c fold-mark">▾折</td><td class="c"></td><td class="c"></td><td class="c dot">●先頭</td></tr>
+    </tbody>
+  </table>
+  <p class="note">
+    ●肌／●痛／●順／●P … その症状の導入カード（「なぜピルが◯◯に効くの？」）だけが出ます。
+    <span class="fold-mark">▾折</span> … 「低用量ピルの話も聞いてみたい方へ」の折りたたみに畳んで最後に置かれます。
+    ※1 … 月経移動<strong>だけ</strong>の方にはフルコースの代わりに「低用量ピルってどんな薬？」の1枚だけが月経移動セクション内に入ります。
+  </p>
+
+  <h2>複数チェック時のルール</h2>
+  <ul>
+    <li>チェックした理由のセクションが<strong>すべて</strong>表示されます。並び順は <strong>Ⓐ月経移動 → Ⓑ症状の導入 → Ⓒ低用量ピルコース → Ⓓニキビ → Ⓔミニピル → Ⓕアフターピル</strong>。<strong>月経移動は常に一番上</strong>です（予定が迫っている方が多いため）。</li>
+    <li>ミニピル・アフターピルの「折りたたみ扱い」は<strong>単独チェックのときだけ</strong>。他の理由と一緒なら通常表示です。</li>
+  </ul>
+
+  <h2>診察・受付に関わる仕掛け（重要）</h2>
+  <ul>
+    <li><strong>読了チェック</strong> … 各カードに「読みました」ボタンがあり、画面上部に「確認済み n / n」と出ます。折りたたみカードは任意読みでカウント対象外です。</li>
+    <li><strong>希望ボタン</strong> … 「アルダクトンについて聞いてみたい」（Ⓓ内）と「低用量ピルについて聞いてみたい」（Ⓕ内）。押すと<strong>送信済みの問診票に「◯◯希望」の行が書き足され、受付一覧とA4印刷にそのまま出ます</strong>。診察前に確認してください。</li>
+    <li>ガイドは「服薬指導の下読み」です。<strong>開始日・用量の最終指示は診察で行う前提</strong>の書き方になっています。</li>
+  </ul>
+
+  <div class="foot"><span>ピルの飲み方ガイド 医師向けマニュアル</span><span>1 / 7</span></div>
+</div>
+
+<!-- ================= 2ページ目: 確認用URL ================= -->
+<div class="page">
+  <h2>確認用URL（実物のガイドをそのまま見られます）</h2>
+  <p>スマホ・iPad・PCのブラウザで開けます。<strong>患者さんに出る画面と同じ実物</strong>です（プレビューでは低用量ピルコースが常に表示される点だけ実際と異なります。単独チェック時の折りたたみ・省略は前ページの表のとおり）。なお、受付完了画面のガイドボタンは端末に控えた受診理由で絞り込み、控えが無いとき（掲示QRを直接読んだ等）は低用量ピル＋ニキビ相当の標準表示になります。</p>
+
+  <h3>単独パターン</h3>
+  <table>
+    <thead><tr><th style="width:34mm">受診理由</th><th>URL</th></tr></thead>
+    <tbody>
+      <tr><td>低用量ピル</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=oc</td></tr>
+      <tr><td>ニキビ・肌荒れ</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=acne</td></tr>
+      <tr><td>月経移動</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=shift</td></tr>
+      <tr><td>ミニピル</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=mini</td></tr>
+      <tr><td>アフターピル</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=ec</td></tr>
+      <tr><td>生理痛</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=pain</td></tr>
+      <tr><td>生理不順</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=irregular</td></tr>
+      <tr><td>PMS・気分の不調</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=pms</td></tr>
+    </tbody>
+  </table>
+
+  <h3>よくある組み合わせ</h3>
+  <table>
+    <thead><tr><th style="width:34mm">組み合わせ</th><th>URL</th></tr></thead>
+    <tbody>
+      <tr><td>生理痛＋PMS</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=pain,pms</td></tr>
+      <tr><td>生理痛＋生理不順</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=pain,irregular</td></tr>
+      <tr><td>生理痛＋生理不順＋PMS</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=pain,irregular,pms</td></tr>
+      <tr><td>低用量ピル＋ニキビ</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=oc,acne</td></tr>
+      <tr><td>低用量ピル＋生理痛</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=oc,pain</td></tr>
+      <tr><td>月経移動＋低用量ピル</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=shift,oc</td></tr>
+      <tr><td>月経移動＋生理痛</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=shift,pain</td></tr>
+      <tr><td>アフターピル＋低用量ピル</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=ec,oc</td></tr>
+      <tr><td>ミニピル＋低用量ピル</td><td class="url">https://kladiesclinic.github.io/kiosk/intake.html?guide=1&amp;r=mini,oc</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout teal">
+    <strong style="color:var(--teal)">URLの読み方</strong> … <span class="url">&amp;r=</span> の後ろにキーをカンマ区切りで並べるだけです（oc=低用量ピル / acne=ニキビ / shift=月経移動 / mini=ミニピル / ec=アフターピル / pain=生理痛 / irregular=生理不順 / pms=PMS）。順番は表示に影響しません。末尾に <span class="url">&amp;lang=en</span> を足すと英語版になります。
+  </div>
+
+  <div class="foot"><span>ピルの飲み方ガイド 医師向けマニュアル</span><span>2 / 7</span></div>
+</div>
+
+<!-- ================= 3ページ目: Ⓐ月経移動・Ⓑ症状の導入 ================= -->
+<div class="page">
+  <h2><span class="tag">Ⓐ</span>月経移動（生理をずらしたい方）— 常にガイドの一番上</h2>
+  <div class="callout">当院の方針として<strong>中用量ピルは使わず、低用量ピルで移動する</strong>ことを最初に伝えています。</div>
+  <div class="cardlist">
+    <div class="cardrow"><div class="cname">月経移動は低用量ピルでできます</div><div class="cbody">月経移動＝中用量ピルのイメージに対して、「中用量ピルは吐き気などの副作用がとても強く出やすいため<strong>当院ではおすすめしていません</strong>。ふだん避妊や生理のお悩みに使う低用量ピルで、副作用がずっと軽く同じようにずらせます」と説明。</div></div>
+    <div class="cardrow"><div class="cname">低用量ピルってどんな薬？</div><div class="cbody">月経移動<strong>単独</strong>の方だけ、ここにⒸ先頭と同じ仕組みカード（次ページ参照）が入ります。他の理由も選んだ方はⒸ側に出るため重複しません。</div></div>
+    <div class="cardrow"><div class="cname">遅らせる？早める？（2つの方法）</div><div class="cbody">どちらも「<strong>ずらしたい生理の1つ前の生理」から始める</strong>のがコツ、<strong>最低でもご予定の1週間前までに飲み始めれば移動できる</strong>、スケジュールは周期次第なので<strong>予定が決まったら早めに受診</strong>を、と案内。<br>
+    <strong>① 遅らせたいとき</strong>: 1つ前の生理の開始5日目までに飲み始め、来てほしくない日の最後まで毎日1錠 → 飲み終えて2〜3日で生理。<br>
+    <strong>② 早めたいとき</strong>: 今の生理の開始5日目までに飲み始め、10〜14日間毎日1錠 → 飲み終えて2〜3日で生理（予定の頃には終わっている）。</div></div>
+    <div class="cardrow"><div class="cname">飲んでいる間の注意</div><div class="cbody">低用量ピルは副作用が出にくい。いちばん大事なのは飲み忘れないこと（<strong>忘れると予定より早く出血が始まる</strong>）。移動後そのまま避妊・生理痛改善に続けることもできる、と続けやすさに触れて締め。</div></div>
+  </div>
+
+  <h2><span class="tag">Ⓑ</span>症状の導入カード（該当する症状の分だけ表示）</h2>
+  <p class="note">飲み方の説明に入る前に「なぜピルでその症状が良くなるのか」を1枚ずつ。仕組みが腹落ちすると継続につながる、という位置づけです。</p>
+  <div class="cardlist">
+    <div class="cardrow"><div class="cname">なぜピルが生理痛に効くの？</div><div class="cbody">痛みの原因は、はがれる内膜から出る<strong>プロスタグランジン</strong>（子宮を収縮させる）。ピルで内膜が薄く保たれると産生が減り、痛みの<strong>もとから</strong>軽くなる。経血量も減る。鎮痛剤（痛くなってから抑える）との違いも説明。</div></div>
+    <div class="cardrow"><div class="cname">なぜピルで生理不順が整うの？</div><div class="cbody">原因は排卵リズムの乱れによるホルモンの波のばらつき。毎日一定量を補うので<strong>飲んでいる間は出血が決まったタイミングで来る</strong>。「次がいつ来るか分からない」がなくなる。生理が長く来ていない方には内膜保護の観点でも早めの相談を促す。</div></div>
+    <div class="cardrow"><div class="cname">なぜピルがPMS・気分の不調に効くの？</div><div class="cbody">PMSは<strong>排卵後のホルモンの急なアップダウン</strong>が引き金。ピルで排卵が休みになり波が小さくなるため、生理前のつらさがまるごと軽くなる方が多い。気分症状が強ければ診察で薬剤の種類も相談できる、と伝達を促す。</div></div>
+    <div class="cardrow"><div class="cname">なぜピルが肌荒れに効くの？<br><span style="font-weight:400;color:#8A7378;font-size:8.5pt">（ニキビ選択時・Ⓓとセット）</span></div><div class="cbody">原因は<strong>男性ホルモン（アンドロゲン）による皮脂増加</strong>。ピルがその働きを抑えて皮脂が減り、ニキビができにくくなる。効果は<strong>シート2〜3枚（2〜3ヶ月）</strong>でゆっくり現れるので、すぐ変化がなくても続けることが大切、と先に伝える（機序のイラスト3コマ付き）。</div></div>
+  </div>
+
+  <div class="foot"><span>ピルの飲み方ガイド 医師向けマニュアル</span><span>3 / 7</span></div>
+</div>
+
+<!-- ================= 4ページ目: Ⓒ前半 ================= -->
+<div class="page">
+  <h2><span class="tag">Ⓒ</span>低用量ピルコース（前半）— 仕組み・メリット・飲み方</h2>
+  <p class="note">トリキュラー・マーベロンの基本セット。低用量ピル／ニキビ／生理痛／生理不順／PMSのいずれかを選んだ方に表示。</p>
+  <div class="cardlist">
+    <div class="cardrow"><div class="cname">低用量ピルってどんな薬？</div><div class="cbody">女性ホルモンを少しずつ補う薬。①排卵がお休み ②内膜が厚くならない ③頸管粘液が変わり精子が通りにくい、の3つで<strong>正しく飲めば99%以上の避妊効果</strong>。ホルモンの波が小さくなるので生理痛・PMSも軽くなる（子宮・卵巣の図解付き）。</div></div>
+    <div class="cardrow"><div class="cname">低用量ピルのうれしい効果</div><div class="cbody">避妊以外のメリット7項目をタップ式チップで提示。各チップを押すと理由が開きます:<br>
+      ① 生理痛がやわらぐ ② 経血量が減って貧血の改善に ③ 生理の日が予測しやすくなる ④ PMS・気分の不調がやわらぐ ⑤ ニキビ・肌荒れの改善 ⑥ 卵巣がん・子宮体がんのリスクを下げる ⑦ 将来妊娠したいときのために（排卵は中止後数ヶ月で戻る・子宮内膜症の進行を抑える）</div></div>
+    <div class="cardrow"><div class="cname">毎日1錠、なるべく同じ時間に</div><div class="cbody">寝る前・歯みがき・朝食後など毎日の習慣とセットにすると忘れにくい。</div></div>
+    <div class="cardrow"><div class="cname">シートは順番どおりに</div><div class="cbody">矢印・番号どおりに服用。<strong>最後の7錠は偽薬</strong>（トリキュラー白／マーベロン緑）でこの間に消退出血。<strong>28錠飲み終えたら休まず翌日から次のシート</strong>。トリキュラーのLNGは低用量ピルの中で血栓症リスクが最も低いタイプと報告、の一文あり。シート図: トリキュラー 赤6→白5→橙10→白7、マーベロン 白21→緑7。</div></div>
+    <div class="cardrow"><div class="cname">飲み始めと効果</div><div class="cbody">開始日は<strong>診察で案内</strong>と明記（ガイドでは指定しない）。<strong>開始後7日間はコンドーム等を併用</strong>。</div></div>
+    <div class="cardrow"><div class="cname">飲み忘れたとき</div><div class="cbody"><strong>1錠（24時間以内）</strong>: 気づいたらすぐ1錠＋その日の分も通常どおり（1日2錠可）。<strong>2錠以上</strong>: 直近の1錠だけ飲んで再開し、<strong>7日間連続で飲めるまで他の避妊法を併用</strong>。迷ったら電話を、と案内。</div></div>
+  </div>
+
+  <div class="callout">
+    <strong style="color:var(--teal)">患者から出やすい質問の下地</strong> … 「開始日はいつ？」（→診察で指示する前提）「飲み忘れの併用期間」「偽薬週の出血」あたりはガイドで予習済みの状態で診察に入ってきます。
+  </div>
+
+  <div class="foot"><span>ピルの飲み方ガイド 医師向けマニュアル</span><span>4 / 7</span></div>
+</div>
+
+<!-- ================= 5ページ目: Ⓒ後半 ================= -->
+<div class="page">
+  <h2><span class="tag">Ⓒ</span>低用量ピルコース（後半）— 副作用・折りたたみ補足</h2>
+  <div class="cardlist">
+    <div class="cardrow"><div class="cname">飲み始めによくある軽い副作用</div><div class="cbody">1〜3ヶ月の慣らし期間の話。<strong>2〜3シートで自然に落ち着く・やめなくていい</strong>を軸に、タップ式で5症状: 吐き気（食後・寝る前で軽減、吐き気止め併用可）／少量の不正出血（continueでOK）／頭痛・むくみ（市販薬可、未経験の激しい頭痛は警告カードへ誘導）／胸の張り／気分の変化（続けば種類変更を相談）。</div></div>
+    <div class="cardrow"><div class="cname">血栓症ってなに？</div><div class="cbody">頻度の棒グラフ付き（FDA公表値、1万人・年あたり）: <strong>非服用 1〜5人 ／ ピル服用中 3〜9人 ／ 妊娠中 5〜20人 ／ 出産後12週 40〜65人</strong>。「妊娠・出産のほうがずっと高い」ことで過度な不安を取り、警告サインを知れば早期発見できると締める。</div></div>
+    <div class="cardrow"><div class="cname"><span class="lbl warn">警告</span>こんなときはすぐご連絡ください</div><div class="cbody">血栓症のサイン5つ（<strong>激しい頭痛／胸の痛み・息苦しさ／ふくらはぎの痛み・むくみ／目が見えにくい・チカチカ／激しい腹痛</strong>）。様子を見ずに服用中止→連絡・受診、と指示。ACHESに相当する内容です。</div></div>
+    <div class="cardrow"><div class="cname"><span class="lbl fold">折りたたみ</span>あわせて気をつけてほしいこと</div><div class="cbody">3本立て:<br>
+      <strong>飲み合わせ</strong> … ほとんどの市販薬は併用可。一部の抗てんかん薬・リファンピシン・セント・ジョーンズ・ワートは効果減弱。他院・薬局で「ピル服用中」と伝える／お薬手帳に記載を推奨。<br>
+      <strong>タバコ</strong> … <strong>35歳以上・1日15本以上は処方不可</strong>（加熱式も同じ扱い）。禁煙推奨。<br>
+      <strong>性感染症</strong> … ピルではSTIは防げない。新しいパートナー時はコンドーム併用、院内でSTI検査可。</div></div>
+    <div class="cardrow"><div class="cname"><span class="lbl fold">折りたたみ</span>保険のピルとの違いは？</div><div class="cbody">当院のトリキュラー・マーベロンは自費（<strong>1シート3,300円・税込</strong>）。「保険が使えない＝損」に見えないよう自費の利点6つをチップで: まとめて処方で通院が少ない／避妊・肌など目的を選ばない／<strong>2回目からは受付でお渡し</strong>／オンライン診療でも継続可／料金が明朗（3割負担でも諸費用込みでは大差ないことが多い）／世界の定番薬で海外でも継続しやすい。</div></div>
+  </div>
+
+  <div class="callout">
+    折りたたみ2枚は「読みました」カウントの対象外です（開きたい人だけ読む位置づけ）。診察で飲み合わせ・喫煙歴に触れる際、患者側は未読の可能性があります。
+  </div>
+
+  <div class="foot"><span>ピルの飲み方ガイド 医師向けマニュアル</span><span>5 / 7</span></div>
+</div>
+
+<!-- ================= 6ページ目: Ⓓニキビ・Ⓔミニピル ================= -->
+<div class="page">
+  <h2><span class="tag">Ⓓ</span>ニキビ・肌荒れの方へ</h2>
+  <div class="cardlist">
+    <div class="cardrow"><div class="cname">よくなるまでのペース</div><div class="cbody">経過を3段階で先に予告: <strong>1ヶ月目</strong>=まだ変化なし（一時的に増える人もいるが継続でOK）→ <strong>2〜3ヶ月</strong>=皮脂が減り新しいニキビが減る → <strong>3〜6ヶ月</strong>=跡・赤みも薄く。「効かないからやめた」を防ぐのが狙い（経過イラスト付き）。</div></div>
+    <div class="cardrow"><div class="cname"><span class="lbl btn">希望ボタン</span>ピルだけでは治らなかった場合・急いで治したい方へ</div><div class="cbody"><strong>アルダクトン</strong>の併用案内。ピルが男性ホルモンを「減らし」、アルダクトンが「肌に届かないようブロック」のダブル効果。用量は診察で説明・<strong>妊娠中不可なのでピルとセット</strong>と明記。自費<strong>1ヶ月分 8,800円（税込）</strong>。→「アルダクトンについて聞いてみたい」ボタンで<strong>問診票に希望の行が追記</strong>されます。</div></div>
+    <div class="cardrow"><div class="cname"><span class="lbl fold">折りたたみ</span>ピルと一緒にやってほしいスキンケア</div><div class="cbody">洗いすぎない（1日2回まで）・保湿・毎日の日焼け止め・潰さない。院内取扱の<strong>高濃度VCローション 6,600円</strong>・<strong>ヒルドイドローション 1,660円</strong>も紹介。</div></div>
+  </div>
+
+  <h2><span class="tag">Ⓔ</span>ミニピル（スリンダ）</h2>
+  <p class="note">単独チェックの方はこのコースが先頭になり、低用量ピルコースは折りたたみに。単独で完結する構成です。</p>
+  <div class="cardlist">
+    <div class="cardrow"><div class="cname">ミニピルってどんな薬？</div><div class="cbody"><strong>黄体ホルモン（ドロスピレノン）のみ</strong>・エストロゲン無し。排卵お休み＋頸管粘液の変化で、正しく飲めば<strong>低用量ピルと同等の避妊効果</strong>。生理痛・PMSが軽くなる方も多い。</div></div>
+    <div class="cardrow"><div class="cname">低用量ピルとの違い</div><div class="cbody">エストロゲン無し→<strong>血栓症リスクをほとんど上げない</strong>。<strong>授乳中・喫煙者・片頭痛のある方</strong>でも使えるのが強み。そのかわり出血パターンが乱れやすい（2〜3ヶ月は不正出血や無月経あり、慣れれば落ち着く）。</div></div>
+    <div class="cardrow"><div class="cname">スリンダのシートと飲み方</div><div class="cbody"><strong>白24錠（有効）→ 緑4錠（お休み）</strong>を毎日同時刻に。緑も習慣維持のため飲み、<strong>飲み終えたら休まず翌日から次のシート</strong>。緑の間に出血が来ない月があっても心配不要。</div></div>
+    <div class="cardrow"><div class="cname">飲み忘れ・吐いてしまったとき</div><div class="cbody">気づいたらすぐ1錠。<strong>24時間以上</strong>遅れたら直近の1錠だけ飲んで再開＋<strong>7日間は他の避妊法を併用</strong>。服用後<strong>2時間以内の嘔吐はもう1錠</strong>。</div></div>
+  </div>
+
+  <div class="foot"><span>ピルの飲み方ガイド 医師向けマニュアル</span><span>6 / 7</span></div>
+</div>
+
+<!-- ================= 7ページ目: Ⓕアフターピル・料金一覧 ================= -->
+<div class="page">
+  <h2><span class="tag">Ⓕ</span>アフターピル</h2>
+  <p class="note">単独チェックの方はこのセクションが先頭になり（急ぎのため）、低用量ピルコースは折りたたみに。</p>
+  <div class="cardlist">
+    <div class="cardrow"><div class="cname">できるだけ早く1錠</div><div class="cbody">時間が短いほど効果が高い（目安<strong>72時間以内</strong>）。<strong>2時間以内に吐いたら効果が落ちるためもう1錠必要</strong>→当院へ連絡、と指示。</div></div>
+    <div class="cardrow"><div class="cname">飲んだあとの経過</div><div class="cbody">数日〜3週間で消退出血が来ることが多い。<strong>1ヶ月来なければ市販の妊娠検査薬で確認のうえ当院へ相談</strong>。</div></div>
+    <div class="cardrow"><div class="cname"><span class="lbl btn">希望ボタン</span>これからの避妊について</div><div class="cbody">「アフターピルはあくまで緊急用」とし、継続避妊には低用量ピルを提案。比較表: 使用目的（緊急の手段↔継続的な避妊・周期コントロール）／服用方法（72時間以内に1錠↔毎日決まった時間）／避妊効果（約99%↔ほぼ100%）／副作用（強い↔弱い）／費用（<strong>12,000円 ↔ 3,300円</strong>）。→「低用量ピルについて聞いてみたい」ボタンで<strong>問診票に希望の行が追記</strong>されます。</div></div>
+  </div>
+
+  <h2>ガイドに記載している料金（税込）</h2>
+  <table>
+    <thead><tr><th>項目</th><th style="width:36mm">料金</th><th>記載場所</th></tr></thead>
+    <tbody>
+      <tr><td>低用量ピル（トリキュラー・マーベロン）</td><td><strong>3,300円</strong>／シート</td><td>Ⓒ保険との違い・Ⓕ比較表</td></tr>
+      <tr><td>アルダクトン（ニキビ治療・自費）</td><td><strong>8,800円</strong>／1ヶ月分</td><td>Ⓓ</td></tr>
+      <tr><td>高濃度VCローション</td><td><strong>6,600円</strong></td><td>Ⓓスキンケア（折りたたみ）</td></tr>
+      <tr><td>ヒルドイドローション</td><td><strong>1,660円</strong></td><td>Ⓓスキンケア（折りたたみ）</td></tr>
+      <tr><td>アフターピル</td><td><strong>12,000円</strong></td><td>Ⓕ比較表</td></tr>
+    </tbody>
+  </table>
+
+  <h2>ガイドに記載している主な数値（診察時の整合用）</h2>
+  <ul>
+    <li>避妊効果: 正しく服用で<strong>99%以上</strong>（低用量ピル）／ミニピルは「低用量ピルと同じくらい」</li>
+    <li>開始後の併用期間: <strong>7日間</strong>（低用量ピル・ミニピル飲み忘れ後も同じ）</li>
+    <li>血栓症頻度（1万人・年）: 非服用1〜5／服用中3〜9／妊娠中5〜20／産後12週40〜65（FDA公表値）</li>
+    <li>喫煙制限: <strong>35歳以上・1日15本以上は処方不可</strong>（加熱式含む）</li>
+    <li>ニキビの効果実感: <strong>2〜3ヶ月</strong>、跡・赤みは3〜6ヶ月</li>
+    <li>月経移動: 早める場合は<strong>10〜14日間</strong>服用、いずれも中止後<strong>2〜3日</strong>で出血、<strong>最低でも予定の1週間前までに開始</strong></li>
+    <li>アフターピル: <strong>72時間以内</strong>目安、2時間以内の嘔吐で再服用、1ヶ月無月経で検査</li>
+  </ul>
+
+  <div class="callout">
+    内容の修正・追記のご要望は、かねこまでお知らせください。ガイド本文とこのマニュアルを合わせて更新します。
+  </div>
+
+  <div class="foot"><span>ピルの飲み方ガイド 医師向けマニュアル</span><span>7 / 7</span></div>
+</div>
+
+</body>
+</html>
