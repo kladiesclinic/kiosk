@@ -2842,6 +2842,8 @@
     }
 
     // ---- 月経移動（低用量ピルで行う。中用量ピルは副作用が強いので当院では使わない） ----
+    // 先頭に固定した月経移動セクションの枚数。アフターピル併選時はこの次に差し込む
+    var shiftFrontLen = 0;
     if (wantsShift) {
       var shiftStart = cards.length;
       cards.push(secLabel("月経移動（生理をずらしたい方）", "Moving your period"));
@@ -2895,6 +2897,7 @@
           : "低用量ピルは吐き気などの副作用が出にくい、やさしいお薬です。いちばん大事なのは飲み忘れないこと。<strong>飲み忘れると予定より早く出血が始まってしまう</strong>ことがあるので、毎日忘れずに飲んでください。なお、月経移動が終わったあとそのまま飲み続けて、避妊や生理痛の改善に使うこともできます。ご希望の方は診察でご相談ください。",
       }));
       // 月経移動で来た方が最初に読みたいセクションなので、ガイドの先頭へ移す
+      shiftFrontLen = cards.length - shiftStart;
       Array.prototype.unshift.apply(cards, cards.splice(shiftStart));
     }
 
@@ -3018,10 +3021,14 @@
       }));
     }
 
-    // アフターピルだけの人は、急ぎのアフターピルの説明を先頭へ動かす
-    // （この時点で cards は [低用量ピルの折りたたみ, アフターピル一式] の並び）
+    // アフターピルは急ぎなので前へ動かす。
+    // 単独の人: 先頭へ（この時点で cards は [低用量ピルの折りたたみ, アフターピル一式] の並び）。
+    // 低用量ピルなど他の理由と一緒の人: 月経移動の次（月経移動が無ければ先頭）へ
     if (ecFirst) {
       cards.unshift.apply(cards, cards.splice(ecStart));
+    } else if (wantsEc) {
+      var ecCards = cards.splice(ecStart);
+      Array.prototype.splice.apply(cards, [shiftFrontLen, 0].concat(ecCards));
     }
 
     // 完了画面の代わりにガイドへ直行するので、「送信できた」ことと、
