@@ -2662,12 +2662,16 @@ export default function StaffView() {
                               })()}
                             </td>
                             <td className="px-2 py-3">
+                              {/* 受付一覧の区分タグと同じ配色（初診=紫・再診=ティール）で
+                                  文字を読まずに拾えるようにする。区分のないメニューは従来の赤 */}
                               <span
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
                                 style={
                                   isPickup
                                     ? { background: "#DFF5F3", color: "#0F8B8D" }
-                                    : { background: "#FCE9EA", color: "#D64550" }
+                                    : VISIT_KIND_BADGE[b.visit_kind]
+                                      ? { background: VISIT_KIND_BADGE[b.visit_kind].bg, color: VISIT_KIND_BADGE[b.visit_kind].fg }
+                                      : { background: "#FCE9EA", color: "#D64550" }
                                 }
                               >
                                 {isPickup ? <PackageCheck size={12} /> : <Stethoscope size={12} />}
