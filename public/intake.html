@@ -3188,8 +3188,20 @@
     // こちらのヘッダーは隠し、内容の高さを親ページへ知らせて iframe をその高さに
     // 合わせてもらう（枠の中でスクロールせず、受付機と同じくページの続きに見える）
     if (new URLSearchParams(window.location.search).get("embed") === "1") {
-      var hd = document.querySelector("header");
-      if (hd) hd.style.display = "none";
+      // 親ページの背景がそのまま透け、カード枠や余白の「箱」が出ないようにする
+      // （ガイドのカードだけが親ページの続きとして並ぶ）
+      [].forEach.call(document.querySelectorAll("header, footer, .page-head"), function (el) {
+        el.style.display = "none";
+      });
+      document.documentElement.style.background = "transparent";
+      document.body.style.background = "transparent";
+      var wrapEl = document.querySelector(".wrap");
+      if (wrapEl) { wrapEl.style.padding = "0"; wrapEl.style.maxWidth = "none"; }
+      var cardEl = document.querySelector(".card");
+      if (cardEl) {
+        cardEl.style.background = "transparent"; cardEl.style.border = "none";
+        cardEl.style.borderRadius = "0"; cardEl.style.padding = "0"; cardEl.style.marginTop = "0";
+      }
       var postH = function () {
         try {
           window.parent.postMessage({ klcsGuideHeight: document.body.scrollHeight }, "*");
