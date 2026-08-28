@@ -1008,6 +1008,9 @@
   /* 診察のない日の初診アフターピル（?ec=1）。受付上はお渡し（visit=pickup）だが
      初めての方なのでこのフル問診票を書いてもらう。受付行には薬名「アフターピル」と
      受付画面で聞いた性行為日（?ecdate=）を載せ、受診理由は選択済みで開く */
+  /* 予約なしの診察で「予約の方優先」に同意済み（受付画面の同意画面を通った印。
+     この問診票が受付を作るときに priority_agreed_at として記録する） */
+  var SELF_AGR = new URLSearchParams(window.location.search).get("agr") === "1";
   var SELF_EC = new URLSearchParams(window.location.search).get("ec") === "1";
   var SELF_EC_DATE = new URLSearchParams(window.location.search).get("ecdate") || "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(SELF_EC_DATE)) SELF_EC_DATE = "";
@@ -1089,6 +1092,7 @@
         p_medications: SELF_EC && SELF_VISIT === "pickup" ? ["アフターピル"] : null,
         p_ec_intercourse_date: SELF_EC && SELF_VISIT === "pickup" ? SELF_EC_DATE || null : null,
         p_wants_english: !!(document.getElementById("if-english") && document.getElementById("if-english").checked),
+        p_priority_agreed: SELF_AGR,
         p_line_user_id: SELF_LINE || null,
         p_source: "phone",
       }),
