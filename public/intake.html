@@ -3226,6 +3226,11 @@
     // 期限はRPC（アルダクトン希望の書き足し）と同じ7日間にそろえる
     var fresh = saved && Date.now() - (saved.at || 0) < 7 * 24 * 3600 * 1000;
     if (fresh && saved.formId && !forced.length) window.LAST_FORM_ID = saved.formId;
+    // 受付完了画面の埋め込み（booking-app /checkin）から渡される問診票の行ID。
+    // これで「読みました」の記録とアルダクトン希望の書き足しが、記入時と別の
+    // 端末・別の日でも本人の問診票に紐付く（IDは本人の受付+tokenでしか引けない）
+    var ftParam = (new URLSearchParams(window.location.search).get("ft") || "").trim();
+    if (/^f-[A-Za-z0-9.-]{5,60}$/.test(ftParam)) window.LAST_FORM_ID = ftParam;
     showPillGuide({ standalone: true, reasons: forced.length ? forced : fresh ? saved.reasons : null });
     window.scrollTo(0, 0);
     // 単独表示（メールのリンク等）でも外側の白いカード枠（sub.css の .card）は出さず、
