@@ -11,7 +11,6 @@ import {
   Stethoscope,
   CheckCircle2,
   FileText,
-  ExternalLink,
   CalendarDays,
   CalendarCheck,
   UserPlus,
@@ -2539,34 +2538,8 @@ export default function StaffView() {
                 代理で受付
               </button>
             )}
-            {/* 1日の予定表。来院とオンラインを1枚にまとめて刷る。
-                日付で絞らないタブ（患者を探す・設定）では出さない */}
-            {tab !== "search" && tab !== "settings" && tab !== "feedback" && (
-              <button
-                onClick={printSchedule}
-                disabled={schedulePages.length === 0 || schedulePrinting}
-                title="来院とオンラインを枠ごとに並べた1日の予定表をA4で印刷します（空き枠も出ます）"
-                className="h-10 flex items-center gap-1.5 px-4 rounded-xl text-sm font-medium active:opacity-70"
-                style={{
-                  background: "#FFFFFF",
-                  border: `1.5px solid ${schedulePages.length ? "#0F8B8D" : "#F2DFE4"}`,
-                  color: schedulePages.length ? "#0F8B8D" : "#C9AEB3",
-                  opacity: schedulePrinting ? 0.5 : 1,
-                }}
-              >
-                <Printer size={15} />
-                {schedulePrinting ? "PDF作成中..." : `1日の予定表（来院${scheduleCounts.visit}＋オンライン${scheduleCounts.online}）`}
-              </button>
-            )}
-            <a
-              href="#"
-              onClick={(e) => { e.preventDefault(); window.location.hash = ""; }}
-              className="h-10 flex items-center gap-1.5 px-4 rounded-xl text-sm font-medium"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378", textDecoration: "none" }}
-            >
-              <ExternalLink size={15} />
-              受付機画面へ
-            </a>
+            {/* 「1日の予定表」はオンライン診療の印刷とセットで使うので pillorder タブへ移動。
+                「受付機画面へ」は受付機の運用をやめたので外した（受付は患者のスマホQR） */}
             <button
               onClick={load}
               className="h-10 flex items-center gap-1.5 px-4 rounded-xl text-sm font-medium active:opacity-70"
@@ -2877,6 +2850,22 @@ export default function StaffView() {
                 {pillorderUnfilled.length > 0 && <span style={{ color: "#B7791F" }}>・問診票未記入 {pillorderUnfilled.length}</span>}）
               </h2>
               <div className="flex items-center gap-2 flex-wrap">
+                {/* 来院とオンラインを枠ごとに並べた1日の予定表。まとめて印刷と同じ流れで使う */}
+                <button
+                  onClick={printSchedule}
+                  disabled={schedulePages.length === 0 || schedulePrinting}
+                  title="来院とオンラインを枠ごとに並べた1日の予定表をA4で印刷します（空き枠も出ます）"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium active:opacity-70"
+                  style={{
+                    background: "#FFFFFF",
+                    border: `1.5px solid ${schedulePages.length ? "#0F8B8D" : "#F2DFE4"}`,
+                    color: schedulePages.length ? "#0F8B8D" : "#C9AEB3",
+                    opacity: schedulePrinting ? 0.5 : 1,
+                  }}
+                >
+                  <Printer size={15} />
+                  {schedulePrinting ? "PDF作成中..." : `1日の予定表（来院${scheduleCounts.visit}＋オンライン${scheduleCounts.online}）`}
+                </button>
                 <button
                   onClick={printAllQuestionnaires}
                   disabled={(monshinPrintRows.length + dayIntakeForms.length) === 0 || monshinPrinting}
