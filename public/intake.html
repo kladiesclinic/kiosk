@@ -3221,6 +3221,13 @@
     if (fresh && saved.formId && !forced.length) window.LAST_FORM_ID = saved.formId;
     showPillGuide({ standalone: true, reasons: forced.length ? forced : fresh ? saved.reasons : null });
     window.scrollTo(0, 0);
+    // 単独表示（メールのリンク等）でも外側の白いカード枠（sub.css の .card）は出さず、
+    // ガイドのカードをページ背景の上に直接並べる（埋め込み時と同じ見た目）
+    var cardEl = document.querySelector(".card");
+    if (cardEl) {
+      cardEl.style.background = "transparent"; cardEl.style.border = "none";
+      cardEl.style.borderRadius = "0"; cardEl.style.padding = "0";
+    }
     // &embed=1: 別の問診票（Zoom英語・オンライン診療）の送信完了画面への埋め込み表示。
     // こちらのヘッダーは隠し、内容の高さを親ページへ知らせて iframe をその高さに
     // 合わせてもらう（枠の中でスクロールせず、受付機と同じくページの続きに見える）
@@ -3234,11 +3241,7 @@
       document.body.style.background = "transparent";
       var wrapEl = document.querySelector(".wrap");
       if (wrapEl) { wrapEl.style.padding = "0"; wrapEl.style.maxWidth = "none"; }
-      var cardEl = document.querySelector(".card");
-      if (cardEl) {
-        cardEl.style.background = "transparent"; cardEl.style.border = "none";
-        cardEl.style.borderRadius = "0"; cardEl.style.padding = "0"; cardEl.style.marginTop = "0";
-      }
+      if (cardEl) cardEl.style.marginTop = "0"; // 枠消しは単独表示と共通。埋め込みは上余白も詰める
       var postH = function () {
         try {
           window.parent.postMessage({ klcsGuideHeight: document.body.scrollHeight }, "*");
