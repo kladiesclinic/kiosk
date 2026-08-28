@@ -2193,7 +2193,7 @@ export default function StaffView() {
       style: { background: "#F4F1FC", color: "#5B4BB8", borderTop: "1px solid #E4DDF7", borderBottom: "1px solid #E4DDF7" },
     },
     {
-      key: "walkin", rows: walkinCheckins, label: "予約なし・お薬のみ", note: "受付順",
+      key: "walkin", rows: walkinCheckins, label: "診察当日順番待ち・お薬のみ", note: "受付順",
       style: { background: "#FBF4F0", color: "#A9746B", borderTop: "1px solid #F2E2DA", borderBottom: "1px solid #F2E2DA" },
     },
   ].filter((s) => s.rows.length > 0);
