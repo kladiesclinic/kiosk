@@ -130,7 +130,7 @@
      screen so the PDF button still has something to save. */
   .done-panel {
     display: none; background: #E8F5EC; border: 1px solid #BFE3CC;
-    border-radius: 16px; padding: 22px; margin-bottom: 28px;
+    border-radius: 16px; padding: 22px; margin: 28px 0;
   }
   .done-panel.show { display: block; }
   .done-head { display: flex; align-items: center; gap: 12px; }
@@ -149,7 +149,7 @@
      送信後、受診理由に「低用量ピル」か「ニキビ・肌荒れ」があるときだけ表示する
      （中身はJSの showPillGuide が組み立てる）。お渡しまでの待ち時間に読んでもらい、
      項目ごとに「読みました」を押してもらう。 */
-  .pill-guide { display: none; margin-bottom: 28px; }
+  .pill-guide { display: none; margin: 28px 0; }
   .pill-guide.show { display: block; }
   .pg-lead {
     background: #FCF1F0; border: 1px solid var(--line); border-radius: 16px;
@@ -397,19 +397,22 @@
     </div>
   </div>
 
-  <div class="card">
-
-    <div class="done-panel" id="if-done">
-      <div class="done-head">
-        <div class="done-tick">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-        </div>
-        <h2>Questionnaire received<span class="ja">問診票を受け付けました</span></h2>
+  <!-- 完了バナーとガイドは白カードの外（上）に置く: ガイドのカードがページ背景の上に
+       直接並ぶ（埋め込み・メール表示と同じ見た目）。記入済みの全問はPDF保存用に
+       下の白カードの中に残る -->
+  <div class="done-panel" id="if-done">
+    <div class="done-head">
+      <div class="done-tick">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
       </div>
+      <h2>Questionnaire received<span class="ja">問診票を受け付けました</span></h2>
     </div>
+  </div>
 
-    <!-- 低用量ピルの飲み方ガイド（送信後、対象の方だけJSが中身を入れて表示する） -->
-    <div class="pill-guide" id="pill-guide" aria-live="polite"></div>
+  <!-- 低用量ピルの飲み方ガイド（送信後、対象の方だけJSが中身を入れて表示する） -->
+  <div class="pill-guide" id="pill-guide" aria-live="polite"></div>
+
+  <div class="card">
 
     <form id="intake-form" novalidate>
 
@@ -3242,6 +3245,8 @@
       var wrapEl = document.querySelector(".wrap");
       if (wrapEl) { wrapEl.style.padding = "0"; wrapEl.style.maxWidth = "none"; }
       if (cardEl) cardEl.style.marginTop = "0"; // 枠消しは単独表示と共通。埋め込みは上余白も詰める
+      var pgEl = document.getElementById("pill-guide");
+      if (pgEl) pgEl.style.marginTop = "0"; // 親ページの完了バナー直下にぴったり続ける
       var postH = function () {
         try {
           window.parent.postMessage({ klcsGuideHeight: document.body.scrollHeight }, "*");
