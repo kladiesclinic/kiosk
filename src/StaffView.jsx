@@ -1644,10 +1644,10 @@ export default function StaffView() {
   };
 
   // 問診票の受診理由から、飲み方ガイドの絞り込みキーを推定する。
-  // Zoom英語は a_en に kiosk と同じ選択肢文字列、pillorder は a_ja に日本語の選択肢が入る。
+  // 受診理由の qid は /monshin が "reason"、Zoom英語（klcs.jp/en）が "reason_for_visit"。
   // pillorder（オンライン診療）はピル処方が前提なので低用量ピルコース（oc）を常に含める
   const guideKeysFromMonshin = (m) => {
-    const row = (m?.answers || []).find((a) => a?.qid === "reason");
+    const row = (m?.answers || []).find((a) => a?.qid === "reason" || a?.qid === "reason_for_visit");
     const txt = `${row?.a_ja || ""} ${row?.a_en || ""}`;
     const keys = [];
     const add = (k) => { if (!keys.includes(k)) keys.push(k); };
