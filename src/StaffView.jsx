@@ -457,6 +457,22 @@ function VisitKindTag({ c }) {
   );
 }
 
+// 飲み方ガイドの読了状況。ガイド側（intake.html）が「読みました」を押すたびに
+// set_intake_guide_read / set_monshin_guide_read で送ってくる（048_guide_read.sql）。
+// total が無い＝ガイドの対象外 or 旧データなので何も出さない
+function GuideReadTag({ read, total }) {
+  if (!total) return null;
+  const done = (read ?? 0) >= total;
+  return (
+    <span
+      className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
+      style={done ? { background: "#DFF5F3", color: "#0F8B8D" } : { background: "#FFF3DC", color: "#B7791F" }}
+    >
+      {done ? "ガイド確認済" : `ガイド ${read ?? 0}/${total}`}
+    </span>
+  );
+}
+
 // 受付行から問診票のURLを組み立てる（受付機の qrUrlFor と同じ出し分け）。
 // 紙の受付票を出さない運用なので、患者さんが画面を閉じて問診票のリンクを
 // 見失ったときは、スタッフがこのQRを見せて読み直してもらう。
@@ -2683,14 +2699,17 @@ export default function StaffView() {
                             <td className="px-2 py-3 text-xs">{CHANNEL_LABEL[b.channel] || b.channel}</td>
                             <td className="px-2 py-3">
                               {bf ? (
-                                <button
-                                  onClick={() => setSelectedForm(bf)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
-                                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
-                                >
-                                  <FileText size={12} />
-                                  表示
-                                </button>
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <button
+                                    onClick={() => setSelectedForm(bf)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                    style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                  >
+                                    <FileText size={12} />
+                                    表示
+                                  </button>
+                                  <GuideReadTag read={bf.guide_read} total={bf.guide_total} />
+                                </div>
                               ) : (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>{isPickup ? "—" : "未記入"}</span>
                               )}
@@ -2850,14 +2869,17 @@ export default function StaffView() {
                             </td>
                             <td className="px-2 py-3 align-top">
                               {m ? (
-                                <button
-                                  onClick={() => setSelectedMonshin(m)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
-                                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
-                                >
-                                  <FileText size={12} />
-                                  表示・印刷
-                                </button>
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <button
+                                    onClick={() => setSelectedMonshin(m)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                    style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                  >
+                                    <FileText size={12} />
+                                    表示・印刷
+                                  </button>
+                                  <GuideReadTag read={m.guide_read} total={m.guide_total} />
+                                </div>
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
                               ) : row.progress ? (
@@ -2991,14 +3013,17 @@ export default function StaffView() {
                             </td>
                             <td className="px-2 py-3 align-top">
                               {m ? (
-                                <button
-                                  onClick={() => setSelectedMonshin(m)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
-                                  style={{ background: "#0F8B8D", color: "#FFFFFF" }}
-                                >
-                                  <FileText size={12} />
-                                  表示・印刷
-                                </button>
+                                <div className="flex flex-col items-start gap-0.5">
+                                  <button
+                                    onClick={() => setSelectedMonshin(m)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                                    style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                                  >
+                                    <FileText size={12} />
+                                    表示・印刷
+                                  </button>
+                                  <GuideReadTag read={m.guide_read} total={m.guide_total} />
+                                </div>
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
                               ) : row.progress ? (
@@ -3439,6 +3464,7 @@ export default function StaffView() {
                                         名前一致・未確認
                                       </span>
                                     )}
+                                    <GuideReadTag read={f.guide_read} total={f.guide_total} />
                                   </div>
                                 ) : intakeUrlForCheckin(c) ? (
                                   // 紙の受付票が無いので、リンクを見失った患者さんには

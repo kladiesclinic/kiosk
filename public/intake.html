@@ -2122,6 +2122,41 @@
      どこにも送信しない。
      シートの絵は受付（booking-app checkinArt.jsx）と同じ配色・並びで描き、
      手元のシートと見比べられるようにしている。 */
+  // ガイドの読了状況（「読みました」の数）をスタッフ画面へ知らせる。
+  //   ・来院の問診票: LAST_FORM_ID（intake_forms、送信した端末しか知らない行ID）
+  //   ・オンライン診療/Zoom英語の埋め込み: ?track=<monshin_onlineのuuid>
+  // どちらも無ければ何もしない。回答内容は送らず、読んだ枚数と総数だけ
+  var GUIDE_TRACK_ID = (function () {
+    var t = (new URLSearchParams(window.location.search).get("track") || "").trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t) ? t : "";
+  })();
+  var guideReadTimer = null;
+  function sendGuideRead(read, total) {
+    var fn, body;
+    if (GUIDE_TRACK_ID) {
+      fn = "set_monshin_guide_read";
+      body = { p_id: GUIDE_TRACK_ID, p_read: read, p_total: total };
+    } else if (window.LAST_FORM_ID) {
+      fn = "set_intake_guide_read";
+      body = { p_form_id: window.LAST_FORM_ID, p_read: read, p_total: total };
+    } else {
+      return;
+    }
+    // 連打を1.2秒にまとめる。全部読み終えた瞬間だけ即送信
+    clearTimeout(guideReadTimer);
+    guideReadTimer = setTimeout(function () {
+      fetch(SUPABASE_URL + "/rest/v1/rpc/" + fn, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: "Bearer " + SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      }).catch(function () { /* no-op: 読了の記録が落ちてもガイドは読める */ });
+    }, read >= total ? 0 : 1200);
+  }
+
   // opts.standalone: 問診票を経由しない「ガイドだけ」表示（?guide=1）。
   // 当日の受付完了画面から、事前記入済みの方が待合室で開く用。
   // opts.reasons: 事前記入のときに端末へ控えた受診理由（同じスマホなら
@@ -3074,6 +3109,8 @@
         mount.querySelectorAll(".pg-fold-sec .pg-card.checked").length;
       countEl.textContent = (en ? "Read " : "確認済み ") + read + " / " + all;
       doneEl.classList.toggle("show", read === all);
+      // スタッフ画面の「ガイド確認済」バッジ用に読了状況を送る
+      sendGuideRead(read, all);
     }
     mount.addEventListener("click", function (e) {
       // closest() を使わず親をたどる（このページの他の処理と同じ書き方に合わせる）
