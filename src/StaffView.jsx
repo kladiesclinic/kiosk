@@ -2174,6 +2174,31 @@ export default function StaffView() {
     (c) => !(hideChartDone && c.chart_done) && !(hidePaymentDone && c.payment_done)
   );
 
+  // 受付一覧を上下2段に分ける: 上=予約に紐付いた診察（予約時間順＝呼ぶ順）、
+  // 下=それ以外（予約なしの診察＋お薬のみ、受付順のまま）。
+  // 「予約=診察の列」の整理なので、お薬のみは予約があっても下段。
+  // 片方が空のときは見出し行を出さず、従来どおり1本の表に見える
+  const bookedCheckins = visibleCheckins
+    .filter((c) => c.booking_id && c.visit_type === "consult")
+    .slice()
+    .sort((a, b) => {
+      const ta = String(bookingById.get(a.booking_id)?.time || "99:99");
+      const tb = String(bookingById.get(b.booking_id)?.time || "99:99");
+      if (ta !== tb) return ta < tb ? -1 : 1;
+      return (a.checkin_number || 0) - (b.checkin_number || 0);
+    });
+  const walkinCheckins = visibleCheckins.filter((c) => !(c.booking_id && c.visit_type === "consult"));
+  const checkinSections = [
+    {
+      key: "booked", rows: bookedCheckins, label: "ご予約の診察", note: "予約時間順",
+      style: { background: "#F4F1FC", color: "#5B4BB8", borderTop: "1px solid #E4DDF7", borderBottom: "1px solid #E4DDF7" },
+    },
+    {
+      key: "walkin", rows: walkinCheckins, label: "予約なし・お薬のみ", note: "受付順",
+      style: { background: "#FBF4F0", color: "#A9746B", borderTop: "1px solid #F2E2DA", borderBottom: "1px solid #F2E2DA" },
+    },
+  ].filter((s) => s.rows.length > 0);
+
   // この日の来院受付の問診票（intake_forms）。受付経由(forms)と予約に紐付く事前記入
   // (bookingForms)を id で重複排除。オンラインと合わせた一括印刷の対象。
   // この日の来院受付の問診票（一括印刷用）。予約のある方の分だけ。
@@ -3373,7 +3398,20 @@ export default function StaffView() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleCheckins.map((c) => {
+                      {checkinSections.map((sec) => (
+                      <React.Fragment key={sec.key}>
+                      {checkinSections.length > 1 && (
+                        <tr>
+                          <td colSpan={9} className="px-3 py-2" style={sec.style}>
+                            <span className="text-xs font-bold" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+                              {sec.key === "booked" && <CalendarCheck size={13} className="inline-block mr-1 align-[-2px]" />}
+                              {sec.label}
+                            </span>
+                            <span className="ml-2 text-[11px]" style={{ opacity: 0.75 }}>{sec.rows.length}件 ・ {sec.note}</span>
+                          </td>
+                        </tr>
+                      )}
+                      {sec.rows.map((c) => {
                         // カタカナは問診票からも拾いたいので、薬受け取りでも問診票を探す
                         // （問診票欄の表示は従来どおり診察のときだけ）。事前記入の
                         // 問診票は提出日が別日なので booking_id 側からも見る
@@ -3470,6 +3508,17 @@ export default function StaffView() {
                               </span>
                               {c.visit_type === "consult" && (
                                 <div className="text-xs mt-1"><VisitKindTag c={c} /></div>
+                              )}
+                              {/* 予約なしの診察で「予約の方優先」の同意画面を通った印。
+                                  待ち時間の説明済みであることが受付で分かる */}
+                              {c.visit_type === "consult" && !c.booking_id && c.priority_agreed_at && (
+                                <span
+                                  className="mt-1 inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold whitespace-nowrap"
+                                  style={{ background: "#FDF3E3", color: "#B07A28" }}
+                                  title={`予約の方優先に ${hhmm(c.priority_agreed_at)} に同意済み`}
+                                >
+                                  予約優先 同意済
+                                </span>
                               )}
                             </td>
                             <td className="px-2 py-3 text-xs" style={{ color: "#8A7378" }}>
@@ -3618,6 +3667,8 @@ export default function StaffView() {
                           </tr>
                         );
                       })}
+                      </React.Fragment>
+                      ))}
                     </tbody>
                   </table>
                 </div>
