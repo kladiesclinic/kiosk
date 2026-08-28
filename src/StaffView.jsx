@@ -1570,6 +1570,7 @@ export default function StaffView() {
       return {
         key: `r:${r.reserve_id}`, at: r.start_at, time: hhmm(r.start_at),
         name: r.name || "", kana: r.kana || "", dob: r.dob || "", phone: r.phone || "",
+        email: r.email || "",
         chart: r.chart || "", status: r.reserve_status, canceled: r.reserve_status === 4,
         monshin: m || null, answered: !!r.answered, noReserveTime: false,
         progress: m ? null : findProgress(r),
@@ -2908,6 +2909,9 @@ export default function StaffView() {
                                 {row.dob || "—"}{anno ? `（${anno}）` : ""}　{fmtPhoneDisp(row.phone) || "—"}
                                 {row.chart ? `　診察券 ${row.chart}` : ""}
                               </span>
+                              {row.email && (
+                                <span className="block text-[11px] font-normal leading-tight" style={{ color: "#B08A90" }}>{row.email}</span>
+                              )}
                             </td>
                             <td className="px-2 py-3 align-top">
                               {row.canceled && (
@@ -2932,7 +2936,7 @@ export default function StaffView() {
                                     表示・印刷
                                   </button>
                                   <GuideReadTag read={m.guide_read} total={m.guide_total} />
-                                  {/* メールアドレスの分かる方（Zoom英語）には、内容に合ったガイドを送れる */}
+                                  {/* メールアドレスの分かる方（pillorder予約から同期）には、内容に合ったガイドを送れる */}
                                   {row.email && (
                                     <button
                                       onClick={() => sendGuideMail(m, row)}
