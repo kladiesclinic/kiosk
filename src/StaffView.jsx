@@ -3424,9 +3424,10 @@ export default function StaffView() {
                         const kana = kanaFor(c, anyForm, booking);
                         const isDone = c.chart_done && c.payment_done;
                         // 予約の方は呼ぶ順番の判断が変わる（飛び込みより予約時間が優先）。
-                        // 受付時刻が予約時間を過ぎていれば遅れて来られた方なので、そこも分かるようにする
+                        // 受付の運用基準: 予約時間から7分までの受付は許容、8分以降を「遅」とする
                         const bookedAt = booking?.time ? String(booking.time).slice(0, 5) : null;
-                        const late = bookedAt && hhmm(c.created_at) > bookedAt;
+                        const toMin = (s) => { const [h, m] = String(s).split(":").map(Number); return h * 60 + m; };
+                        const late = bookedAt && toMin(hhmm(c.created_at)) >= toMin(bookedAt) + 8;
                         // 番号がまだ入っていない2回目以降の方は、前回までの番号を出す
                         const savedChart = c.chart_number || anyForm?.chart_number || "";
                         const pastChart = savedChart
