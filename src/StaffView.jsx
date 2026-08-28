@@ -19,6 +19,7 @@ import {
   QrCode,
   Trash2,
   Search,
+  Mail,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
@@ -1640,6 +1641,58 @@ export default function StaffView() {
       setZoomReminding(null);
     }
   };
+
+  // 問診票の受診理由から、飲み方ガイドの絞り込みキーを推定する。
+  // Zoom英語は a_en に kiosk と同じ選択肢文字列、pillorder は a_ja に日本語の選択肢が入る。
+  // pillorder（オンライン診療）はピル処方が前提なので低用量ピルコース（oc）を常に含める
+  const guideKeysFromMonshin = (m) => {
+    const row = (m?.answers || []).find((a) => a?.qid === "reason");
+    const txt = `${row?.a_ja || ""} ${row?.a_en || ""}`;
+    const keys = [];
+    const add = (k) => { if (!keys.includes(k)) keys.push(k); };
+    if (m?.source !== "zoom") add("oc");
+    if (/Birth control pills|低用量ピル/.test(txt)) add("oc");
+    if (/Mini-pill|ミニピル/.test(txt)) add("mini");
+    if (/Morning-after|アフターピル|緊急避妊/.test(txt)) add("ec");
+    if (/Menstrual pain|生理痛/.test(txt)) add("pain");
+    if (/Irregular period|生理不順/.test(txt)) add("irregular");
+    if (/Period shifting|Moving my period|生理をずらしたい|月経移動/.test(txt)) add("shift");
+    if (/Acne|肌荒れ|ニキビ/.test(txt)) add("acne");
+    if (/PMS|生理前後/.test(txt)) add("pms");
+    return keys;
+  };
+
+  // 問診票の内容に合ったガイドを患者へメールで送る（Edge Function guide-mail、
+  // スタッフのログインが必須・宛先はDBの行のemailだけ）。送信の記録は
+  // monshin_online.guide_mail_sent_at に残り、「再送」表示に変わる
+  const [guideMailing, setGuideMailing] = useState(null); // 送信中の monshin id
+  const sendGuideMail = async (m, row) => {
+    if (!m || guideMailing) return;
+    const keys = guideKeysFromMonshin(m);
+    if (!keys.length) {
+      setLoadError("ピル系の受診理由が無いので、この問診票にはガイドの対象がありません");
+      return;
+    }
+    if (!window.confirm(`飲み方ガイドのリンクを ${row.email} へメールで送ります。よろしいですか？`)) return;
+    setGuideMailing(m.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("guide-mail", {
+        body: { id: m.id, keys, lang: m.source === "zoom" ? "en" : "ja" },
+      });
+      if (error) {
+        let detail = error.message || "";
+        try { const j = await error.context?.json?.(); if (j?.error) detail = j.error; } catch { /* ignore */ }
+        throw new Error(detail);
+      }
+      if (data?.error) throw new Error(data.error);
+      setNotice(`ガイドをメールで送りました（${data?.email || row.email}）`);
+      load();
+    } catch (e) {
+      setLoadError(`ガイドのメールを送れませんでした: ${e.message}`);
+    } finally {
+      setGuideMailing(null);
+    }
+  };
   const printMonshinBatch = async () => {
     if (!monshinBatchRef.current || monshinPrinting || monshinPrintRows.length === 0) return;
     const iosWindow = IS_IOS ? window.open("", "_blank") : null;
@@ -2879,6 +2932,18 @@ export default function StaffView() {
                                     表示・印刷
                                   </button>
                                   <GuideReadTag read={m.guide_read} total={m.guide_total} />
+                                  {/* メールアドレスの分かる方（Zoom英語）には、内容に合ったガイドを送れる */}
+                                  {row.email && (
+                                    <button
+                                      onClick={() => sendGuideMail(m, row)}
+                                      disabled={guideMailing === m.id}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
+                                      style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: guideMailing === m.id ? 0.5 : 1 }}
+                                    >
+                                      <Mail size={11} />
+                                      {guideMailing === m.id ? "送信中..." : m.guide_mail_sent_at ? "ガイドを再送" : "ガイドをメール送信"}
+                                    </button>
+                                  )}
                                 </div>
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
@@ -3023,6 +3088,18 @@ export default function StaffView() {
                                     表示・印刷
                                   </button>
                                   <GuideReadTag read={m.guide_read} total={m.guide_total} />
+                                  {/* メールアドレスの分かる方（Zoom英語）には、内容に合ったガイドを送れる */}
+                                  {row.email && (
+                                    <button
+                                      onClick={() => sendGuideMail(m, row)}
+                                      disabled={guideMailing === m.id}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
+                                      style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: guideMailing === m.id ? 0.5 : 1 }}
+                                    >
+                                      <Mail size={11} />
+                                      {guideMailing === m.id ? "送信中..." : m.guide_mail_sent_at ? "ガイドを再送" : "ガイドをメール送信"}
+                                    </button>
+                                  )}
                                 </div>
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
