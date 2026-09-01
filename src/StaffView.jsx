@@ -406,6 +406,70 @@ function MapTag({ date, timing }) {
   );
 }
 
+// 受診理由バッジの配色。カテゴリで意味を持たせる（避妊・肌・周期調整=teal、
+// 内診が要る系=purple、期日がある系=amber、その他=blue、更年期=green）
+const REASON_BADGE_COLORS = {
+  teal: { bg: "#DFF5F3", fg: "#085041" },
+  purple: { bg: "#EFEAFB", fg: "#5B4BB8" },
+  amber: { bg: "#FAEEDA", fg: "#633806" },
+  blue: { bg: "#E3EDFB", fg: "#2B5FAB" },
+  green: { bg: "#EAF3DE", fg: "#3B6D11" },
+};
+// 受診理由（チェックボックスの value=英語）→ 受付一覧「内容」列のバッジ。
+// アフターピルは既存のMapTagで別に出しているのでここには含めない。
+// detailLabel があるものは、対応する自由記入欄の回答をバッジの下に添える
+const REASON_BADGE_DEFS = [
+  { value: "Birth control pills", label: "OC", color: "teal" },
+  { value: "Mini-pill (progestogen-only)", label: "ミニピル", color: "teal" },
+  { value: "Period shifting", label: "月経移動", color: "teal", detailLabel: /ずらしたいご予定/ },
+  { value: "Menstrual pain", label: "生理痛", color: "teal" },
+  { value: "Irregular period", label: "生理不順", color: "teal" },
+  { value: "Acne / skin", label: "肌", color: "teal" },
+  { value: "PMS / mood", label: "PMS", color: "teal" },
+  { value: "Menopause", label: "更年期", color: "green" },
+  { value: "Bleeding outside my period", label: "不正出血", color: "purple" },
+  { value: "Bladder infection (cystitis)", label: "UTI", color: "purple" },
+  { value: "Refill of a medication prescribed here before", label: "処方追加", color: "amber", detailLabel: /ご希望のお薬/ },
+  { value: "Other", label: "その他", color: "blue", detailLabel: /その他の内容/ },
+];
+// 内診が要る点で共通の3つは、個別に並べず「内」1つにまとめて下に具体名を出す
+const NAISHIN_GROUP = [
+  { value: "Discharge / itching", label: "おりもの・かゆみ" },
+  { value: "STD testing", label: "性感染症検査" },
+  { value: "Pap smear (cervical cancer screening)", label: "子宮頸がん検診" },
+];
+function reasonBadgesForForm(form) {
+  const rows = form?.answers || [];
+  const reasonRaw = rows.find((r) => /受診理由/.test(r?.label || ""))?.value || "";
+  if (!reasonRaw || reasonRaw === "None checked") return [];
+  const selected = reasonRaw.split(";").map((s) => s.trim()).filter(Boolean);
+  const badges = [];
+  REASON_BADGE_DEFS.forEach((def) => {
+    if (selected.indexOf(def.value) === -1) return;
+    const detailRaw = def.detailLabel ? rows.find((r) => def.detailLabel.test(r?.label || ""))?.value || "" : "";
+    badges.push({ label: def.label, color: def.color, detail: detailRaw && detailRaw !== "—" ? detailRaw : "" });
+  });
+  const naishinHit = NAISHIN_GROUP.filter((g) => selected.indexOf(g.value) !== -1);
+  if (naishinHit.length) {
+    badges.push({ label: "内", color: "purple", detail: naishinHit.map((g) => g.label).join("、") });
+  }
+  return badges;
+}
+function ReasonBadge({ badge }) {
+  const c = REASON_BADGE_COLORS[badge.color] || REASON_BADGE_COLORS.teal;
+  return (
+    <div>
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold whitespace-nowrap"
+        style={{ background: c.bg, color: c.fg }}
+      >
+        {badge.label}
+      </span>
+      {badge.detail && <div className="mt-0.5 leading-tight" style={{ color: "#C0762C" }}>{badge.detail}</div>}
+    </div>
+  );
+}
+
 // 問診票の回答は「English ／ 日本語」の対で保存されている。紙は日本語だけでよい
 function jaPart(v) {
   const s = String(v || "").trim();
@@ -3415,7 +3479,7 @@ export default function StaffView() {
                         <th className="px-2 py-2.5 font-medium">時刻</th>
                         <th className="px-2 py-2.5 font-medium">お名前・生年月日</th>
                         <th className="px-2 py-2.5 font-medium">種別</th>
-                        <th className="px-2 py-2.5 font-medium">お薬</th>
+                        <th className="px-2 py-2.5 font-medium">内容</th>
                         <th className="px-2 py-2.5 font-medium">保険</th>
                         {/* 電子カルテとは繋がっていないので、番号は人が見て入れる */}
                         <th className="px-2 py-2.5 font-medium">カルテ</th>
@@ -3452,6 +3516,8 @@ export default function StaffView() {
                           : mapFromForm(anyForm);
                         // タグに出すので、お薬の一覧からは外す
                         const meds = (c.medications || []).filter((m) => !(map && /アフターピル/.test(m)));
+                        // 問診票の受診理由バッジ（低用量ピル・肌荒れ・内診系など）
+                        const reasonBadges = reasonBadgesForForm(anyForm);
                         // 飲み方ガイドの「〜について聞いてみたい」ボタンで問診票に書き足された相談希望。
                         // 紙の問診票は先に印刷してしまうので、あとから押されてもここで気づける
                         const wants = (anyForm?.answers || [])
@@ -3551,7 +3617,15 @@ export default function StaffView() {
                             <td className="px-2 py-3 text-xs" style={{ color: "#8A7378" }}>
                               {/* アフターピルは薬名を並べるより MAP のタグで出す。
                                   再診は受付で日付を、初診は問診票で日時を聞いている */}
-                              {meds.join("、") || (map || wants.length ? "" : "—")}
+                              {meds.length > 0 && <div>{meds.join("、")}</div>}
+                              {reasonBadges.length > 0 && (
+                                <div className="flex flex-col items-start gap-1">
+                                  {reasonBadges.map((b, i) => (
+                                    <ReasonBadge key={i} badge={b} />
+                                  ))}
+                                </div>
+                              )}
+                              {!meds.length && !reasonBadges.length && !map && !wants.length && "—"}
                               {map && <MapTag date={map.date} timing={map.timing} />}
                               {wants.length > 0 && (
                                 <div className="flex flex-col items-start gap-1 mt-1">
