@@ -776,6 +776,38 @@ function MonshinPrintSheet({ row }) {
   );
 }
 
+// 印刷バッジの文字幅を測る共有canvas（毎回作らず使い回す）
+let _badgeMeasureCtx = null;
+function measureBadgeTextWidth(text) {
+  if (!_badgeMeasureCtx) _badgeMeasureCtx = document.createElement("canvas").getContext("2d");
+  _badgeMeasureCtx.font = "700 15px 'Noto Sans JP', sans-serif";
+  return _badgeMeasureCtx.measureText(text).width;
+}
+
+// 白黒印刷の受診理由バッジ。html2canvasはHTML/CSSでのテキスト縦センタリングが
+// 崩れる（line-height・padding・flexのalign-items、どれで組んでも直らない既知の癖）ため、
+// SVGで枠と文字の座標を直接指定して描く（SVGはhtml2canvas上でも正しく中央に来る）
+function PrintBadge({ text }) {
+  const h = 28;
+  const padX = 14;
+  const textW = measureBadgeTextWidth(text);
+  const w = Math.ceil(textW + padX * 2);
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ display: "block" }}>
+      <rect
+        x={1.25} y={1.25} width={w - 2.5} height={h - 2.5} rx={(h - 2.5) / 2}
+        fill="#FFFFFF" stroke="#000000" strokeWidth={2.5}
+      />
+      <text
+        x={w / 2} y={h / 2} textAnchor="middle" dominantBaseline="central"
+        fontFamily="'Noto Sans JP', sans-serif" fontSize={15} fontWeight={700} fill="#000000"
+      >
+        {text}
+      </text>
+    </svg>
+  );
+}
+
 // 来院受付の問診票（intake_forms）1枚分のA4レイアウト（画面外に隠して画像化する）。
 // selectedForm 個別印刷（printAreaRef）と同じ体裁。一括印刷で1人1枚ずつ画像化して使う。
 function IntakePrintSheet({ form, reserveLabel, headline }) {
@@ -813,20 +845,7 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
             {printBadges.length > 0 ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 6 }}>
                 {printBadges.map((t, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      // html2canvasでPDF化するとき、flexのalign-items:centerとline-height:1の
-                      // 組み合わせだと文字が下寄りにずれることがあった。高さとline-heightを
-                      // 同じpx値にそろえる方式のほうがずれない
-                      display: "inline-block", height: 28, lineHeight: "28px",
-                      padding: "0 14px", borderRadius: 999, border: "2.5px solid #000000",
-                      fontSize: 15, fontWeight: 700, whiteSpace: "nowrap",
-                      color: "#000000", background: "#FFFFFF", textAlign: "center",
-                    }}
-                  >
-                    {t}
-                  </span>
+                  <PrintBadge key={i} text={t} />
                 ))}
               </div>
             ) : null}
