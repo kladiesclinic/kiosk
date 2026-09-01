@@ -455,6 +455,13 @@ function reasonBadgesForForm(form) {
   }
   return badges;
 }
+// 飲み方ガイドの「〜について聞いてみたい」ボタンで問診票に書き足された相談希望。
+// 紙の問診票は先に印刷してしまうので、あとから押されてもここで気づける
+function guideWantsForForm(form) {
+  return (form?.answers || [])
+    .filter((r) => /^(アルダクトン|低用量ピル)聞いてみたい/.test(r?.label || ""))
+    .map((r) => (r.label || "").split(" ／")[0]);
+}
 function ReasonBadge({ badge }) {
   const c = REASON_BADGE_COLORS[badge.color] || REASON_BADGE_COLORS.teal;
   return (
@@ -775,6 +782,8 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
   const paren = dob ? `（${dob}${extra ? `　${extra}` : ""}）` : "";
   // 白黒印刷なので色は使わず黒枠のバッジにする。詳細（日付・薬名等）はバッジの中に続けて出す
   const printBadges = reasonBadgesForForm(form).map((b) => (b.detail ? `${b.label} ${b.detail}` : b.label));
+  // アルダクトン／低用量ピルの相談希望は枠なし・※付きの別行にする（バッジの数で位置がぶれないように）
+  const printWants = guideWantsForForm(form);
   return (
     <div
       style={{
@@ -788,28 +797,41 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
       }}
     >
       {/* 区分と時間の特大見出し（紙の仕分け用）。横に受診理由の黒枠バッジを添え、
-          入りきらない分はバッジ側だけ折り返す（見出しの下ではなく、バッジの先頭の下に続く） */}
-      {(headline || printBadges.length > 0) ? (
+          入りきらない分はバッジ側だけ折り返す（見出しの下ではなく、バッジの先頭の下に続く）。
+          アルダクトン／低用量ピルの相談希望は枠なし・※付きでバッジの下にもう1行にする
+          （バッジの数で位置が動かないよう、常にバッジ行の下の固定位置に出す） */}
+      {(headline || printBadges.length > 0 || printWants.length > 0) ? (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 8 }}>
           {headline ? (
             <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, whiteSpace: "nowrap" }}>{headline}</div>
           ) : null}
-          {printBadges.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 6 }}>
-              {printBadges.map((t, i) => (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-flex", alignItems: "center", padding: "4px 14px",
-                    borderRadius: 999, border: "2.5px solid #000000", fontSize: 15,
-                    fontWeight: 700, whiteSpace: "nowrap", color: "#000000", background: "#FFFFFF",
-                  }}
-                >
-                  {t}
-                </span>
-              ))}
-            </div>
-          ) : null}
+          <div>
+            {printBadges.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 6 }}>
+                {printBadges.map((t, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      display: "inline-flex", alignItems: "center", padding: "4px 14px",
+                      borderRadius: 999, border: "2.5px solid #000000", fontSize: 15,
+                      fontWeight: 700, whiteSpace: "nowrap", color: "#000000", background: "#FFFFFF",
+                    }}
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {printWants.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 4 }}>
+                {printWants.map((t, i) => (
+                  <span key={i} style={{ fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", color: "#000000" }}>
+                    ※{t}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
       <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
@@ -3543,11 +3565,7 @@ export default function StaffView() {
                         const meds = (c.medications || []).filter((m) => !(map && /アフターピル/.test(m)));
                         // 問診票の受診理由バッジ（低用量ピル・肌荒れ・内診系など）
                         const reasonBadges = reasonBadgesForForm(anyForm);
-                        // 飲み方ガイドの「〜について聞いてみたい」ボタンで問診票に書き足された相談希望。
-                        // 紙の問診票は先に印刷してしまうので、あとから押されてもここで気づける
-                        const wants = (anyForm?.answers || [])
-                          .filter((r) => /^(アルダクトン|低用量ピル)聞いてみたい/.test(r?.label || ""))
-                          .map((r) => (r.label || "").split(" ／")[0]);
+                        const wants = guideWantsForForm(anyForm);
                         const booking = bookingById.get(c.booking_id);
                         const kana = kanaFor(c, anyForm, booking);
                         const isDone = c.chart_done && c.payment_done;
