@@ -773,6 +773,8 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
   const dob = formBirthdate(form);
   const extra = dobAnnotation(dob);
   const paren = dob ? `（${dob}${extra ? `　${extra}` : ""}）` : "";
+  // 白黒印刷なので色は使わず黒枠のバッジにする。詳細（日付・薬名等）はバッジの中に続けて出す
+  const printBadges = reasonBadgesForForm(form).map((b) => (b.detail ? `${b.label} ${b.detail}` : b.label));
   return (
     <div
       style={{
@@ -785,8 +787,31 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
         textSizeAdjust: "100%",
       }}
     >
-      {/* 区分と時間の特大見出し（紙の仕分け用） */}
-      {headline ? <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, marginBottom: 8 }}>{headline}</div> : null}
+      {/* 区分と時間の特大見出し（紙の仕分け用）。横に受診理由の黒枠バッジを添え、
+          入りきらない分はバッジ側だけ折り返す（見出しの下ではなく、バッジの先頭の下に続く） */}
+      {(headline || printBadges.length > 0) ? (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 8 }}>
+          {headline ? (
+            <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, whiteSpace: "nowrap" }}>{headline}</div>
+          ) : null}
+          {printBadges.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, paddingTop: 6 }}>
+              {printBadges.map((t, i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-flex", alignItems: "center", padding: "4px 14px",
+                    borderRadius: 999, border: "2.5px solid #000000", fontSize: 15,
+                    fontWeight: 700, whiteSpace: "nowrap", color: "#000000", background: "#FFFFFF",
+                  }}
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
         <div>
           <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire（来院受付）</strong>
@@ -2339,13 +2364,13 @@ export default function StaffView() {
   };
 
   // 印刷の一番上に特大で出す「初診　16:30」。紙をさばく人が区分と予約時間を
-  // 一目で掴めるようにする。予約のある方だけ（飛び込み受付では出さない）
+  // 一目で掴めるようにする。予約のない飛び込み受付は時間が無いので区分だけ出す
   const printHeadlineForForm = (form) => {
     const c = form.checkin_id ? checkins.find((x) => x.id === form.checkin_id) : null;
     const b = bookingForForm(form);
-    if (!b) return "";
-    const kind = c?.visit_kind || b.visit_kind;
+    const kind = c?.visit_kind || b?.visit_kind;
     const kindLabel = kind === "first" ? "初診" : kind === "return" ? "再診" : "";
+    if (!b) return kindLabel;
     return [kindLabel, String(b.time).slice(0, 5)].filter(Boolean).join("　");
   };
 
