@@ -805,7 +805,7 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
           アルダクトン／低用量ピルの相談希望は枠なし・※付きでバッジの下にもう1行にする
           （バッジの数で位置が動かないよう、常にバッジ行の下の固定位置に出す） */}
       {(headline || printBadges.length > 0 || printWants.length > 0) ? (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20 }}>
           {headline ? (
             <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, whiteSpace: "nowrap" }}>{headline}</div>
           ) : null}
@@ -816,9 +816,10 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
                   <span
                     key={i}
                     style={{
-                      display: "inline-flex", alignItems: "center", padding: "4px 14px",
-                      borderRadius: 999, border: "2.5px solid #000000", fontSize: 15,
-                      fontWeight: 700, whiteSpace: "nowrap", color: "#000000", background: "#FFFFFF",
+                      display: "inline-flex", alignItems: "center", justifyContent: "center",
+                      padding: "4px 14px", borderRadius: 999, border: "2.5px solid #000000",
+                      fontSize: 15, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap",
+                      color: "#000000", background: "#FFFFFF",
                     }}
                   >
                     {t}
@@ -829,7 +830,7 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
             {printWants.length > 0 ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 4 }}>
                 {printWants.map((t, i) => (
-                  <span key={i} style={{ fontSize: 15, fontWeight: 700, whiteSpace: "nowrap", color: "#000000" }}>
+                  <span key={i} style={{ fontSize: 15, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap", color: "#000000" }}>
                     ※{t}
                   </span>
                 ))}
