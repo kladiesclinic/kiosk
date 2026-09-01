@@ -4250,88 +4250,16 @@ export default function StaffView() {
       </div>
 
       {/* PDF化用レイアウト（画面外に隠しておき、印刷時だけ画像化する）。
-          A4・1枚に収まるよう回答を左右2段に分けて高さを抑える */}
+          一括印刷(dayIntakeForms)と同じ IntakePrintSheet を使う。以前はここだけ
+          同じ見た目を別に手書きしていて、見出しバッジ等の変更がここに反映されず
+          個別印刷だけ古いままになるバグの温床だった */}
       {selectedForm && (
-        <div
-          ref={printAreaRef}
-          style={{
-            display: "none",
-            position: "fixed",
-            left: "-10000px",
-            top: 0,
-            width: 1120,
-            background: "#FFFFFF",
-            padding: 28,
-            color: "#000000",
-            fontFamily: "'Noto Sans JP', sans-serif",
-            // iPadの画面より広い箱なので、Safariが読みやすさのために文字を
-            // 勝手に大きくする。そのぶん行が折り返して別のPDFになるため止める
-            WebkitTextSizeAdjust: "100%",
-            textSizeAdjust: "100%",
-          }}
-        >
-          {/* 区分と時間の特大見出し（紙の仕分け用） */}
-          {(() => {
-            const h = printHeadlineForForm(selectedForm);
-            return h ? <div style={{ fontSize: 46, fontWeight: 800, lineHeight: 1.1, marginBottom: 8 }}>{h}</div> : null;
-          })()}
-          <div style={{ borderBottom: "2px solid #000000", paddingBottom: 8, marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-            {(() => {
-              // 紙を見た医師がすぐ掴めるように、生年月日のとなりに和暦と満年齢を出す
-              const dob = formBirthdate(selectedForm);
-              const extra = dobAnnotation(dob);
-              const paren = dob ? `（${dob}${extra ? `　${extra}` : ""}）` : "";
-              const reserveLabel = reserveLabelForForm(selectedForm);
-              return (
-                <>
-                  <div>
-                    <strong style={{ fontSize: 20 }}>問診票 ／ Questionnaire</strong>
-                    <div style={{ fontSize: 14, marginTop: 4 }}>
-                      {/* 紙はカルテに綴じるので、番号が入っていれば先頭に出す */}
-                      {selectedForm.chart_number ? <strong>カルテ {selectedForm.chart_number}　</strong> : null}
-                      {selectedForm.patient_name}
-                      {paren}
-                    </div>
-                  </div>
-                  {/* 予約時間は右上 */}
-                  {reserveLabel ? (
-                    <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", textAlign: "right" }}>
-                      予約 {reserveLabel}
-                    </div>
-                  ) : null}
-                </>
-              );
-            })()}
-          </div>
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-            {(() => {
-              const rows = selectedForm.answers || [];
-              const half = Math.ceil(rows.length / 2);
-              return [rows.slice(0, half), rows.slice(half)].map((col, ci) => (
-                <table key={ci} style={{ width: "50%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <tbody>
-                    {col.map((row, i) => {
-                      // 生年月日の行には和暦と満年齢を添える（保険証・カルテとの突き合わせ用）
-                      const isDob = /生年月日|date of birth/i.test(row.label || "");
-                      const extra = isDob ? dobAnnotation(row.value) : "";
-                      return (
-                        <tr key={i}>
-                          <td style={{ border: "1px solid #999999", padding: "4px 7px", width: "48%", color: "#333333" }}>{row.label}</td>
-                          <td style={{ border: "1px solid #999999", padding: "4px 7px", fontWeight: 600 }}>
-                            {row.value}{extra ? `（${extra}）` : ""}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ));
-            })()}
-          </div>
-          {/* 受信日時は右下 */}
-          <div style={{ marginTop: 14, textAlign: "right", fontSize: 12, color: "#333333" }}>
-            {selectedForm.date_key} {hhmm(selectedForm.created_at)} 受信
-          </div>
+        <div ref={printAreaRef} style={{ display: "none", position: "fixed", left: "-10000px", top: 0 }}>
+          <IntakePrintSheet
+            form={selectedForm}
+            reserveLabel={reserveLabelForForm(selectedForm)}
+            headline={printHeadlineForForm(selectedForm)}
+          />
         </div>
       )}
 
