@@ -816,10 +816,13 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
                   <span
                     key={i}
                     style={{
-                      display: "inline-flex", alignItems: "center", justifyContent: "center",
-                      padding: "4px 14px", borderRadius: 999, border: "2.5px solid #000000",
-                      fontSize: 15, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap",
-                      color: "#000000", background: "#FFFFFF",
+                      // html2canvasでPDF化するとき、flexのalign-items:centerとline-height:1の
+                      // 組み合わせだと文字が下寄りにずれることがあった。高さとline-heightを
+                      // 同じpx値にそろえる方式のほうがずれない
+                      display: "inline-block", height: 28, lineHeight: "28px",
+                      padding: "0 14px", borderRadius: 999, border: "2.5px solid #000000",
+                      fontSize: 15, fontWeight: 700, whiteSpace: "nowrap",
+                      color: "#000000", background: "#FFFFFF", textAlign: "center",
                     }}
                   >
                     {t}
@@ -830,7 +833,7 @@ function IntakePrintSheet({ form, reserveLabel, headline }) {
             {printWants.length > 0 ? (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 4 }}>
                 {printWants.map((t, i) => (
-                  <span key={i} style={{ fontSize: 15, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap", color: "#000000" }}>
+                  <span key={i} style={{ fontSize: 15, fontWeight: 700, lineHeight: "20px", whiteSpace: "nowrap", color: "#000000" }}>
                     ※{t}
                   </span>
                 ))}
