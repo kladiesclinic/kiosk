@@ -442,7 +442,11 @@ function reasonBadgesForForm(form) {
   const rows = form?.answers || [];
   const reasonRaw = rows.find((r) => /受診理由/.test(r?.label || ""))?.value || "";
   if (!reasonRaw || reasonRaw === "None checked") return [];
-  const selected = reasonRaw.split(";").map((s) => s.trim()).filter(Boolean);
+  // 値は「English; English ／ 日本語、日本語」の形（英語のセミコロン区切りリストの
+  // あとに日本語訳がまとめて1つ付く）。日本語訳を落としてから英語値で照合しないと、
+  // 最後に選ばれた理由だけ日本語訳が混ざって一致しなくなる
+  const englishPart = reasonRaw.split(" ／ ")[0];
+  const selected = englishPart.split(";").map((s) => s.trim()).filter(Boolean);
   const badges = [];
   REASON_BADGE_DEFS.forEach((def) => {
     if (selected.indexOf(def.value) === -1) return;
