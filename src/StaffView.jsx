@@ -19,6 +19,7 @@ import {
   Trash2,
   Search,
   Mail,
+  AlertTriangle,
 } from "lucide-react";
 import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
@@ -210,6 +211,15 @@ function kanaFor(checkin, form, booking) {
   if (booking?.patient_kana?.trim()) return { text: booking.patient_kana.trim(), guessed: false };
   const guess = guessKana(checkin.patient_name);
   return guess ? { text: guess, guessed: true } : null;
+}
+
+// 問診票（intake_forms）のanswersからメールアドレスを取り出す。intake_formsには
+// email専用カラムが無く、FIELDSの「Email ／ メールアドレス」行に入っている
+function emailFromIntakeAnswers(form) {
+  const row = (form?.answers || []).find((r) => /Email|メールアドレス/i.test(r?.label || ""));
+  const v = (row?.value || "").trim();
+  if (!v || v === "—") return "";
+  return v.split(" ／ ")[0].trim();
 }
 
 // 生年月日（YYYY-MM-DD）から本日時点の満年齢。判定できなければ null。
@@ -459,9 +469,23 @@ function VisitKindTag({ c }) {
 
 // 飲み方ガイドの読了状況。ガイド側（intake.html）が「読みました」を押すたびに
 // set_intake_guide_read / set_monshin_guide_read で送ってくる（048_guide_read.sql）。
-// total が無い＝ガイドの対象外 or 旧データなので何も出さない
-function GuideReadTag({ read, total }) {
-  if (!total) return null;
+// total が無い（一度も開かれていない）とき:
+//   expected=false … 受診理由からガイド対象外（旧データで判定できない場合も含む）。何も出さない
+//   expected=true  … 対象のはずなのに未読のまま。声かけ／メール再送の判断材料として赤で出す
+function GuideReadTag({ read, total, expected }) {
+  if (!total) {
+    if (!expected) return null;
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap"
+        style={{ background: "#FCE9EA", color: "#B03A44" }}
+        title="問診票の内容からガイド対象のはずですが、まだ開かれていません"
+      >
+        <AlertTriangle size={10} />
+        ガイド未読
+      </span>
+    );
+  }
   const done = (read ?? 0) >= total;
   return (
     <span
@@ -1664,20 +1688,21 @@ export default function StaffView() {
 
   // 問診票の内容に合ったガイドを患者へメールで送る（Edge Function guide-mail、
   // スタッフのログインが必須・宛先はDBの行のemailだけ）。送信の記録は
-  // monshin_online.guide_mail_sent_at に残り、「再送」表示に変わる
-  const [guideMailing, setGuideMailing] = useState(null); // 送信中の monshin id
-  const sendGuideMail = async (m, row) => {
-    if (!m || guideMailing) return;
-    const keys = guideKeysFromMonshin(m);
+  // monshin_online / intake_forms それぞれの guide_mail_sent_at に残り、
+  // 「再送」表示に変わる。id はどちらの行かを Edge Function 側がUUID/f-...の
+  // 形から自動判定するので、呼び出し側は id・keys・lang・表示用emailを渡すだけでよい
+  const [guideMailing, setGuideMailing] = useState(null); // 送信中の行ID（monshin uuid or intake_forms id）
+  const sendGuideMail = async (id, email, keys, lang) => {
+    if (!id || guideMailing) return;
     if (!keys.length) {
       setLoadError("ピル系の受診理由が無いので、この問診票にはガイドの対象がありません");
       return;
     }
-    if (!window.confirm(`飲み方ガイドのリンクを ${row.email} へメールで送ります。よろしいですか？`)) return;
-    setGuideMailing(m.id);
+    if (!window.confirm(`飲み方ガイドのリンクを ${email} へメールで送ります。よろしいですか？`)) return;
+    setGuideMailing(id);
     try {
       const { data, error } = await supabase.functions.invoke("guide-mail", {
-        body: { id: m.id, keys, lang: m.source === "zoom" ? "en" : "ja" },
+        body: { id, keys, lang },
       });
       if (error) {
         let detail = error.message || "";
@@ -1685,7 +1710,7 @@ export default function StaffView() {
         throw new Error(detail);
       }
       if (data?.error) throw new Error(data.error);
-      setNotice(`ガイドをメールで送りました（${data?.email || row.email}）`);
+      setNotice(`ガイドをメールで送りました（${data?.email || email}）`);
       load();
     } catch (e) {
       setLoadError(`ガイドのメールを送れませんでした: ${e.message}`);
@@ -2760,7 +2785,19 @@ export default function StaffView() {
                                     <FileText size={12} />
                                     表示
                                   </button>
-                                  <GuideReadTag read={bf.guide_read} total={bf.guide_total} />
+                                  <GuideReadTag read={bf.guide_read} total={bf.guide_total} expected={Array.isArray(bf.guide_keys) && bf.guide_keys.length > 0} />
+                                  {/* メールアドレスは問診票の回答（Email欄）から拾う。intake_formsにemail専用カラムは無い */}
+                                  {emailFromIntakeAnswers(bf) && (
+                                    <button
+                                      onClick={() => sendGuideMail(bf.id, emailFromIntakeAnswers(bf), bf.guide_keys || [], "ja")}
+                                      disabled={guideMailing === bf.id}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
+                                      style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: guideMailing === bf.id ? 0.5 : 1 }}
+                                    >
+                                      <Mail size={11} />
+                                      {guideMailing === bf.id ? "送信中..." : bf.guide_mail_sent_at ? "ガイドを再送" : "ガイドをメール送信"}
+                                    </button>
+                                  )}
                                 </div>
                               ) : (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>{isPickup ? "—" : "未記入"}</span>
@@ -2949,11 +2986,11 @@ export default function StaffView() {
                                     <FileText size={12} />
                                     表示・印刷
                                   </button>
-                                  <GuideReadTag read={m.guide_read} total={m.guide_total} />
+                                  <GuideReadTag read={m.guide_read} total={m.guide_total} expected />
                                   {/* メールアドレスの分かる方（pillorder予約から同期）には、内容に合ったガイドを送れる */}
                                   {row.email && (
                                     <button
-                                      onClick={() => sendGuideMail(m, row)}
+                                      onClick={() => sendGuideMail(m.id, row.email, guideKeysFromMonshin(m), m.source === "zoom" ? "en" : "ja")}
                                       disabled={guideMailing === m.id}
                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
                                       style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: guideMailing === m.id ? 0.5 : 1 }}
@@ -3105,11 +3142,11 @@ export default function StaffView() {
                                     <FileText size={12} />
                                     表示・印刷
                                   </button>
-                                  <GuideReadTag read={m.guide_read} total={m.guide_total} />
+                                  <GuideReadTag read={m.guide_read} total={m.guide_total} expected />
                                   {/* メールアドレスの分かる方（Zoom英語）には、内容に合ったガイドを送れる */}
                                   {row.email && (
                                     <button
-                                      onClick={() => sendGuideMail(m, row)}
+                                      onClick={() => sendGuideMail(m.id, row.email, guideKeysFromMonshin(m), m.source === "zoom" ? "en" : "ja")}
                                       disabled={guideMailing === m.id}
                                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
                                       style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: guideMailing === m.id ? 0.5 : 1 }}
@@ -3584,7 +3621,18 @@ export default function StaffView() {
                                         名前一致・未確認
                                       </span>
                                     )}
-                                    <GuideReadTag read={f.guide_read} total={f.guide_total} />
+                                    <GuideReadTag read={f.guide_read} total={f.guide_total} expected={Array.isArray(f.guide_keys) && f.guide_keys.length > 0} />
+                                    {emailFromIntakeAnswers(f) && (
+                                      <button
+                                        onClick={() => sendGuideMail(f.id, emailFromIntakeAnswers(f), f.guide_keys || [], "ja")}
+                                        disabled={guideMailing === f.id}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
+                                        style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: guideMailing === f.id ? 0.5 : 1 }}
+                                      >
+                                        <Mail size={11} />
+                                        {guideMailing === f.id ? "送信中..." : f.guide_mail_sent_at ? "ガイドを再送" : "ガイドをメール送信"}
+                                      </button>
+                                    )}
                                   </div>
                                 ) : intakeUrlForCheckin(c) ? (
                                   // 紙の受付票が無いので、リンクを見失った患者さんには

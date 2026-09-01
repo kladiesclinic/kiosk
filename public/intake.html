@@ -2035,6 +2035,10 @@
       "recent_or_planned_surgery", "family_history_thrombosis", "family_history_breast_cancer",
     ];
     var ocWasSkipped = ocSkipped();
+    // このあとガイドを表示するのと同じ受診理由チェックから、対象キーを送信時に
+    // 一度だけ確定して保存する。checkin.jsx側の自動埋め込み・StaffViewの未読
+    // バッジがこれを唯一の正とし、answersの自由文字列を再パースしない
+    var guideKeys = guideKeysForReasons(checkedReasons());
 
     // Bilingual answer rows, in questionnaire order:
     // { label: "English label ／ 日本語ラベル", value: "English answer ／ 日本語" }
@@ -2073,6 +2077,7 @@
           submit_token: withCheckin ? SUBMIT_TOKEN || null : null,
           booking_id: BOOKING_ID || null,
           answers: rows,
+          guide_keys: guideKeys,
         }),
       });
     }
@@ -2116,7 +2121,7 @@
           localStorage.setItem("klcs_pill_guide", JSON.stringify({
             at: Date.now(),
             formId: window.LAST_FORM_ID || "",
-            reasons: [].map.call(document.querySelectorAll('input[name="reason"]:checked'), function (b) { return b.value; }),
+            reasons: checkedReasons(),
           }));
         } catch (e2) { /* no-op */ }
         // 事前記入でもガイドをそのまま出す（当日もう一度出る旨のリード付き。
@@ -2151,6 +2156,26 @@
      どこにも送信しない。
      シートの絵は受付（booking-app checkinArt.jsx）と同じ配色・並びで描き、
      手元のシートと見比べられるようにしている。 */
+  // 受診理由（チェックボックスの value）↔ ガイドの絞り込みキーの対応表。
+  // 送信ハンドラ（intake_forms への POST）と showPillGuide() の両方から使う
+  // 唯一の定義。以前はここと ?guide=1 のスタンドアロン表示の2箇所に同じ表を
+  // 別々に持っていて、ズレの温床になっていた。
+  var REASON_KEYS = {
+    oc: "Birth control pills", acne: "Acne / skin", shift: "Period shifting",
+    mini: "Mini-pill (progestogen-only)", ec: "Morning-after pill / Plan B",
+    pain: "Menstrual pain", irregular: "Irregular period", pms: "PMS / mood",
+  };
+  function checkedReasons() {
+    return [].map.call(document.querySelectorAll('input[name="reason"]:checked'), function (b) { return b.value; });
+  }
+  function guideKeysForReasons(reasons) {
+    var keys = [];
+    Object.keys(REASON_KEYS).forEach(function (k) {
+      if (reasons.indexOf(REASON_KEYS[k]) !== -1) keys.push(k);
+    });
+    return keys;
+  }
+
   // ガイドの読了状況（「読みました」の数）をスタッフ画面へ知らせる。
   //   ・来院の問診票: LAST_FORM_ID（intake_forms、送信した端末しか知らない行ID）
   //   ・オンライン診療/Zoom英語の埋め込み: ?track=<monshin_onlineのuuid>
@@ -2197,16 +2222,17 @@
       document.querySelectorAll('input[name="reason"]:checked'),
       function (b) { return b.value; }
     );
-    var wantsOc = (standalone && !savedReasons) || reasons.indexOf("Birth control pills") !== -1;
-    var wantsAcne = (standalone && !savedReasons) || reasons.indexOf("Acne / skin") !== -1;
-    var wantsShift = reasons.indexOf("Period shifting") !== -1;
-    var wantsMini = reasons.indexOf("Mini-pill (progestogen-only)") !== -1;
-    var wantsEc = reasons.indexOf("Morning-after pill / Plan B") !== -1;
+    var keys = guideKeysForReasons(reasons);
+    var wantsOc = (standalone && !savedReasons) || keys.indexOf("oc") !== -1;
+    var wantsAcne = (standalone && !savedReasons) || keys.indexOf("acne") !== -1;
+    var wantsShift = keys.indexOf("shift") !== -1;
+    var wantsMini = keys.indexOf("mini") !== -1;
+    var wantsEc = keys.indexOf("ec") !== -1;
     // 症状で来た方（生理痛・生理不順・PMS）にも、その症状がピルで
     // どう良くなるかの導入カード＋低用量ピルコースを見せる
-    var wantsPain = reasons.indexOf("Menstrual pain") !== -1;
-    var wantsIrregular = reasons.indexOf("Irregular period") !== -1;
-    var wantsPms = reasons.indexOf("PMS / mood") !== -1;
+    var wantsPain = keys.indexOf("pain") !== -1;
+    var wantsIrregular = keys.indexOf("irregular") !== -1;
+    var wantsPms = keys.indexOf("pms") !== -1;
     var wantsSymptom = wantsPain || wantsIrregular || wantsPms;
     if (!wantsOc && !wantsAcne && !wantsShift && !wantsMini && !wantsEc && !wantsSymptom) return false;
     // アフターピルだけの人: 急ぎのアフターピルを先頭に出し、
@@ -3230,17 +3256,8 @@
       ? "Your pill guide | K Ladies Clinic Shinjuku"
       : "ピルの飲み方ガイド | ケイ・レディースクリニック新宿";
     // スタッフ確認用: &r=oc,acne,shift,mini,ec で受診理由の絞り込みを再現できる
-    // （通常は端末に控えた記録から絞るのでURLには出ない）
-    var REASON_KEYS = {
-      oc: "Birth control pills",
-      acne: "Acne / skin",
-      shift: "Period shifting",
-      mini: "Mini-pill (progestogen-only)",
-      ec: "Morning-after pill / Plan B",
-      pain: "Menstrual pain",
-      irregular: "Irregular period",
-      pms: "PMS / mood",
-    };
+    // （通常は端末に控えた記録から絞るのでURLには出ない）。REASON_KEYSは
+    // このスクリプトの冒頭で定義した共有の対応表をそのまま使う
     var forced = (new URLSearchParams(window.location.search).get("r") || "")
       .split(",").map(function (k) { return REASON_KEYS[k.trim()]; }).filter(Boolean);
     var saved = null;
