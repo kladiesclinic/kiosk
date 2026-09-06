@@ -54,6 +54,38 @@ function ProgressBadge({ p }) {
   );
 }
 
+// 記入中バッジ＋「途中の回答を見る」。問診画面が質問を進めるたびに下書き（answers）を
+// 保存してくるので（055）、送信ボタンまで辿り着けなかった人の回答も確認・印刷できる。
+// 下書きが無い行（旧セッション・/monshin側）はバッジだけ出す
+function DraftableProgress({ row, onView }) {
+  const p = row.progress;
+  const hasDraft = Array.isArray(p.answers) && p.answers.length > 0;
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <ProgressBadge p={p} />
+      {hasDraft && (
+        <button
+          onClick={() => onView({
+            id: null, draft: true,
+            source: p.source === "zoom" ? "zoom" : "pillorder",
+            name: p.name || row.name,
+            dob: p.dob || row.dob || "",
+            phone: p.phone || row.phone || "",
+            created_at: p.updated_at,
+            reserve_at: row.at || null,
+            answers: p.answers,
+          })}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
+          style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+        >
+          <FileText size={11} />
+          途中の回答を見る（{p.answers.length}項目）
+        </button>
+      )}
+    </div>
+  );
+}
+
 // iPadOS 13以降のSafariはUAをMacと名乗るので、UAだけでは判別できない。
 // タッチできるMacは実質iPadなので、その組み合わせも見る
 const IS_IOS =
@@ -1610,7 +1642,8 @@ export default function StaffView() {
     setMonshinPrinting(true);
     try {
       await printElementAsPdf(monshinPrintRef.current, iosWindow, `問診票_${selectedMonshin?.name || ""}.pdf`);
-      if (selectedMonshin) markMonshinPrinted(selectedMonshin.id);
+      // 下書き表示（id無し）は印刷済みマークの対象外
+      if (selectedMonshin?.id) markMonshinPrinted(selectedMonshin.id);
     } catch (e) {
       if (iosWindow && !iosWindow.closed) iosWindow.close();
       setLoadError(`問診票のPDFを作れませんでした: ${e.message}`);
@@ -3141,7 +3174,7 @@ export default function StaffView() {
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
                               ) : row.progress ? (
-                                <ProgressBadge p={row.progress} />
+                                <DraftableProgress row={row} onView={setSelectedMonshin} />
                               ) : row.answered ? (
                                 /* pillorder 側の記入済みフラグだけ立っている（旧問診・pillorder内で回答）。紙はこちらに無い */
                                 <span className="text-xs" style={{ color: "#B08A90" }}>記入済（pillorder内）</span>
@@ -3297,7 +3330,7 @@ export default function StaffView() {
                               ) : row.canceled ? (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
                               ) : row.progress ? (
-                                <ProgressBadge p={row.progress} />
+                                <DraftableProgress row={row} onView={setSelectedMonshin} />
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>未記入</span>
                               )}
@@ -4212,6 +4245,11 @@ export default function StaffView() {
                 <div>
                   <div className="text-base font-bold" style={{ color: "#3A2E30" }}>
                     問診票（{selectedMonshin.source === "zoom" ? "Zoom診療・英語" : "オンライン診療"}）　{selectedMonshin.name}
+                    {selectedMonshin.draft && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold align-middle" style={{ background: "#FFF3DC", color: "#B7791F" }}>
+                        記入中・未送信の下書き
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs" style={{ color: "#B08A90" }}>
                     {selectedMonshin.reserve_at ? `予約 ${String(selectedMonshin.reserve_at).slice(0, 10)} ${hhmm(selectedMonshin.reserve_at)}${selectedMonshin.reserve_canceled ? "（キャンセル済）" : ""}　` : ""}
