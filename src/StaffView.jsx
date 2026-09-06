@@ -3827,6 +3827,26 @@ export default function StaffView() {
                                       未提出・QR
                                     </button>
                                     <IntakeProgress checkin={c} />
+                                    {Array.isArray(c.intake_draft) && c.intake_draft.length > 0 && (
+                                      /* 途中の回答（028で問診画面が送ってくる下書き）。送信前でも中身を確認・印刷できる */
+                                      <button
+                                        onClick={() => setSelectedForm({
+                                          id: null, draft: true,
+                                          patient_name: c.patient_name,
+                                          date_of_birth: c.date_of_birth,
+                                          date_key: c.date_key,
+                                          checkin_id: c.id,
+                                          chart_number: c.chart_number || "",
+                                          created_at: c.intake_step_at || c.created_at,
+                                          answers: c.intake_draft,
+                                        })}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium active:opacity-70"
+                                        style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                                      >
+                                        <FileText size={11} />
+                                        途中の回答を見る
+                                      </button>
+                                    )}
                                   </div>
                                 ) : (
                                   <span className="text-xs" style={{ color: "#C9AEB3" }}>未提出</span>
@@ -4176,6 +4196,11 @@ export default function StaffView() {
                 <div>
                   <div className="text-base font-bold" style={{ color: "#3A2E30" }}>
                     問診票　{selectedForm.patient_name}
+                    {selectedForm.draft && (
+                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold align-middle" style={{ background: "#FFF3DC", color: "#B7791F" }}>
+                        記入中・未送信の下書き
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs" style={{ color: "#B08A90" }}>
                     {(() => { const r = reserveLabelForForm(selectedForm); return r ? <span style={{ color: "#0F8B8D", fontWeight: 700 }}>予約 {r}　</span> : null; })()}
@@ -4185,13 +4210,14 @@ export default function StaffView() {
                       <span style={{ color: "#C0762C" }}>　※QR未経由の送信（名前照合のみ・未確認）</span>
                     )}
                   </div>
-                  {/* 読みながらそのまま番号を入れられるようにする。印刷にも載る */}
+                  {/* 読みながらそのまま番号を入れられるようにする。印刷にも載る。
+                      下書き表示（intake_formsの行がまだ無い）のときは受付行にだけ保存 */}
                   <div className="flex items-center gap-2 mt-1.5">
                     <span className="text-xs" style={{ color: "#8A7378" }}>カルテ番号</span>
                     <ChartNumberInput
                       value={selectedForm.chart_number || ""}
                       width={110}
-                      onSave={(v) => saveChartNumber({ checkinIds: [selectedForm.checkin_id], formIds: [selectedForm.id], value: v })}
+                      onSave={(v) => saveChartNumber({ checkinIds: [selectedForm.checkin_id], formIds: selectedForm.id ? [selectedForm.id] : [], value: v })}
                     />
                   </div>
                 </div>

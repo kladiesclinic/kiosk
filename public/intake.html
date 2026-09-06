@@ -1125,7 +1125,7 @@
   }
 
   // 何問目まで進んだかを受付行に書いておく。スタッフ画面が「記入中 18/31」と
-  // 出せるようにするためで、回答そのものは一切送らない。
+  // 出せるようにする。2026-09-06からは途中の回答も下書き(p_answers)として同乗させる。
   // 連打しても負荷にならないよう間引き、最後の1問だけは必ず送る。
   var progressTimer = null;
   var lastProgressSent = "";
@@ -1139,7 +1139,17 @@
       fetch(SUPABASE_URL + "/rest/v1/rpc/set_intake_progress", {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY },
-        body: JSON.stringify({ p_id: CHECKIN_ID, p_token: SUBMIT_TOKEN, p_step: step, p_total: total }),
+        body: JSON.stringify({
+          p_id: CHECKIN_ID, p_token: SUBMIT_TOKEN, p_step: step, p_total: total,
+          // 途中の回答も下書きとして保存する（028）。送信ボタンまで辿り着けなくても
+          // 受付一覧の「途中の回答を見る」から中身を確認できる
+          p_answers: (function () {
+            try {
+              var rs = buildVisitRows(collectVisitData()).filter(function (r) { return r.value && r.value !== "—"; });
+              return rs.length ? rs : null;
+            } catch (err) { return null; }
+          })(),
+        }),
         keepalive: true,
       }).catch(function () { /* 進捗表示のためだけなので、失敗しても何もしない */ });
     };
@@ -1929,38 +1939,13 @@
     return v; // free text stays as written
   }
 
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    statusEl.className = "form-status";
-    statusEl.textContent = "";
-    // 年月日の見た目の値から隠しの#if-dobを組み直す。バックグラウンド復帰後の
-    // 再読み込みなどで見た目の値だけ残りJSの同期が飛んでいた場合の保険
-    if (window.syncDobField) window.syncDobField();
-    if (!form.reportValidity()) {
-      // 未入力の項目があるとブラウザの小さな吹き出しが出るだけで気づきにくいので、
-      // 送信ボタンの近くにもはっきり表示する
-      statusEl.textContent = PAGE_LANG === "en"
-        ? "Some required fields are still empty — please check the highlighted field above."
-        : "未入力の項目があります。表示された項目をご確認ください（お名前が漢字の場合、カタカナ表記は手で入力してください）。";
-      statusEl.className = "form-status err";
-      return;
-    }
-    // #if-dobは隠し欄でブラウザの検証対象にならないため、年月日3欄が有効でも
-    // 組み立てに失敗していれば別途ここで止める（生年月日が空欄のまま送信されるのを防ぐ）
-    if (!val("if-dob")) {
-      statusEl.textContent = PAGE_LANG === "en"
-        ? "Please re-enter your date of birth — it didn't save correctly."
-        : "生年月日がうまく保存されていません。お手数ですがもう一度入力してください。";
-      statusEl.className = "form-status err";
-      return;
-    }
-    // 旧honeypot（隠しCompany欄）は撤去: Chromeのautofillが埋めて実患者の送信を黙って止めるため（2026-09-06）
-
+  // フォームの現在値を1つのオブジェクトに集める。送信と「途中の回答の下書き保存」で共用
+  function collectVisitData() {
     var h = parseFloat(val("if-height"));
     var w = parseFloat(val("if-weight"));
     var bmi = h > 0 && w > 0 ? (w / Math.pow(h / 100, 2)).toFixed(1) : "";
 
-    var data = {
+    return {
       name: val("if-name"),
       name_katakana: val("if-kana"),
       date_of_birth: val("if-dob"),
@@ -2019,6 +2004,11 @@
         .map(val).filter(Boolean).join(" / "),
       notes: val("if-notes"),
     };
+  }
+
+  // 回答オブジェクト → intake_forms.answers と同じ [{label, value}] の行（送信と下書きで共用）
+  function buildVisitRows(data) {
+
 
     // ピル問診を外した回は、その項目を空欄のまま送らない。空欄だと「答えなかった」
     // のか「聞かなかった」のか、あとから見て区別がつかない
@@ -2033,11 +2023,7 @@
     // このあとガイドを表示するのと同じ受診理由チェックから、対象キーを送信時に
     // 一度だけ確定して保存する。checkin.jsx側の自動埋め込み・StaffViewの未読
     // バッジがこれを唯一の正とし、answersの自由文字列を再パースしない
-    var guideKeys = guideKeysForReasons(checkedReasons());
-
-    // Bilingual answer rows, in questionnaire order:
-    // { label: "English label ／ 日本語ラベル", value: "English answer ／ 日本語" }
-    var rows = FIELDS.map(function (f) {
+    return FIELDS.map(function (f) {
       if (ocWasSkipped && OC_ONLY_KEYS.indexOf(f[0]) !== -1) {
         return {
           label: f[1] + " ／ " + f[2],
@@ -2051,6 +2037,42 @@
         value: !raw ? "—" : (ja && ja !== raw ? raw + " ／ " + ja : raw),
       };
     });
+
+  }
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    statusEl.className = "form-status";
+    statusEl.textContent = "";
+    // 年月日の見た目の値から隠しの#if-dobを組み直す。バックグラウンド復帰後の
+    // 再読み込みなどで見た目の値だけ残りJSの同期が飛んでいた場合の保険
+    if (window.syncDobField) window.syncDobField();
+    if (!form.checkValidity()) {
+      // 未入力の項目があるとブラウザの小さな吹き出しが出るだけで気づきにくいので、
+      // 送信ボタンの近くにもはっきり表示する
+      statusEl.textContent = PAGE_LANG === "en"
+        ? "Some required fields are still empty — please check the highlighted field above."
+        : "未入力の項目があります。表示された項目をご確認ください（お名前が漢字の場合、カタカナ表記は手で入力してください）。";
+      statusEl.className = "form-status err";
+      // ウィザードでは無効な項目が隠れたステップにあると吹き出しが出せないので、
+      // その質問まで戻してから出す（Zoom英語版と同じ）
+      if (window.__wzShowInvalid) window.__wzShowInvalid(); else form.reportValidity();
+      return;
+    }
+    // #if-dobは隠し欄でブラウザの検証対象にならないため、年月日3欄が有効でも
+    // 組み立てに失敗していれば別途ここで止める（生年月日が空欄のまま送信されるのを防ぐ）
+    if (!val("if-dob")) {
+      statusEl.textContent = PAGE_LANG === "en"
+        ? "Please re-enter your date of birth — it didn't save correctly."
+        : "生年月日がうまく保存されていません。お手数ですがもう一度入力してください。";
+      statusEl.className = "form-status err";
+      return;
+    }
+    // 旧honeypot（隠しCompany欄）は撤去: Chromeのautofillが埋めて実患者の送信を黙って止めるため（2026-09-06）
+
+    var data = collectVisitData();
+    var guideKeys = guideKeysForReasons(checkedReasons());
+    var rows = buildVisitRows(data);
 
     submitBtn.disabled = true;
     function postIntake(withCheckin) {
@@ -2092,6 +2114,8 @@
         // The answers deliberately stay on screen rather than being reset: the
         // PDF button needs them, and it's the only record the patient gets.
         form.classList.add("form-locked");
+        // 端末に控えた下書きは役目を終える
+        if (window.__clearVisitDraft) window.__clearVisitDraft();
         submitBtn.style.display = "none";
         statusEl.className = "form-status";
         var done = document.getElementById("if-done");
@@ -2140,6 +2164,59 @@
       })
       .finally(function () { submitBtn.disabled = false; });
   });
+
+  // ---- 入力内容の自動保存（端末側）----
+  // 入力のたびに localStorage へ控え、開き直したら復元する。誤リロード・
+  // ブラウザ落ち・送信失敗からの「全部書き直し」を防ぐ。送信成功で消す。
+  // 3日より古い控えは別の来院とみなして復元しない。
+  (function () {
+    var DRAFT_KEY = "klcs_visit_intake_draft";
+    function snapshot() {
+      var out = { v: 1, ts: Date.now(), fields: {}, checks: [] };
+      [].forEach.call(form.querySelectorAll("input, select, textarea"), function (el) {
+        if (el.type === "checkbox" || el.type === "radio") {
+          if (el.checked) out.checks.push((el.name || el.id) + " " + el.value);
+        } else if (el.id && el.value) {
+          out.fields[el.id] = el.value;
+        }
+      });
+      return out;
+    }
+    var t = null;
+    function save() {
+      clearTimeout(t);
+      t = setTimeout(function () {
+        try { localStorage.setItem(DRAFT_KEY, JSON.stringify(snapshot())); } catch (e) {}
+      }, 600);
+    }
+    form.addEventListener("input", save);
+    form.addEventListener("change", save);
+    window.__clearVisitDraft = function () { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} };
+
+    try {
+      var raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (!d.ts || Date.now() - d.ts > 3 * 24 * 3600 * 1000) { localStorage.removeItem(DRAFT_KEY); return; }
+      Object.keys(d.fields || {}).forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el && !el.value) {
+          el.value = d.fields[id];
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+      });
+      (d.checks || []).forEach(function (pair) {
+        var idx = pair.indexOf(" ");
+        var name = pair.slice(0, idx), value = pair.slice(idx + 1);
+        var el = form.querySelector('input[name="' + name + '"][value="' + value.replace(/"/g, '\\"') + '"]') ||
+                 document.getElementById(name);
+        if (el && !el.checked) {
+          el.checked = true;
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      });
+    } catch (e) {}
+  })();
 </script>
 
 <script>
@@ -3429,6 +3506,21 @@
       }
       return true;
     }
+
+    // 送信時に無効な項目が隠れたステップに残っていたら、その質問へ戻して吹き出しを出す
+    window.__wzShowInvalid = function () {
+      var bad = form.querySelector(":invalid");
+      if (!bad) return;
+      for (var i = 0; i < steps.length; i++) {
+        if (steps[i].el.contains(bad)) {
+          var vis = visibleIndexes();
+          var vp = vis.indexOf(i);
+          if (vp >= 0) { pos = vp; render(); }
+          break;
+        }
+      }
+      try { bad.reportValidity(); } catch (err) {}
+    };
 
     backBtn.addEventListener("click", function () {
       if (pos > 0) { pos--; render(); }
