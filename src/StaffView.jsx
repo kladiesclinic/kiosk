@@ -608,9 +608,21 @@ function GuideReadTag({ read, total, expected }) {
 // 紙の受付票を出さない運用なので、患者さんが画面を閉じて問診票のリンクを
 // 見失ったときは、スタッフがこのQRを見せて読み直してもらう。
 const INTAKE_BASE = new URL("./", window.location.href).toString();
+// 診察のない日のアフターピル初診。受付上は「お渡し（pickup）」だが、初めての方なので
+// フル問診票を書いてもらう（/checkin の handoff がこの組み合わせで受付を作る）。
+// 問診票列を consult 限定にするとこの行だけ「—」になってしまうので、見分けて consult と同じ扱いにする
+function isEcPickup(c) {
+  return (
+    c.visit_type === "pickup" &&
+    (!!c.ec_intercourse_date ||
+      (Array.isArray(c.medications) && c.medications.some((m) => String(m).includes("アフターピル"))))
+  );
+}
+
 function intakeUrlForCheckin(c) {
-  if (c.visit_type !== "consult") return null;
   const q = `?checkin=${encodeURIComponent(c.id)}&token=${encodeURIComponent(c.submit_token || "")}&lang=ja`;
+  if (isEcPickup(c)) return `${INTAKE_BASE}intake.html${q}`;
+  if (c.visit_type !== "consult") return null;
   if (c.visit_kind === "first") return `${INTAKE_BASE}intake.html${q}`;
   if (c.visit_kind === "return" && c.return_reason === "new_symptom") return `${INTAKE_BASE}intake.html${q}`;
   if (c.visit_kind === "return" && c.return_reason === "followup") return `${INTAKE_BASE}followup.html${q}`;
@@ -3780,8 +3792,9 @@ export default function StaffView() {
                               )}
                             </td>
                             <td className="px-2 py-3">
-                              {c.visit_type === "consult" ? (
-                                f ? (
+                              {/* 紐づく問診票があれば visit_type を問わず出す（アフターピル初診は
+                                  pickup 扱いだがフル問診票を書いているため、consult 限定だと消えてしまう） */}
+                              {f ? (
                                   <div className="flex flex-col items-start gap-0.5">
                                     <button
                                       onClick={() => setSelectedForm(f)}
@@ -3811,7 +3824,8 @@ export default function StaffView() {
                                       </button>
                                     )}
                                   </div>
-                                ) : intakeUrlForCheckin(c) ? (
+                                ) : c.visit_type === "consult" || isEcPickup(c) ? (
+                                  intakeUrlForCheckin(c) ? (
                                   // 紙の受付票が無いので、リンクを見失った患者さんには
                                   // このQRを見せて読み直してもらう。
                                   // 問診票は最後の送信まで届かないので、何問目まで
@@ -3848,9 +3862,9 @@ export default function StaffView() {
                                       </button>
                                     )}
                                   </div>
-                                ) : (
-                                  <span className="text-xs" style={{ color: "#C9AEB3" }}>未提出</span>
-                                )
+                                  ) : (
+                                    <span className="text-xs" style={{ color: "#C9AEB3" }}>未提出</span>
+                                  )
                               ) : (
                                 <span className="text-xs" style={{ color: "#C9AEB3" }}>—</span>
                               )}
