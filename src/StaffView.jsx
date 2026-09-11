@@ -1022,10 +1022,11 @@ const SCHEDULE_MODES = [
   { compact: true, maxLines: 1, nameLines: 1 },
 ];
 
-// 2行目の中身。区分（初診・再診）と注意書きを頭に置き、残った文字数だけ診察内容を出す。
+// 2行目の中身。診療の種類（Zoom）・区分（初診・再診）・注意書きを頭に置き、
+// 残った文字数だけ診察内容を出す。
 // 保険・カルテ番号は右端に回り込ませるので、狭くなるのは1行目だけ
 function scheduleLine2(e, col, maxLines) {
-  const head = [e.visitKind, e.alert].filter(Boolean).join(" ");
+  const head = [e.tag, e.visitKind, e.alert].filter(Boolean).join(" ");
   const headLen = head ? head.length + 1 : 0;
   const first = Math.max(4, col.chars - scheduleRightChars(e) - headLen);
   const room = first + (maxLines - 1) * col.chars;
@@ -1072,7 +1073,14 @@ function ScheduleEntry({ e, showTime, mode, col }) {
         {showTime ? (
           <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", flexShrink: 0 }}>{e.time}</span>
         ) : null}
-        <span style={{ fontWeight: 700, fontSize: 12, flexShrink: 0 }}>{e.name || "—"}</span>
+        {/* Zoom英語の方は Calendly にローマ字で入れた氏名がそのまま来るので、
+            列からはみ出すほど長いことがある。診察内容を先に譲り、それでも入らない
+            ぶんだけ…で切る（欄から溢れて表が崩れるほうが困る） */}
+        <span
+          style={{ fontWeight: 700, fontSize: 12, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
+        >
+          {e.name || "—"}
+        </span>
         {age === null ? null : <span style={{ fontSize: 10, color: "#333333", flexShrink: 0 }}>{age}歳</span>}
         <span
           style={{ fontSize: 10, color: "#333333", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
@@ -1107,8 +1115,19 @@ function ScheduleEntry({ e, showTime, mode, col }) {
             whiteSpace: wrapName ? "normal" : "nowrap",
           }}
         >
-          {/* お名前は縮めない。長いお名前ほど呼び間違えるので、詰まったときに譲るのはカナ */}
-          <span style={{ fontWeight: 700, fontSize: 13, flexShrink: 0, whiteSpace: "nowrap" }}>{e.name || "—"}</span>
+          {/* お名前は縮めない。長いお名前ほど呼び間違えるので、詰まったときに譲るのはカナ。
+              ただしZoom英語の方は Calendly にローマ字で入れた氏名がそのまま来るので、
+              列に入りきらない長さになりうる。折り返せる日は次の行へ回して最後まで出し、
+              1行しか使えない日だけ…で切る（欄から溢れて表が崩れるほうが困る） */}
+          <span
+            style={
+              wrapName
+                ? { fontWeight: 700, fontSize: 13, minWidth: 0, wordBreak: "break-word" }
+                : { fontWeight: 700, fontSize: 13, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }
+            }
+          >
+            {e.name || "—"}
+          </span>
           {e.kana ? (
             <span
               style={{
@@ -1145,7 +1164,7 @@ function ScheduleEntry({ e, showTime, mode, col }) {
 }
 
 // 予定表1ページぶん。画面外に置いて画像化するので、色は白黒印刷でも潰れない濃さにする
-function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, note, mode }) {
+function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, zoomCount, note, mode }) {
   const wd = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
     ? WEEKDAY_JA[new Date(`${dateKey}T00:00:00`).getDay()]
     : "";
@@ -1189,6 +1208,7 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
         </div>
         <div style={{ fontSize: 11, whiteSpace: "nowrap" }}>
           来院 {visitCount}件 ／ オンライン {onlineCount}件
+          {zoomCount > 0 ? `（うちZoom英語 ${zoomCount}件）` : ""}
           {pageCount > 1 ? `　${page} / ${pageCount} ページ` : ""}
         </div>
       </div>
@@ -1203,7 +1223,7 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
           <tr>
             <th style={{ ...head, textAlign: "center" }}>時間</th>
             <th style={head}>来院</th>
-            <th style={head}>オンライン（pillorder）</th>
+            <th style={head}>オンライン（pillorder・Zoom英語）</th>
           </tr>
         </thead>
         <tbody>
@@ -2097,9 +2117,11 @@ export default function StaffView() {
 
   // Zoom英語タブを開いたら、Calendly の予約日時を問診票へ同期（Edge Function）。
   // 患者が問診票の日時欄を空で送っても、Calendly に予約があればメールアドレスで
-  // 突合して予約日の欄に並ぶ。同期に失敗しても一覧表示は通常どおり出す
+  // 突合して予約日の欄に並ぶ。同期に失敗しても一覧表示は通常どおり出す。
+  // pillorderタブでも同期する — 1日の予定表にZoom英語の方も載るようになったので、
+  // 予定表を出すだけの日に Calendly の予約が古いままだと、紙から人が抜ける
   useEffect(() => {
-    if (tab !== "zoom") return;
+    if (tab !== "zoom" && tab !== "pillorder") return;
     // 同期後は予約一覧（calendly_bookings）も新しくなっているので読み直す
     supabase.functions.invoke("calendly-sync")
       .then(() => load())
@@ -2468,8 +2490,8 @@ export default function StaffView() {
     return [kindLabel, String(b.time).slice(0, 5)].filter(Boolean).join("　");
   };
 
-  // 1日の予定表のもとになる一覧。来院予約（visit_bookings）とオンライン診療
-  // （monshin_online）を同じ形に均して時刻順に並べる。
+  // 1日の予定表のもとになる一覧。来院予約（visit_bookings）・オンライン診療
+  // （pillorder）・Zoom英語（Calendly）を同じ形に均して時刻順に並べる。
   // キャンセルされた予約は当日の予定ではないので落とす。
   const daySchedule = useMemo(() => {
     // 予約に紐付く問診票。事前記入は booking_id で、当日記入は受付を経由して届く
@@ -2535,14 +2557,40 @@ export default function StaffView() {
       visitKind: chart ? "再診" : "",
       };
     });
-    return [...visits, ...online].sort((a, b) =>
+    // Zoom英語（Calendly の予約＋英語問診票）も同じ「オンライン」の列に入れる。
+    // 列を増やすとA4の幅が足りずに全員の字が小さくなるので、頭に「Zoom」と付けて
+    // pillorder と見分けられるようにした。キャンセル済は pillorder と同じく載せない
+    const zoom = zoomList.filter((r) => !r.canceled).map((r) => {
+      const m = r.monshin;
+      return {
+        key: `z:${r.key}`,
+        kind: "online",
+        zoom: true,
+        tag: "Zoom",
+        // 予約時刻の無い記入（Calendly の予約に紐付かない問診票）は受信時刻の位置に置く
+        time: r.time,
+        name: r.name,
+        // Calendly は氏名1つしか渡してこない。カナ・保険・区分は持っていない
+        kana: "",
+        dob: r.dob,
+        chart: m?.chart_number || pastCharts.get(chartMatchKey(r.name, r.dob)) || "",
+        menu: "",
+        detail: "",
+        reason: m ? reasonFromMonshin(m) : (r.progress ? "問診票 記入中" : "問診票 未記入"),
+        insurance: "",
+        alert: m && (m.answers || []).some((a) => a.flag) ? "要注意" : "",
+        visitKind: "",
+      };
+    });
+    return [...visits, ...online, ...zoom].sort((a, b) =>
       a.time < b.time ? -1 : a.time > b.time ? 1 : 0
     );
-  }, [bookings, pillorderList, pastCharts, bookingForms, forms, checkins]);
+  }, [bookings, pillorderList, zoomList, pastCharts, bookingForms, forms, checkins]);
 
   const scheduleCounts = {
     visit: daySchedule.filter((r) => r.kind === "visit").length,
     online: daySchedule.filter((r) => r.kind === "online").length,
+    zoom: daySchedule.filter((r) => r.zoom).length,
   };
 
   // 予定表の時間割。予約設定と同じ枠割りを縦に並べ、そこへ来院とオンラインを流し込む。
@@ -4409,6 +4457,7 @@ export default function StaffView() {
                 pageCount={schedulePages.length}
                 visitCount={scheduleCounts.visit}
                 onlineCount={scheduleCounts.online}
+                zoomCount={scheduleCounts.zoom}
                 note={scheduleGrid.fromSettings ? "" : scheduleGrid.closedDay ? "休診日" : "来院の枠設定なし"}
                 mode={scheduleLayout.mode}
               />
