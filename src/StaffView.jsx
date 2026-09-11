@@ -254,6 +254,32 @@ function emailFromIntakeAnswers(form) {
   return v.split(" ／ ")[0].trim();
 }
 
+// 問診票のanswersから電話番号を取り出す。メールと同じで専用カラムは無く、
+// FIELDSの「Phone ／ 電話番号」行に入っている。提出済みと記入途中の両方を渡すので
+// form ではなく answers の配列を受ける
+function phoneFromIntakeAnswers(answers) {
+  const row = (answers || []).find((r) => /Phone|電話番号/i.test(r?.label || ""));
+  const v = (row?.value || "").trim();
+  if (!v || v === "—") return "";
+  return v.split(" ／ ")[0].trim();
+}
+
+// 受付一覧に出す電話番号。受付そのものは電話番号を聞いていないので、すでに届いて
+// いるものから新しい順に拾う — 問診票は当日その場の記入、予約の番号は予約したとき
+// のもの（来院までに変わっていることがある）。
+// 再診の短縮問診票（followup.html）には電話欄が無いので、予約なしの再診・薬のみの
+// 方はどこにも番号が無く null になる
+function phoneFor(checkin, form, booking) {
+  const submitted = phoneFromIntakeAnswers(form?.answers);
+  if (submitted) return { text: submitted, source: "問診票にご記入の番号です" };
+  // 記入途中の下書き（028で問診画面が送ってくる）。提出を待たずに出せる
+  const draft = phoneFromIntakeAnswers(checkin?.intake_draft);
+  if (draft) return { text: draft, source: "問診票に記入中の番号です（まだ提出前）" };
+  const booked = String(booking?.phone || "").trim();
+  if (booked) return { text: booked, source: "ご予約のときにご登録の番号です" };
+  return null;
+}
+
 // 生年月日（YYYY-MM-DD）から本日時点の満年齢。判定できなければ null。
 function ageFrom(dob) {
   const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(dob || "").trim());
@@ -289,11 +315,14 @@ function dobAnnotation(dob) {
 }
 
 // 電話番号の表示用。DBには数字だけで保存されている（monshin_online は RPC が正規化）。
-// 国内番号はハイフン区切り、それ以外（Zoom英語の海外番号など）は国番号付きの +表記にする
+// 国内番号はハイフン区切り、それ以外（Zoom英語の海外番号など）は国番号付きの +表記にする。
+// 市外局番は地域で2〜5桁と長さが違って一般には割れないが、2桁なのは 03（東京）と
+// 06（大阪）だけなので、その2つは 03-1111-2222 と正しく割る。残りは3桁として扱う
 function fmtPhoneDisp(p) {
   const s = String(p || "").replace(/[^0-9]/g, "");
   if (!s) return "";
   if (s.length === 11 && s.startsWith("0")) return `${s.slice(0, 3)}-${s.slice(3, 7)}-${s.slice(7)}`;
+  if (s.length === 10 && /^0[36]/.test(s)) return `${s.slice(0, 2)}-${s.slice(2, 6)}-${s.slice(6)}`;
   if (s.length === 10 && s.startsWith("0")) return `${s.slice(0, 3)}-${s.slice(3, 6)}-${s.slice(6)}`;
   return `+${s}`;
 }
@@ -2970,7 +2999,7 @@ export default function StaffView() {
                                 className="block text-[11px] font-normal leading-tight"
                                 style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}
                               >
-                                {b.birthdate || "—"}　{b.phone || "—"}
+                                {b.birthdate || "—"}{"　"}{fmtPhoneDisp(b.phone) || "—"}
                               </span>
                               {(() => {
                                 // 2回目以降の方は、過去の受付・問診票の番号を出す（カルテ出しの準備用）
@@ -3644,7 +3673,7 @@ export default function StaffView() {
                       <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
                         <th className="px-3 py-2.5 font-medium">番号</th>
                         <th className="px-2 py-2.5 font-medium">時刻</th>
-                        <th className="px-2 py-2.5 font-medium">お名前・生年月日</th>
+                        <th className="px-2 py-2.5 font-medium">お名前・生年月日・電話</th>
                         <th className="px-2 py-2.5 font-medium">種別</th>
                         <th className="px-2 py-2.5 font-medium">内容</th>
                         <th className="px-2 py-2.5 font-medium">保険</th>
@@ -3688,6 +3717,7 @@ export default function StaffView() {
                         const wants = guideWantsForForm(anyForm);
                         const booking = bookingById.get(c.booking_id);
                         const kana = kanaFor(c, anyForm, booking);
+                        const phone = phoneFor(c, anyForm, booking);
                         const isDone = c.chart_done && c.payment_done;
                         // 予約の方は呼ぶ順番の判断が変わる（飛び込みより予約時間が優先）。
                         // 受付の運用基準: 予約時間から7分までの受付は許容、8分以降を「遅」とする
@@ -3741,12 +3771,17 @@ export default function StaffView() {
                                   {kana.text}
                                 </div>
                               )}
-                              {/* 生年月日は本人確認に使うだけなので、列を1つ使うほどではない */}
+                              {/* 生年月日と電話は本人確認に使うだけなので、列を1つ使うほどではない。
+                                  並べ方は「予約状況」タブと同じ（全角スペース区切りで1行）。
+                                  どこから来た番号かは一覧を淡々と保つため title にだけ出す */}
                               <div
                                 className="text-[11px] leading-tight"
                                 style={{ color: "#B08A90", fontFamily: "'JetBrains Mono', monospace" }}
                               >
-                                {c.date_of_birth || "生年月日 —"}
+                                {c.date_of_birth || "生年月日 —"}{"　"}
+                                <span title={phone ? phone.source : "電話番号はまだ届いていません"}>
+                                  {phone ? fmtPhoneDisp(phone.text) : "電話 —"}
+                                </span>
                               </div>
                             </td>
                             <td className="px-2 py-3">
