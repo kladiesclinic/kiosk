@@ -676,7 +676,7 @@ function QrImage({ url, size = 220 }) {
 // 電子カルテとは繋がっていないので、どの問診票がどのカルテの方かは人が見て決める。
 // 受付一覧の行からも、あとから探した問診票からも同じように書き込めるようにする。
 //
-// 受付一覧は10秒ごとに勝手に読み直すので、入力中に上書きされないよう、
+// 受付一覧は30秒ごとに勝手に読み直すので、入力中に上書きされないよう、
 // 手を入れた後（dirty）は外からの値を無視する
 function ChartNumberInput({ value, onSave, width = 88 }) {
   const [text, setText] = useState(value || "");
@@ -1611,8 +1611,10 @@ export default function StaffView() {
     const sync = () => supabase.functions.invoke("calendly-sync").then(f).catch(() => {});
     f();
     sync();
-    const t = setInterval(f, 30000);
-    const ts = setInterval(sync, 5 * 60000);
+    // 画面が隠れているあいだは見張らない（転送量の節約）
+    const visible = (fn) => () => { if (document.visibilityState === "visible") fn(); };
+    const t = setInterval(visible(f), 30000);
+    const ts = setInterval(visible(sync), 5 * 60000);
     return () => { clearInterval(t); clearInterval(ts); };
   }, []);
   const samedayNew = samedayResv.filter((r) => !samedaySeen.pill.has(r.reserve_id)).length;
@@ -1720,15 +1722,24 @@ export default function StaffView() {
   // Zoom英語タブの一覧。Calendly の予約（calendly_bookings）を軸に問診票を突き合わせる。
   // 突合はメール → 無ければ氏名（Hide My Email 等でメールが一致しない人の予備）。
   // 問診票は日付に関係なく直近分（zoomAll）から探す（予約日時を書かずに送った人も拾う）
+  // zoomAll は転送量を抑えるため回答本文（answers）抜きで取っている。表示日の分（zoomRows）は
+  // 本文付きなので id が同じならそちらを使い、それ以外で予約と一致した分は一度だけ本文を
+  // 取ってキャッシュ（zoomAnswersCache）し、ここで合流させる
+  const [zoomAnswersCache, setZoomAnswersCache] = useState(() => new Map());
+  const zoomAnswersPendingRef = useRef(new Set());
+  const zoomAllFull = useMemo(() => {
+    const byId = new Map(zoomRows.map((m) => [m.id, m]));
+    return zoomAll.map((m) => byId.get(m.id) || (zoomAnswersCache.has(m.id) ? { ...m, answers: zoomAnswersCache.get(m.id) } : m));
+  }, [zoomAll, zoomRows, zoomAnswersCache]);
   const zoomList = useMemo(() => {
     const used = new Set();
     const nameKey = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
     const findMonshin = (b) => {
       const em = String(b.email || "").toLowerCase();
-      const byEmail = em && zoomAll.find((m) => !used.has(m.id) && String(m.email || "").toLowerCase() === em);
+      const byEmail = em && zoomAllFull.find((m) => !used.has(m.id) && String(m.email || "").toLowerCase() === em);
       if (byEmail) return byEmail;
       const nk = nameKey(b.name);
-      return (nk && zoomAll.find((m) => !used.has(m.id) && nameKey(m.name) === nk)) || null;
+      return (nk && zoomAllFull.find((m) => !used.has(m.id) && nameKey(m.name) === nk)) || null;
     };
     // 記入中の進捗（まだ送信されていない分）。メール → 氏名で、いちばん新しい1件
     const findProgress = (b) => {
@@ -1779,7 +1790,37 @@ export default function StaffView() {
       });
     });
     return rows.sort((a, b) => new Date(a.at) - new Date(b.at));
-  }, [calBookings, calFuture, zoomAll, zoomRows, progressRows]);
+  }, [calBookings, calFuture, zoomAllFull, zoomRows, progressRows]);
+  // 予約と一致したのに本文がまだ無い問診票の分だけ、回答本文を取ってキャッシュする
+  // （要注意タグ・受診理由・表示/印刷に要る）。同じ id は一度しか取らない
+  useEffect(() => {
+    const ids = zoomList
+      .map((r) => r.monshin)
+      .filter((m) => m && m.id && m.answers === undefined && !zoomAnswersCache.has(m.id) && !zoomAnswersPendingRef.current.has(m.id))
+      .map((m) => m.id);
+    if (!ids.length) return;
+    ids.forEach((id) => zoomAnswersPendingRef.current.add(id));
+    supabase.from("monshin_online").select("id, answers").in("id", ids)
+      .then(({ data, error }) => {
+        ids.forEach((id) => zoomAnswersPendingRef.current.delete(id));
+        if (error || !data) return;
+        setZoomAnswersCache((prev) => {
+          const next = new Map(prev);
+          data.forEach((r) => next.set(r.id, r.answers || []));
+          return next;
+        });
+      });
+  }, [zoomList]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 表示・印刷のモーダルに本文の無い行（キャッシュ前の zoomAll 由来）が渡ったときの保険
+  useEffect(() => {
+    const m = selectedMonshin;
+    if (!m || !m.id || m.answers !== undefined || m.draft) return;
+    supabase.from("monshin_online").select("answers").eq("id", m.id).single()
+      .then(({ data, error }) => {
+        if (error) return;
+        setSelectedMonshin((prev) => (prev && prev.id === m.id ? { ...prev, answers: data?.answers || [] } : prev));
+      });
+  }, [selectedMonshin]);
   const zoomActive = zoomList.filter((r) => !r.canceled);
   const zoomUnfilled = zoomActive.filter((r) => !r.monshin);
   const printZoomBatch = async () => {
@@ -2015,11 +2056,15 @@ export default function StaffView() {
       return;
     }
     // 予約に紐付く事前記入の問診票は提出日が別日のことがあるので booking_id で引く
+    // 当日提出の分は fRes にもう入っているので、別日に提出された分だけを取り直す（同じ
+    // 問診票を2回運ばない）。bookingForms としては両方を合わせて以前と同じ中身にする
     let bForms = [];
     const bookingIds = (bRes.data || []).map((b) => b.id);
     if (bookingIds.length) {
-      const bfRes = await supabase.from("intake_forms").select("*").in("booking_id", bookingIds);
-      if (!bfRes.error) bForms = bfRes.data || [];
+      const idSet = new Set(bookingIds);
+      const sameDay = (fRes.data || []).filter((f) => f.booking_id && idSet.has(f.booking_id));
+      const bfRes = await supabase.from("intake_forms").select("*").in("booking_id", bookingIds).neq("date_key", dateKey);
+      bForms = bfRes.error ? sameDay : [...(bfRes.data || []), ...sameDay];
     }
     setLoadError("");
     setCheckins(cRes.data || []);
@@ -2029,26 +2074,28 @@ export default function StaffView() {
     setLastUpdated(new Date());
 
     // 予定表で「×（受付なし）」を出すために、この日の閉じた枠を引く。
-    // 休診日も一緒に読み直す（設定タブや別の端末での変更を10秒以内に拾う）
+    // 休診日も一緒に読み直す（設定タブや別の端末での変更を30秒以内に拾う）
     supabase.from("visit_closed_slots").select("time").eq("date", dateKey)
       .then(({ data, error }) => setClosedSlotTimes(error ? new Set() : new Set((data || []).map((r) => r.time))));
     supabase.from("visit_closed_dates").select("date")
       .then(({ data, error }) => { if (!error) setVisitClosedDates(new Set((data || []).map((r) => r.date))); });
 
-    // pillorderタブ: オンライン診療の問診票（monshin_online）。直近300件を取り、選択日
-    // （reserve_at が無ければ created_at）が dateKey の分だけを予約時刻順（時系列）に並べる。
+    // pillorderタブ: オンライン診療の問診票（monshin_online）。選択日（reserve_at が無ければ
+    // created_at）が dateKey の分だけをサーバー側で絞って取り、予約時刻順（時系列）に並べる。
+    // 以前は直近300件を毎回まるごと（回答本文ごと）取って手元で絞っていたが、これが
+    // 自動更新1回あたり約275KBと最大の転送量になっていた（2026-09-14 の egress 超過事故）。
     // 個人情報＋医療回答なので RLS(is_staff) で守られており、スタッフのみ読める。
+    const dayFrom = `${dateKey}T00:00:00+09:00`, dayTo = `${dateKey}T23:59:59+09:00`;
     const { data: mData, error: mErr } = await supabase
       .from("monshin_online")
       .select("*")
-      .order("created_at", { ascending: false })
-      .limit(300);
+      .or(`and(reserve_at.gte.${dayFrom},reserve_at.lte.${dayTo}),and(reserve_at.is.null,created_at.gte.${dayFrom},created_at.lte.${dayTo})`)
+      .order("created_at", { ascending: false });
     if (mErr) {
       setMonshinRows([]);
       setZoomRows([]);
     } else {
       const eff = (r) => r.reserve_at || r.created_at;
-      const jstDate = (iso) => new Date(iso).toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" });
       // 同じ monshin_online に source 列で2種類が入っている:
       //   pillorder（既定・列が無い旧行も含む）… オンライン診療タブ
       //   zoom … 英語LP（klcs.jp/en/intake.html）のZoom診療タブ
@@ -2058,7 +2105,7 @@ export default function StaffView() {
         // 絞るのは同じ日の中だけ — 別の日の予約は取り直しなのか2件目なのか区別が
         // つかず、日をまたいで消すと生きている予約が予定表から落ちる
         const latest = new Map();
-        for (const r of (mData || []).filter((r) => ((r.source || "pillorder") === src) && jstDate(eff(r)) === dateKey)) {
+        for (const r of (mData || []).filter((r) => (r.source || "pillorder") === src)) {
           const k = `${r.dob}|${r.phone}`;
           const prev = latest.get(k);
           if (!prev || new Date(r.created_at) > new Date(prev.created_at)) latest.set(k, r);
@@ -2067,8 +2114,19 @@ export default function StaffView() {
       };
       setMonshinRows(dayRows("pillorder"));
       setZoomRows(dayRows("zoom"));
-      setZoomAll((mData || []).filter((r) => r.source === "zoom"));
     }
+
+    // Zoom英語の問診票は、予約日時を書かずに送った人や、Calendly で日を変えた人もいるので、
+    // 日付に関係なく直近60日分を Calendly 予約との突合用に持つ（zoomAll）。ここでは回答本文
+    // （answers・1件約2.7KB）を運ばず、突合に要る列だけにする。回答本文は予約と一致した分だけ
+    // あとから1回取ってキャッシュする（下の useEffect）
+    const { data: zData, error: zErr } = await supabase
+      .from("monshin_online")
+      .select("id, created_at, name, kana, dob, phone, lang, free_text, printed_at, token, reserve_at, source, email, reserve_canceled, guide_read, guide_total, guide_read_at, guide_mail_sent_at")
+      .eq("source", "zoom")
+      .gte("created_at", new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString())
+      .order("created_at", { ascending: false });
+    if (!zErr) setZoomAll(zData || []);
 
     // pillorder の予約一覧（batch が5分おきに pillorder_reservations へ同期）。
     // pillorderタブはこれを軸に問診票を突き合わせ、「未記入」の人も並べる
@@ -2140,8 +2198,12 @@ export default function StaffView() {
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
     const canGrow = tab === "search" || tab === "settings" || tab === "feedback" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
-    const t = setInterval(load, 10000);
-    return () => clearInterval(t);
+    // 30秒ごと。画面が隠れているあいだ（iPadで別アプリを前に出している等）は読まず、
+    // 前に戻った瞬間に1回読み直す。以前は10秒ごと・常時で、Supabase の転送量の大半を占めていた
+    const tick = () => { if (document.visibilityState === "visible") load(); };
+    const t = setInterval(tick, 30000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", tick); };
   }, [dateKey, tab]);
 
   // Zoom英語タブを開いたら、Calendly の予約日時を問診票へ同期（Edge Function）。
@@ -2203,7 +2265,7 @@ export default function StaffView() {
     const next = !row[field];
     const merged = { ...row, [field]: next };
     const status = merged.chart_done && merged.payment_done ? "done" : "waiting";
-    // 先に画面へ反映して「押した感」をすぐ返す（10秒ごとの自動更新と押下が
+    // 先に画面へ反映して「押した感」をすぐ返す（30秒ごとの自動更新と押下が
     // 重なっても操作が消えないように）。DB更新に失敗したら元に戻してエラーを出す
     setCheckins((prev) => prev.map((c) => (c.id === row.id ? { ...c, [field]: next, status } : c)));
     const { error } = await supabase.from("reception_checkins").update({ [field]: next, status }).eq("id", row.id);
