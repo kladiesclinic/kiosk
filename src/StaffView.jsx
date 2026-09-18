@@ -367,59 +367,106 @@ function LabEditorModal({ init, onClose, onSaved }) {
   const [lineUserId, setLineUserId] = useState(init.line_user_id || null);
   const [chartLookup, setChartLookup] = useState({ busy: false, note: "" });
 
-  // カルテ番号から患者情報を引いて空欄だけ埋める。転記元は新しい情報から順に
-  // ①過去の検査結果（全項目そろう）②受付記録＋紐づく問診票 ③問診票
+  // カルテ番号から患者情報を引いて空欄だけ埋める。1つのソースで打ち切らず、
+  // 足りない項目を次のソースで補い続ける（最新の受付が薬のみ＝問診票なしのことが
+  // 多く、途中で止めるとメール・電話が拾えない）。
   const fillFromChart = async () => {
     const no = chart.trim();
     if (!no || chartLookup.busy) return;
     setChartLookup({ busy: true, note: "" });
-    const fill = (patch) => {
-      if (patch.name && !name.trim()) setName(patch.name);
-      if (patch.kana && !kana.trim()) setKana(patch.kana);
-      if (patch.dob && !dob) setDob(patch.dob);
-      if (patch.phone && !phone.trim()) setPhone(patch.phone);
-      if (patch.email && !email.trim()) setEmail(patch.email);
-      if (patch.line) setLineUserId((cur) => cur || patch.line);
+    // merged: フィールドごとに最初に見つかった値を採る。used: 転記元の表示用
+    const merged = {};
+    const used = new Set();
+    const need = (k) => !merged[k];
+    const take = (src, patch) => {
+      let hit = false;
+      for (const k of Object.keys(patch)) {
+        const v = typeof patch[k] === "string" ? patch[k].trim() : patch[k];
+        if (v && need(k)) { merged[k] = v; hit = true; }
+      }
+      if (hit) used.add(src);
+    };
+    const kanaFromAnswers = (answers) => {
+      const row = (answers || []).find((r) => /Katakana|カタカナ/i.test(r?.label || ""));
+      return row ? String(row.value || "").split(" ／ ")[0].trim() : "";
     };
     try {
+      // ① 過去の検査結果（2回目以降はこれでほぼ完結）
       const { data: prev } = await supabase.from("lab_results")
         .select("patient_name, patient_kana, dob, phone, email, line_user_id")
         .eq("chart_number", no).order("created_at", { ascending: false }).limit(1);
       if (prev && prev[0]) {
         const p = prev[0];
-        fill({ name: p.patient_name, kana: p.patient_kana, dob: p.dob, phone: p.phone, email: p.email, line: p.line_user_id });
-        setChartLookup({ busy: false, note: "前回の検査結果から転記しました。" });
-        return;
+        take("前回の検査結果", { name: p.patient_name, kana: p.patient_kana, dob: p.dob, phone: p.phone, email: p.email, line: p.line_user_id });
       }
+
+      // ② 受付記録（氏名・カナ・生年月日・LINE・予約ID）
       const { data: cks } = await supabase.from("reception_checkins")
-        .select("id, patient_name, patient_kana, date_of_birth, line_user_id")
-        .eq("chart_number", no).order("created_at", { ascending: false }).limit(1);
-      if (cks && cks[0]) {
-        const c = cks[0];
-        fill({ name: c.patient_name, kana: c.patient_kana, dob: c.date_of_birth, line: c.line_user_id });
+        .select("id, booking_id, patient_name, patient_kana, date_of_birth, line_user_id")
+        .eq("chart_number", no).order("created_at", { ascending: false }).limit(5);
+      const checkins = cks || [];
+      for (const c of checkins) {
+        take("受付", { name: c.patient_name, kana: c.patient_kana, dob: c.date_of_birth, line: c.line_user_id });
+      }
+
+      // ③ 問診票（カルテ番号つき）— 電話・メールの主な出どころ
+      if (need("phone") || need("email") || need("name")) {
+        const { data: fms } = await supabase.from("intake_forms")
+          .select("patient_name, date_of_birth, answers")
+          .eq("chart_number", no).order("created_at", { ascending: false }).limit(3);
+        for (const f2 of fms || []) {
+          take("問診票", {
+            name: f2.patient_name, dob: f2.date_of_birth,
+            kana: kanaFromAnswers(f2.answers),
+            phone: phoneFromIntakeAnswers(f2.answers),
+            email: emailFromIntakeAnswers({ answers: f2.answers }),
+          });
+        }
+      }
+
+      // ④ 問診票（②の受付に紐づく分。カルテ番号が問診票側に入っていない場合の救済）
+      if ((need("phone") || need("email")) && checkins.length) {
         const { data: ifs } = await supabase.from("intake_forms")
-          .select("answers").eq("checkin_id", c.id).limit(1);
-        const ans = ifs && ifs[0] ? ifs[0].answers : null;
-        fill({ phone: phoneFromIntakeAnswers(ans), email: emailFromIntakeAnswers({ answers: ans }) });
-        setChartLookup({ busy: false, note: "受付記録から転記しました。電話・メールが空欄のときは手入力してください。" });
+          .select("answers, created_at")
+          .in("checkin_id", checkins.map((c) => c.id))
+          .order("created_at", { ascending: false }).limit(3);
+        for (const f2 of ifs || []) {
+          take("問診票", {
+            kana: kanaFromAnswers(f2.answers),
+            phone: phoneFromIntakeAnswers(f2.answers),
+            email: emailFromIntakeAnswers({ answers: f2.answers }),
+          });
+        }
+      }
+
+      // ⑤ 来院予約（予約時に登録した電話・メール）
+      const bookingIds = checkins.map((c) => c.booking_id).filter(Boolean);
+      if ((need("phone") || need("email")) && bookingIds.length) {
+        const { data: vbs } = await supabase.from("visit_bookings")
+          .select("phone, email").in("id", bookingIds);
+        for (const b of vbs || []) {
+          take("予約", { phone: b.phone, email: b.email });
+        }
+      }
+
+      if (used.size === 0) {
+        setChartLookup({ busy: false, note: "このカルテ番号の記録が見つかりませんでした。" });
         return;
       }
-      const { data: fms } = await supabase.from("intake_forms")
-        .select("patient_name, date_of_birth, answers")
-        .eq("chart_number", no).order("created_at", { ascending: false }).limit(1);
-      if (fms && fms[0]) {
-        const f2 = fms[0];
-        const kanaRow = (f2.answers || []).find((r) => /Katakana|カタカナ/i.test(r?.label || ""));
-        fill({
-          name: f2.patient_name, dob: f2.date_of_birth,
-          kana: kanaRow ? String(kanaRow.value || "").split(" ／ ")[0].trim() : "",
-          phone: phoneFromIntakeAnswers(f2.answers),
-          email: emailFromIntakeAnswers({ answers: f2.answers }),
-        });
-        setChartLookup({ busy: false, note: "問診票から転記しました。" });
-        return;
-      }
-      setChartLookup({ busy: false, note: "このカルテ番号の記録が見つかりませんでした。" });
+      if (merged.name && !name.trim()) setName(merged.name);
+      if (merged.kana && !kana.trim()) setKana(merged.kana);
+      if (merged.dob && !dob) setDob(merged.dob);
+      if (merged.phone && !phone.trim()) setPhone(merged.phone);
+      if (merged.email && !email.trim()) setEmail(merged.email);
+      if (merged.line) setLineUserId((cur) => cur || merged.line);
+      const missing = [
+        !merged.phone && "電話",
+        !merged.email && "メール",
+      ].filter(Boolean);
+      setChartLookup({
+        busy: false,
+        note: `${[...used].join("・")}から転記しました。` + (missing.length ? `（${missing.join("・")}は見つからず）` : ""),
+      });
     } catch (e) {
       setChartLookup({ busy: false, note: "検索に失敗しました。もう一度お試しください。" });
     }
