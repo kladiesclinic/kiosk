@@ -25,7 +25,7 @@ import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
 import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
 import { buildSlotTimes, timeToMinutes } from "./lib/slots.js";
-import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell } from "lucide-react";
+import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical } from "lucide-react";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -278,6 +278,366 @@ function phoneFor(checkin, form, booking) {
   const booked = String(booking?.phone || "").trim();
   if (booked) return { text: booked, source: "ご予約のときにご登録の番号です" };
   return null;
+}
+
+/* ---- 検査結果のオンライン公開（lab_results）----
+   スタッフがここで入力・公開し、患者は予約サイトの /results で
+   生年月日＋電話下4桁を入れて閲覧する。項目は固定5種・値はボタン選択のみ。 */
+
+const LAB_TESTS = [
+  { key: "chlamydia", label: "クラミジア" },
+  { key: "gonorrhea", label: "淋菌" },
+  { key: "trichomonas", label: "トリコモナス" },
+  { key: "candida", label: "カンジダ" },
+  { key: "cervical", label: "子宮頸がん（細胞診）", levels: ["NILM", "ASC-US", "LSIL", "HSIL+"] },
+];
+const LAB_CHOICE_LABEL = {
+  negative: "陰性", positive: "陽性",
+  NILM: "NILM 異常なし", "ASC-US": "ASC-US", LSIL: "LSIL", "HSIL+": "HSIL以上",
+};
+
+// 選択内容から患者への案内文を組み立てる（スタッフが編集できる下書き）。
+// 方針: 陽性はお薬の受け取り案内、頸がんの異常は来院のお願い。診察の要否には触れない。
+function labGuidanceFor(sel) {
+  const posNames = LAB_TESTS.filter((t) => !t.levels && sel[t.key] === "positive").map((t) => t.label);
+  const cerv = sel.cervical;
+  const cervAbnormal = cerv && cerv !== "NILM";
+  const negCount = LAB_TESTS.filter((t) =>
+    (!t.levels && sel[t.key] === "negative") || (t.levels && sel[t.key] === "NILM")).length;
+  const parts = [];
+  if (posNames.length) {
+    parts.push(`${posNames.join("・")}が陽性でした。お薬をご用意していますので、受付までお受け取りにお越しください。`);
+  }
+  if (cervAbnormal) {
+    parts.push("子宮頸がん検診は再検査をおすすめする結果でした。お手数ですが、ご来院をお願いいたします。");
+  }
+  if (!posNames.length && !cervAbnormal) {
+    if (negCount > 0) parts.push("いずれも陰性・異常なしでした。");
+  } else if (negCount > 0) {
+    parts.push("その他の項目は陰性・異常なしでした。");
+  }
+  return parts.join("");
+}
+
+// セグメントボタン1組（検査なし/陰性/陽性 など）。value が undefined なら「検査なし」
+function LabChoiceRow({ test, value, onChange }) {
+  const options = test.levels
+    ? [...test.levels.map((v) => ({ v, label: LAB_CHOICE_LABEL[v] })), { v: "", label: "検査なし" }]
+    : [{ v: "", label: "検査なし" }, { v: "negative", label: "陰性" }, { v: "positive", label: "陽性" }];
+  const styleFor = (v, active) => {
+    if (!active) return { background: "#FFFFFF", border: "1px solid #F2DFE4", color: "#B08A90" };
+    if (v === "" ) return { background: "#FFF8F7", border: "1px solid #D9B8BE", color: "#8A7378" };
+    if (v === "negative" || v === "NILM") return { background: "#E1F5EE", border: "1px solid #0F6E56", color: "#0F6E56" };
+    return { background: "#FAEEDA", border: "1px solid #854F0B", color: "#854F0B" };
+  };
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((o) => (
+        <button
+          key={o.v || "none"}
+          onClick={() => onChange(o.v || undefined)}
+          className="px-3 py-1.5 rounded-lg text-xs font-bold"
+          style={styleFor(o.v, (value || "") === o.v)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// 入力・編集モーダル。init: 既存行（編集） or 受付一覧からの転記（新規, id無し）
+function LabEditorModal({ init, onClose, onSaved }) {
+  const [name, setName] = useState(init.patient_name || "");
+  const [kana, setKana] = useState(init.patient_kana || "");
+  const [dob, setDob] = useState(init.dob || "");
+  const [phone, setPhone] = useState(init.phone || "");
+  const [chart, setChart] = useState(init.chart_number || "");
+  const [email, setEmail] = useState(init.email || "");
+  const [testDate, setTestDate] = useState(init.test_date || todayKey());
+  const [sel, setSel] = useState(() => {
+    const s = {};
+    (init.items || []).forEach((it) => { if (it && it.key) s[it.key] = it.result; });
+    return s;
+  });
+  const [guidance, setGuidance] = useState(init.guidance || "");
+  const [guidanceTouched, setGuidanceTouched] = useState(!!init.id);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const setChoice = (key, v) => {
+    setSel((prev) => {
+      const next = { ...prev };
+      if (v) next[key] = v; else delete next[key];
+      if (!guidanceTouched) setGuidance(labGuidanceFor(next));
+      return next;
+    });
+  };
+
+  const phoneDigits = phone.replace(/[^0-9]/g, "");
+  const items = LAB_TESTS.filter((t) => sel[t.key]).map((t) => ({ key: t.key, result: sel[t.key] }));
+  const canSave = name.trim() && /^\d{4}-\d{2}-\d{2}$/.test(dob) && phoneDigits.length >= 10 && items.length > 0;
+
+  const save = async (publish) => {
+    if (!canSave || busy) return;
+    setBusy(true);
+    setErr("");
+    const row = {
+      patient_name: name.trim(),
+      patient_kana: kana.trim() || null,
+      dob,
+      phone: phoneDigits,
+      chart_number: chart.trim() || null,
+      email: email.trim() || null,
+      line_user_id: init.line_user_id || null,
+      test_date: testDate,
+      items,
+      guidance: guidance.trim() || null,
+      status: publish ? "published" : "draft",
+      ...(publish ? { published_at: init.published_at || new Date().toISOString() } : {}),
+    };
+    let id = init.id;
+    if (id) {
+      const { error } = await supabase.from("lab_results").update(row).eq("id", id);
+      if (error) { setBusy(false); setErr(`保存に失敗しました: ${error.message}`); return; }
+    } else {
+      const { data, error } = await supabase.from("lab_results").insert(row).select("id").single();
+      if (error) { setBusy(false); setErr(`保存に失敗しました: ${error.message}`); return; }
+      id = data.id;
+    }
+    if (publish) {
+      // 公開通知（メール＋LINE）。届かなくても公開自体は成立しているので待つだけ
+      try { await supabase.functions.invoke("lab-mail", { body: { resultId: id } }); } catch (e) { /* no-op */ }
+    }
+    setBusy(false);
+    onSaved();
+  };
+
+  const unpublish = async () => {
+    if (!init.id || busy) return;
+    setBusy(true);
+    const { error } = await supabase.from("lab_results").update({ status: "draft" }).eq("id", init.id);
+    setBusy(false);
+    if (error) { setErr(`更新に失敗しました: ${error.message}`); return; }
+    onSaved();
+  };
+
+  const remove = async () => {
+    if (!init.id || busy) return;
+    if (!window.confirm(`${init.patient_name} さんの検査結果を削除します。よろしいですか？`)) return;
+    setBusy(true);
+    const { error } = await supabase.from("lab_results").delete().eq("id", init.id);
+    setBusy(false);
+    if (error) { setErr(`削除に失敗しました: ${error.message}`); return; }
+    onSaved();
+  };
+
+  const inputStyle = { border: "1.5px solid #F2DFE4", borderRadius: 10, padding: "8px 10px", fontSize: 13, background: "#FFFFFF", width: "100%" };
+  const published = init.status === "published";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" style={{ background: "rgba(58,46,48,0.45)" }}>
+      <div className="w-full max-w-2xl rounded-2xl p-5 my-6" style={{ background: "#FFFFFF" }}>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-base font-bold" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: "#3A2E30" }}>
+            <FlaskConical size={16} className="inline-block mr-1 align-[-2px]" color="#0F8B8D" />
+            検査結果の入力
+            {published && (
+              <span className="ml-2 text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: "#E1F5EE", color: "#0F6E56" }}>公開中</span>
+            )}
+          </h3>
+          <button onClick={onClose} className="p-1"><X size={18} color="#B08A90" /></button>
+        </div>
+
+        {/* 患者情報。受付一覧から開いたときは転記済みで、必要なら直せる */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-2">
+          <div>
+            <label className="text-[11px]" style={{ color: "#B08A90" }}>氏名（必須）</label>
+            <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px]" style={{ color: "#B08A90" }}>カナ</label>
+            <input style={inputStyle} value={kana} onChange={(e) => setKana(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px]" style={{ color: "#B08A90" }}>生年月日（必須）</label>
+            <input style={inputStyle} type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px]" style={{ color: "#B08A90" }}>電話番号（必須・照合キー）</label>
+            <input style={inputStyle} inputMode="tel" placeholder="09012345678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px]" style={{ color: "#B08A90" }}>カルテ番号</label>
+            <input style={inputStyle} value={chart} onChange={(e) => setChart(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px]" style={{ color: "#B08A90" }}>メール（通知先）</label>
+            <input style={inputStyle} inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+        </div>
+        <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
+          患者さんは「生年月日＋電話番号の下4桁」で照会します。電話番号の間違いに注意。
+          {init.line_user_id ? " ／ LINE連携あり（公開時にLINEにも通知）" : ""}
+        </p>
+
+        <div className="flex items-center gap-2 mb-3">
+          <label className="text-[11px]" style={{ color: "#B08A90" }}>検査日</label>
+          <input style={{ ...inputStyle, width: 150 }} type="date" value={testDate} onChange={(e) => setTestDate(e.target.value)} />
+        </div>
+
+        {/* 結果の選択（タップだけ） */}
+        <div className="rounded-xl overflow-hidden mb-3" style={{ border: "1px solid #F2DFE4" }}>
+          {LAB_TESTS.map((t, i) => (
+            <div key={t.key} className="flex items-center gap-3 px-3 py-2.5" style={{ borderTop: i > 0 ? "1px solid #F8ECEE" : "none" }}>
+              <span className="text-sm w-32 shrink-0" style={{ color: "#3A2E30" }}>{t.label}</span>
+              <LabChoiceRow test={t} value={sel[t.key]} onChange={(v) => setChoice(t.key, v)} />
+            </div>
+          ))}
+        </div>
+
+        <label className="text-[11px]" style={{ color: "#B08A90" }}>患者への案内文（自動で下書きされます・編集可）</label>
+        <textarea
+          style={{ ...inputStyle, height: 72, resize: "vertical" }}
+          value={guidance}
+          onChange={(e) => { setGuidance(e.target.value); setGuidanceTouched(true); }}
+        />
+
+        {err && <p className="text-xs mt-2" style={{ color: "#D64550" }}>{err}</p>}
+
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          {init.id && (
+            <button onClick={remove} disabled={busy} className="p-2 rounded-lg" title="削除" style={{ color: "#C9AEB3" }}>
+              <Trash2 size={15} />
+            </button>
+          )}
+          {init.id && published && (
+            <button onClick={unpublish} disabled={busy} className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}>
+              下書きに戻す（非公開）
+            </button>
+          )}
+          <span className="text-[11px] mr-auto" style={{ color: "#B08A90" }}>
+            下書きは患者からは見えません。公開すると{init.email || init.line_user_id ? "通知が送られ、" : ""}患者が閲覧できるようになります
+          </span>
+          <button onClick={() => save(false)} disabled={!canSave || busy} className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378", opacity: !canSave || busy ? 0.5 : 1 }}>
+            下書き保存
+          </button>
+          <button onClick={() => save(true)} disabled={!canSave || busy} className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: !canSave || busy ? 0.5 : 1 }}>
+            {busy ? "保存中…" : published ? "更新して公開" : "公開する（通知）"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 「検査結果」タブの一覧。最近の入力＋カルテ番号/氏名の検索＋新規
+function LabPanel({ onEdit, onNew, reloadKey }) {
+  const [rows, setRows] = useState(null);
+  const [q, setQ] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      let query = supabase.from("lab_results").select("*").order("created_at", { ascending: false }).limit(50);
+      const s = q.trim();
+      if (s) {
+        // カルテ番号か氏名・カナの部分一致
+        query = query.or(`chart_number.eq.${s},patient_name.ilike.%${s}%,patient_kana.ilike.%${s}%`);
+      }
+      const { data, error } = await query;
+      if (alive) setRows(error ? [] : data || []);
+    })();
+    return () => { alive = false; };
+  }, [q, reloadKey]);
+
+  return (
+    <section>
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+          検査結果（オンライン公開）
+        </h2>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="カルテ番号・氏名で検索"
+          className="px-3 py-2 rounded-xl text-sm"
+          style={{ border: "1.5px solid #F2DFE4", background: "#FFFFFF", width: 220 }}
+        />
+        <button onClick={onNew} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold" style={{ background: "#0F8B8D", color: "#FFFFFF" }}>
+          <Plus size={14} /> 新規入力
+        </button>
+      </div>
+      <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
+        受付一覧の各行の「検査」ボタンから開くと、患者情報が自動で入ります。患者さんは予約サイトの「検査結果の確認」（生年月日＋電話下4桁）で閲覧します。
+      </p>
+      {rows === null ? (
+        <p className="text-sm" style={{ color: "#B08A90" }}>読み込み中…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm" style={{ color: "#B08A90" }}>{q ? "見つかりませんでした。" : "まだ入力はありません。"}</p>
+      ) : (
+        <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 700 }}>
+              <thead>
+                <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
+                  <th className="px-3 py-2.5 font-medium">検査日</th>
+                  <th className="px-2 py-2.5 font-medium">お名前</th>
+                  <th className="px-2 py-2.5 font-medium">カルテ</th>
+                  <th className="px-2 py-2.5 font-medium">結果</th>
+                  <th className="px-2 py-2.5 font-medium">状態</th>
+                  <th className="px-2 py-2.5 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} style={{ borderTop: "1px solid #F8ECEE" }}>
+                    <td className="px-3 py-2.5 whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.test_date}</td>
+                    <td className="px-2 py-2.5">
+                      {r.patient_name}
+                      <div className="text-[11px]" style={{ color: "#B08A90" }}>{r.dob}</div>
+                    </td>
+                    <td className="px-2 py-2.5" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{r.chart_number || "—"}</td>
+                    <td className="px-2 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {(r.items || []).map((it) => {
+                          const t = LAB_TESTS.find((x) => x.key === it.key);
+                          const bad = it.result === "positive" || (t?.levels && it.result !== "NILM");
+                          return (
+                            <span key={it.key} className="text-[10px] px-1.5 py-0.5 rounded-full" style={bad ? { background: "#FAEEDA", color: "#854F0B" } : { background: "#E1F5EE", color: "#0F6E56" }}>
+                              {t ? t.label.replace("（細胞診）", "") : it.key} {LAB_CHOICE_LABEL[it.result] || it.result}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2.5 whitespace-nowrap">
+                      {r.status === "published" ? (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#E1F5EE", color: "#0F6E56" }}>公開済み</span>
+                      ) : (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#FAEEDA", color: "#854F0B" }}>下書き</span>
+                      )}
+                      {r.viewed_at && (
+                        <div className="text-[10px] mt-0.5" style={{ color: "#0F8B8D" }}>閲覧済み</div>
+                      )}
+                      {r.status === "published" && !r.notified_at && (r.email || r.line_user_id) && (
+                        <div className="text-[10px] mt-0.5" style={{ color: "#B08A90" }}>通知未送信</div>
+                      )}
+                    </td>
+                    <td className="px-2 py-2.5 text-right">
+                      <button onClick={() => onEdit(r)} className="px-3 py-1.5 rounded-lg text-xs font-bold" style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#0F8B8D" }}>
+                        開く
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 }
 
 // 生年月日（YYYY-MM-DD）から本日時点の満年齢。判定できなければ null。
@@ -1535,6 +1895,9 @@ export default function StaffView() {
   const [bookingForms, setBookingForms] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedForm, setSelectedForm] = useState(null);
+  // 検査結果の入力モーダル（受付一覧の「検査」ボタン・検査結果タブの両方から開く）
+  const [labEditor, setLabEditor] = useState(null);
+  const [labReload, setLabReload] = useState(0);
   const [loadError, setLoadError] = useState("");
   const [printing, setPrinting] = useState(false);
   // カルテ済/会計済の行を隠すか（それぞれ独立・端末ごとに記憶）
@@ -2196,7 +2559,7 @@ export default function StaffView() {
     load();
     // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
-    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
+    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     // 30秒ごと。画面が隠れているあいだ（iPadで別アプリを前に出している等）は読まず、
     // 前に戻った瞬間に1回読み直す。以前は10秒ごと・常時で、Supabase の転送量の大半を占めていた
@@ -2817,6 +3180,8 @@ export default function StaffView() {
                   ? "過去の問診票を呼び出す"
                   : tab === "feedback"
                   ? "かねこさんへの要望・報告と対応状況"
+                  : tab === "lab"
+                  ? "検査結果の入力とオンライン公開"
                   : tab === "pillorder"
                     ? `${isToday ? "本日" : dateKey} のオンライン診療 ${pillorderActive.length}件　`
                     : tab === "zoom"
@@ -2835,7 +3200,7 @@ export default function StaffView() {
                 患者を探すタブは日付で絞らないので出さない */}
             <div
               className="h-10 flex items-center gap-2 px-3 rounded-xl text-sm"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" ? "none" : undefined }}
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" ? "none" : undefined }}
             >
               <CalendarDays size={15} color="#B08A90" />
               <input
@@ -2934,6 +3299,7 @@ export default function StaffView() {
               { id: "bookings", label: "予約状況", Icon: CalendarCheck },
               { id: "pillorder", label: "pillorder", Icon: Stethoscope },
               { id: "zoom", label: "Zoom英語", Icon: Video },
+              { id: "lab", label: "検査結果", Icon: FlaskConical },
               { id: "search", label: "患者を探す", Icon: Search },
               { id: "feedback", label: "要望", Icon: MessageCircle },
               { id: "settings", label: "設定", Icon: Settings },
@@ -3524,6 +3890,14 @@ export default function StaffView() {
             <FeedbackTab isAdmin adminName={myName} onCountChange={setFeedbackOpen} />
           )}
 
+          {tab === "lab" && (
+            <LabPanel
+              reloadKey={labReload}
+              onEdit={(r) => setLabEditor(r)}
+              onNew={() => setLabEditor({})}
+            />
+          )}
+
           {tab === "search" && (
           /* 患者を探す。日付をまたいで過去の問診票を呼び出し、もう一度見る・印刷する。
              生年月日は前方一致なので、年だけ・年月だけでも候補を絞れる */
@@ -3767,7 +4141,8 @@ export default function StaffView() {
                           formFor(c) ||
                           (c.booking_id ? bookingForms.find((bf) => bf.booking_id === c.booking_id) : null) ||
                           null;
-                        const f = c.visit_type === "consult" ? anyForm : null;
+                        // アフターピル初診（pickup扱いだがフル問診票あり）も問診票欄に出す
+                        const f = c.visit_type === "consult" || isEcPickup(c) ? anyForm : null;
                         // 受付のアフターピルボタン（再診）か、問診票の受診理由（初診）
                         const map = c.ec_intercourse_date
                           ? { date: c.ec_intercourse_date, timing: "" }
@@ -4043,6 +4418,23 @@ export default function StaffView() {
                                 >
                                   <CheckCircle2 size={12} style={{ visibility: c.payment_done ? "visible" : "hidden" }} />
                                   会計済
+                                </button>
+                                {/* 検査結果のオンライン公開。患者情報を転記した入力フォームを開く */}
+                                <button
+                                  onClick={() => setLabEditor({
+                                    patient_name: c.patient_name || "",
+                                    patient_kana: c.patient_kana || kana?.text || "",
+                                    dob: c.date_of_birth || "",
+                                    phone: phone?.text || "",
+                                    chart_number: c.chart_number || anyForm?.chart_number || "",
+                                    email: anyForm ? emailFromIntakeAnswers(anyForm) : "",
+                                    line_user_id: c.line_user_id || booking?.line_user_id || null,
+                                  })}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                  style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#0F8B8D" }}
+                                >
+                                  <FlaskConical size={12} />
+                                  検査
                                 </button>
                                 </div>
                                 {/* 押し間違い・別人の受付・動作確認の後始末。
@@ -4494,6 +4886,18 @@ export default function StaffView() {
           </div>
         )}
       </div>
+
+      {/* 検査結果の入力・編集モーダル（受付一覧の「検査」ボタンと検査結果タブの両方から） */}
+      {labEditor && (
+        <LabEditorModal
+          init={labEditor}
+          onClose={() => setLabEditor(null)}
+          onSaved={() => {
+            setLabEditor(null);
+            setLabReload((k) => k + 1);
+          }}
+        />
+      )}
 
       {/* PDF化用レイアウト（画面外に隠しておき、印刷時だけ画像化する）。
           一括印刷(dayIntakeForms)と同じ IntakePrintSheet を使う。以前はここだけ
