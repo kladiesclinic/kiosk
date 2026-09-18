@@ -535,18 +535,23 @@ function LabEditorModal({ init, onClose, onSaved }) {
 function LabPanel({ onEdit, onNew, reloadKey }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState("");
+  const [loadErr, setLoadErr] = useState("");
 
   useEffect(() => {
     let alive = true;
     (async () => {
       let query = supabase.from("lab_results").select("*").order("created_at", { ascending: false }).limit(50);
-      const s = q.trim();
+      // or() の区切り文字と衝突する記号は除く（カルテ番号・氏名には本来入らない）
+      const s = q.trim().replace(/[,()]/g, "");
       if (s) {
-        // カルテ番号か氏名・カナの部分一致
-        query = query.or(`chart_number.eq.${s},patient_name.ilike.%${s}%,patient_kana.ilike.%${s}%`);
+        // カルテ番号か氏名・カナの部分一致。
+        // or() の文字列内では ilike のワイルドカードは % ではなく *（PostgRESTが%に変換する）
+        query = query.or(`chart_number.eq.${s},patient_name.ilike.*${s}*,patient_kana.ilike.*${s}*`);
       }
       const { data, error } = await query;
-      if (alive) setRows(error ? [] : data || []);
+      if (!alive) return;
+      setLoadErr(error ? `読み込みに失敗しました: ${error.message}` : "");
+      setRows(error ? [] : data || []);
     })();
     return () => { alive = false; };
   }, [q, reloadKey]);
@@ -571,10 +576,11 @@ function LabPanel({ onEdit, onNew, reloadKey }) {
       <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
         受付一覧の各行の「検査」ボタンから開くと、患者情報が自動で入ります。患者さんは予約サイトの「検査結果の確認」（生年月日＋電話下4桁）で閲覧します。
       </p>
+      {loadErr && <p className="text-sm mb-2" style={{ color: "#D64550" }}>{loadErr}</p>}
       {rows === null ? (
         <p className="text-sm" style={{ color: "#B08A90" }}>読み込み中…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm" style={{ color: "#B08A90" }}>{q ? "見つかりませんでした。" : "まだ入力はありません。"}</p>
+        <p className="text-sm" style={{ color: "#B08A90" }}>{loadErr ? "" : q ? "見つかりませんでした。" : "まだ入力はありません。"}</p>
       ) : (
         <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
           <div className="overflow-x-auto">
