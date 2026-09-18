@@ -284,32 +284,38 @@ function phoneFor(checkin, form, booking) {
    スタッフがここで入力・公開し、患者は予約サイトの /results で
    生年月日＋電話下4桁を入れて閲覧する。項目は固定5種・値はボタン選択のみ。 */
 
-const LAB_TESTS = [
-  { key: "chlamydia", label: "クラミジア" },
-  { key: "gonorrhea", label: "淋菌" },
-  { key: "trichomonas", label: "トリコモナス" },
-  { key: "candida", label: "カンジダ" },
-  { key: "cervical", label: "子宮頸がん（細胞診）", levels: ["NILM", "ASC-US", "LSIL", "HSIL+"] },
-];
+// 項目は lab_test_master（DB）が本体で、スタッフ画面から追加・改名・非表示にできる。
+// これは items にラベルが焼き込まれる前（初期5項目時代）の旧データ用フォールバック
+const LAB_LEGACY_LABELS = {
+  chlamydia: "クラミジア",
+  gonorrhea: "淋菌",
+  trichomonas: "トリコモナス",
+  candida: "カンジダ",
+  cervical: "子宮頸がん（細胞診）",
+};
+const CERVICAL_LEVELS = ["NILM", "ASC-US", "LSIL", "HSIL+"];
 const LAB_CHOICE_LABEL = {
   negative: "陰性", positive: "陽性",
   NILM: "NILM 異常なし", "ASC-US": "ASC-US", LSIL: "LSIL", "HSIL+": "HSIL以上",
 };
+// 結果行の項目ラベル（焼き込み済み優先・旧データはフォールバック）
+function labItemLabel(it) {
+  return it.label || LAB_LEGACY_LABELS[it.key] || it.key;
+}
 
 // 選択内容から患者への案内文を組み立てる（スタッフが編集できる下書き）。
-// 方針: 陽性はお薬の受け取り案内、頸がんの異常は来院のお願い。診察の要否には触れない。
-function labGuidanceFor(sel) {
-  const posNames = LAB_TESTS.filter((t) => !t.levels && sel[t.key] === "positive").map((t) => t.label);
-  const cerv = sel.cervical;
-  const cervAbnormal = cerv && cerv !== "NILM";
-  const negCount = LAB_TESTS.filter((t) =>
-    (!t.levels && sel[t.key] === "negative") || (t.levels && sel[t.key] === "NILM")).length;
+// 方針: 陽性・頸がん異常はどちらも来院のお願いに統一。薬のことも診察の要否も書かない。
+function labGuidanceFor(sel, tests) {
+  const posNames = tests.filter((t) => t.kind !== "cervical" && sel[t.key] === "positive").map((t) => t.name);
+  const cervAbnormal = tests.some((t) => t.kind === "cervical" && sel[t.key] && sel[t.key] !== "NILM");
+  const negCount = tests.filter((t) =>
+    (t.kind !== "cervical" && sel[t.key] === "negative") || (t.kind === "cervical" && sel[t.key] === "NILM")).length;
   const parts = [];
   if (posNames.length) {
-    parts.push(`${posNames.join("・")}が陽性でした。お薬をご用意していますので、受付までお受け取りにお越しください。`);
+    parts.push(`${posNames.join("・")}が陽性でした。お手数ですが、ご来院をお願いいたします。`);
   }
   if (cervAbnormal) {
-    parts.push("子宮頸がん検診は再検査をおすすめする結果でした。お手数ですが、ご来院をお願いいたします。");
+    parts.push("子宮頸がん検診は再検査をおすすめする結果でした。ご来院をお願いいたします。");
   }
   if (!posNames.length && !cervAbnormal) {
     if (negCount > 0) parts.push("いずれも陰性・異常なしでした。");
@@ -321,8 +327,8 @@ function labGuidanceFor(sel) {
 
 // セグメントボタン1組（検査なし/陰性/陽性 など）。value が undefined なら「検査なし」
 function LabChoiceRow({ test, value, onChange }) {
-  const options = test.levels
-    ? [...test.levels.map((v) => ({ v, label: LAB_CHOICE_LABEL[v] })), { v: "", label: "検査なし" }]
+  const options = test.kind === "cervical"
+    ? [...CERVICAL_LEVELS.map((v) => ({ v, label: LAB_CHOICE_LABEL[v] })), { v: "", label: "検査なし" }]
     : [{ v: "", label: "検査なし" }, { v: "negative", label: "陰性" }, { v: "positive", label: "陽性" }];
   const styleFor = (v, active) => {
     if (!active) return { background: "#FFFFFF", border: "1px solid #F2DFE4", color: "#B08A90" };
@@ -366,6 +372,19 @@ function LabEditorModal({ init, onClose, onSaved }) {
   const [err, setErr] = useState("");
   const [lineUserId, setLineUserId] = useState(init.line_user_id || null);
   const [chartLookup, setChartLookup] = useState({ busy: false, note: "" });
+  // 項目マスタ（DB）。表示中の項目だけ並べる。編集画面を開くたびに読み直すので、
+  // 「項目を編集」で追加した項目は次に開いたフォームから現れる
+  const [tests, setTests] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    supabase.from("lab_test_master").select("key, name, name_en, kind")
+      .eq("active", true).order("sort_order", { ascending: true })
+      .then(({ data, error }) => {
+        if (!alive) return;
+        setTests(error ? [] : data || []);
+      });
+    return () => { alive = false; };
+  }, []);
 
   // カルテ番号から患者情報を引いて空欄だけ埋める。1つのソースで打ち切らず、
   // 足りない項目を次のソースで補い続ける（最新の受付が薬のみ＝問診票なしのことが
@@ -476,13 +495,16 @@ function LabEditorModal({ init, onClose, onSaved }) {
     setSel((prev) => {
       const next = { ...prev };
       if (v) next[key] = v; else delete next[key];
-      if (!guidanceTouched) setGuidance(labGuidanceFor(next));
+      if (!guidanceTouched) setGuidance(labGuidanceFor(next, tests || []));
       return next;
     });
   };
 
   const phoneDigits = phone.replace(/[^0-9]/g, "");
-  const items = LAB_TESTS.filter((t) => sel[t.key]).map((t) => ({ key: t.key, result: sel[t.key] }));
+  // 表示名は入力時点のものを結果行に焼き込む（後でマスタを改名しても過去の結果は不変）
+  const items = (tests || [])
+    .filter((t) => sel[t.key])
+    .map((t) => ({ key: t.key, label: t.name, label_en: t.name_en || null, result: sel[t.key] }));
   const canSave = name.trim() && /^\d{4}-\d{2}-\d{2}$/.test(dob) && phoneDigits.length >= 10 && items.length > 0;
 
   const save = async (publish) => {
@@ -616,11 +638,15 @@ function LabEditorModal({ init, onClose, onSaved }) {
           <input style={{ ...inputStyle, width: 150 }} type="date" value={testDate} onChange={(e) => setTestDate(e.target.value)} />
         </div>
 
-        {/* 結果の選択（タップだけ） */}
+        {/* 結果の選択（タップだけ）。項目は lab_test_master から */}
         <div className="rounded-xl overflow-hidden mb-3" style={{ border: "1px solid #F2DFE4" }}>
-          {LAB_TESTS.map((t, i) => (
+          {tests === null ? (
+            <p className="text-xs px-3 py-3" style={{ color: "#B08A90" }}>項目を読み込んでいます…</p>
+          ) : tests.length === 0 ? (
+            <p className="text-xs px-3 py-3" style={{ color: "#D64550" }}>項目を読み込めませんでした。開き直してください。</p>
+          ) : tests.map((t, i) => (
             <div key={t.key} className="flex items-center gap-3 px-3 py-2.5" style={{ borderTop: i > 0 ? "1px solid #F8ECEE" : "none" }}>
-              <span className="text-sm w-32 shrink-0" style={{ color: "#3A2E30" }}>{t.label}</span>
+              <span className="text-sm w-32 shrink-0" style={{ color: "#3A2E30" }}>{t.name}</span>
               <LabChoiceRow test={t} value={sel[t.key]} onChange={(v) => setChoice(t.key, v)} />
             </div>
           ))}
@@ -661,11 +687,124 @@ function LabEditorModal({ init, onClose, onSaved }) {
   );
 }
 
+// 検査項目マスタの管理モーダル。追加・改名・表示/非表示・並び順の変更。
+// 削除は設けない（過去の結果が参照しているため）— 使わなくなった項目は非表示にする
+function LabMasterEditor({ onClose }) {
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newNameEn, setNewNameEn] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    const { data, error } = await supabase.from("lab_test_master")
+      .select("*").order("sort_order", { ascending: true });
+    setErr(error ? `読み込みに失敗しました: ${error.message}` : "");
+    setRows(error ? [] : data || []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const patchRow = (key, patch) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch, dirty: true } : r)));
+
+  const saveRow = async (r) => {
+    setBusy(true);
+    const { error } = await supabase.from("lab_test_master")
+      .update({ name: r.name.trim(), name_en: (r.name_en || "").trim() || null, sort_order: Number(r.sort_order) || 100, active: r.active })
+      .eq("key", r.key);
+    setBusy(false);
+    if (error) { setErr(`保存に失敗しました: ${error.message}`); return; }
+    setErr("");
+    patchRow(r.key, { dirty: false });
+  };
+
+  const toggleActive = async (r) => {
+    const next = !r.active;
+    patchRow(r.key, { active: next, dirty: r.dirty });
+    const { error } = await supabase.from("lab_test_master").update({ active: next }).eq("key", r.key);
+    if (error) { setErr(`更新に失敗しました: ${error.message}`); patchRow(r.key, { active: r.active }); }
+  };
+
+  const addRow = async () => {
+    const nm = newName.trim();
+    if (!nm || busy) return;
+    setBusy(true);
+    const key = "c_" + Math.random().toString(36).slice(2, 10);
+    const maxSort = Math.max(100, ...(rows || []).map((r) => Number(r.sort_order) || 0));
+    const { error } = await supabase.from("lab_test_master")
+      .insert({ key, name: nm, name_en: newNameEn.trim() || null, kind: "binary", sort_order: maxSort + 10 });
+    setBusy(false);
+    if (error) { setErr(`追加に失敗しました: ${error.message}`); return; }
+    setErr("");
+    setNewName("");
+    setNewNameEn("");
+    load();
+  };
+
+  const inputStyle = { border: "1.5px solid #F2DFE4", borderRadius: 8, padding: "6px 8px", fontSize: 12, background: "#FFFFFF" };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" style={{ background: "rgba(58,46,48,0.45)" }}>
+      <div className="w-full max-w-xl rounded-2xl p-5 my-6" style={{ background: "#FFFFFF" }}>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-base font-bold" style={{ fontFamily: "'Zen Kaku Gothic New', sans-serif", color: "#3A2E30" }}>検査項目の管理</h3>
+          <button onClick={onClose} className="p-1"><X size={18} color="#B08A90" /></button>
+        </div>
+        <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
+          名前の変更は今後の入力にだけ反映されます（公開済みの結果は入力時の名前のまま）。使わない項目は非表示に。並び順は小さい数字が上。
+        </p>
+        {err && <p className="text-xs mb-2" style={{ color: "#D64550" }}>{err}</p>}
+        {rows === null ? (
+          <p className="text-sm" style={{ color: "#B08A90" }}>読み込み中…</p>
+        ) : (
+          <div className="space-y-1.5">
+            {rows.map((r) => (
+              <div key={r.key} className="flex items-center gap-1.5">
+                <input style={{ ...inputStyle, width: 150 }} value={r.name} onChange={(e) => patchRow(r.key, { name: e.target.value })} />
+                <input style={{ ...inputStyle, width: 150 }} placeholder="English（任意）" value={r.name_en || ""} onChange={(e) => patchRow(r.key, { name_en: e.target.value })} />
+                <input style={{ ...inputStyle, width: 52, textAlign: "center" }} inputMode="numeric" value={r.sort_order} onChange={(e) => patchRow(r.key, { sort_order: e.target.value })} />
+                <button
+                  onClick={() => toggleActive(r)}
+                  className="px-2 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap"
+                  style={r.active ? { background: "#E1F5EE", color: "#0F6E56" } : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#B08A90" }}
+                >
+                  {r.active ? "表示中" : "非表示"}
+                </button>
+                <button
+                  onClick={() => saveRow(r)}
+                  disabled={busy || !r.dirty}
+                  className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold"
+                  style={{ background: r.dirty ? "#0F8B8D" : "#FFF8F7", color: r.dirty ? "#FFFFFF" : "#C9AEB3", border: r.dirty ? "none" : "1px solid #F2DFE4" }}
+                >
+                  保存
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 mt-4 pt-3" style={{ borderTop: "1px solid #F8ECEE" }}>
+          <input style={{ ...inputStyle, width: 150 }} placeholder="新しい項目名" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          <input style={{ ...inputStyle, width: 150 }} placeholder="English（任意）" value={newNameEn} onChange={(e) => setNewNameEn(e.target.value)} />
+          <button
+            onClick={addRow}
+            disabled={!newName.trim() || busy}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-bold"
+            style={{ background: "#0F8B8D", color: "#FFFFFF", opacity: !newName.trim() || busy ? 0.5 : 1 }}
+          >
+            <Plus size={12} /> 追加
+          </button>
+          <span className="text-[11px]" style={{ color: "#B08A90" }}>陰性/陽性の項目として追加されます</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 「検査結果」タブの一覧。最近の入力＋カルテ番号/氏名の検索＋新規
 function LabPanel({ onEdit, onNew, reloadKey }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState("");
   const [loadErr, setLoadErr] = useState("");
+  const [managing, setManaging] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -702,7 +841,11 @@ function LabPanel({ onEdit, onNew, reloadKey }) {
         <button onClick={onNew} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold" style={{ background: "#0F8B8D", color: "#FFFFFF" }}>
           <Plus size={14} /> 新規入力
         </button>
+        <button onClick={() => setManaging(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold" style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378" }}>
+          <Settings size={13} /> 項目を編集
+        </button>
       </div>
+      {managing && <LabMasterEditor onClose={() => setManaging(false)} />}
       <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
         受付一覧の各行の「検査」ボタンから開くと、患者情報が自動で入ります。患者さんは予約サイトの「検査結果の確認」（生年月日＋電話下4桁）で閲覧します。
       </p>
@@ -737,11 +880,10 @@ function LabPanel({ onEdit, onNew, reloadKey }) {
                     <td className="px-2 py-2.5">
                       <div className="flex flex-wrap gap-1">
                         {(r.items || []).map((it) => {
-                          const t = LAB_TESTS.find((x) => x.key === it.key);
-                          const bad = it.result === "positive" || (t?.levels && it.result !== "NILM");
+                          const bad = it.result === "positive" || (CERVICAL_LEVELS.includes(it.result) && it.result !== "NILM");
                           return (
                             <span key={it.key} className="text-[10px] px-1.5 py-0.5 rounded-full" style={bad ? { background: "#FAEEDA", color: "#854F0B" } : { background: "#E1F5EE", color: "#0F6E56" }}>
-                              {t ? t.label.replace("（細胞診）", "") : it.key} {LAB_CHOICE_LABEL[it.result] || it.result}
+                              {labItemLabel(it).replace("（細胞診）", "")} {LAB_CHOICE_LABEL[it.result] || it.result}
                             </span>
                           );
                         })}
