@@ -364,6 +364,66 @@ function LabEditorModal({ init, onClose, onSaved }) {
   const [guidanceTouched, setGuidanceTouched] = useState(!!init.id);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [lineUserId, setLineUserId] = useState(init.line_user_id || null);
+  const [chartLookup, setChartLookup] = useState({ busy: false, note: "" });
+
+  // カルテ番号から患者情報を引いて空欄だけ埋める。転記元は新しい情報から順に
+  // ①過去の検査結果（全項目そろう）②受付記録＋紐づく問診票 ③問診票
+  const fillFromChart = async () => {
+    const no = chart.trim();
+    if (!no || chartLookup.busy) return;
+    setChartLookup({ busy: true, note: "" });
+    const fill = (patch) => {
+      if (patch.name && !name.trim()) setName(patch.name);
+      if (patch.kana && !kana.trim()) setKana(patch.kana);
+      if (patch.dob && !dob) setDob(patch.dob);
+      if (patch.phone && !phone.trim()) setPhone(patch.phone);
+      if (patch.email && !email.trim()) setEmail(patch.email);
+      if (patch.line) setLineUserId((cur) => cur || patch.line);
+    };
+    try {
+      const { data: prev } = await supabase.from("lab_results")
+        .select("patient_name, patient_kana, dob, phone, email, line_user_id")
+        .eq("chart_number", no).order("created_at", { ascending: false }).limit(1);
+      if (prev && prev[0]) {
+        const p = prev[0];
+        fill({ name: p.patient_name, kana: p.patient_kana, dob: p.dob, phone: p.phone, email: p.email, line: p.line_user_id });
+        setChartLookup({ busy: false, note: "前回の検査結果から転記しました。" });
+        return;
+      }
+      const { data: cks } = await supabase.from("reception_checkins")
+        .select("id, patient_name, patient_kana, date_of_birth, line_user_id")
+        .eq("chart_number", no).order("created_at", { ascending: false }).limit(1);
+      if (cks && cks[0]) {
+        const c = cks[0];
+        fill({ name: c.patient_name, kana: c.patient_kana, dob: c.date_of_birth, line: c.line_user_id });
+        const { data: ifs } = await supabase.from("intake_forms")
+          .select("answers").eq("checkin_id", c.id).limit(1);
+        const ans = ifs && ifs[0] ? ifs[0].answers : null;
+        fill({ phone: phoneFromIntakeAnswers(ans), email: emailFromIntakeAnswers({ answers: ans }) });
+        setChartLookup({ busy: false, note: "受付記録から転記しました。電話・メールが空欄のときは手入力してください。" });
+        return;
+      }
+      const { data: fms } = await supabase.from("intake_forms")
+        .select("patient_name, date_of_birth, answers")
+        .eq("chart_number", no).order("created_at", { ascending: false }).limit(1);
+      if (fms && fms[0]) {
+        const f2 = fms[0];
+        const kanaRow = (f2.answers || []).find((r) => /Katakana|カタカナ/i.test(r?.label || ""));
+        fill({
+          name: f2.patient_name, dob: f2.date_of_birth,
+          kana: kanaRow ? String(kanaRow.value || "").split(" ／ ")[0].trim() : "",
+          phone: phoneFromIntakeAnswers(f2.answers),
+          email: emailFromIntakeAnswers({ answers: f2.answers }),
+        });
+        setChartLookup({ busy: false, note: "問診票から転記しました。" });
+        return;
+      }
+      setChartLookup({ busy: false, note: "このカルテ番号の記録が見つかりませんでした。" });
+    } catch (e) {
+      setChartLookup({ busy: false, note: "検索に失敗しました。もう一度お試しください。" });
+    }
+  };
 
   const setChoice = (key, v) => {
     setSel((prev) => {
@@ -389,7 +449,7 @@ function LabEditorModal({ init, onClose, onSaved }) {
       phone: phoneDigits,
       chart_number: chart.trim() || null,
       email: email.trim() || null,
-      line_user_id: init.line_user_id || null,
+      line_user_id: lineUserId || null,
       test_date: testDate,
       items,
       guidance: guidance.trim() || null,
@@ -469,16 +529,39 @@ function LabEditorModal({ init, onClose, onSaved }) {
           </div>
           <div>
             <label className="text-[11px]" style={{ color: "#B08A90" }}>カルテ番号</label>
-            <input style={inputStyle} value={chart} onChange={(e) => setChart(e.target.value)} />
+            <div className="flex items-center gap-1">
+              <input
+                style={inputStyle}
+                value={chart}
+                onChange={(e) => setChart(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); fillFromChart(); } }}
+              />
+              {/* 番号から過去の記録（検査結果・受付・問診票）を引いて空欄を自動で埋める */}
+              <button
+                onClick={fillFromChart}
+                disabled={!chart.trim() || chartLookup.busy}
+                title="カルテ番号から患者情報を転記"
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-bold whitespace-nowrap"
+                style={{ background: "#DFF5F3", color: "#0F8B8D", opacity: !chart.trim() || chartLookup.busy ? 0.5 : 1 }}
+              >
+                <Search size={13} />
+                {chartLookup.busy ? "検索中" : "引く"}
+              </button>
+            </div>
           </div>
           <div>
             <label className="text-[11px]" style={{ color: "#B08A90" }}>メール（通知先）</label>
             <input style={inputStyle} inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
         </div>
+        {chartLookup.note && (
+          <p className="text-[11px] mb-1 font-bold" style={{ color: chartLookup.note.includes("転記しました") ? "#0F8B8D" : "#D64550" }}>
+            {chartLookup.note}
+          </p>
+        )}
         <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
           患者さんは「生年月日＋電話番号の下4桁」で照会します。電話番号の間違いに注意。
-          {init.line_user_id ? " ／ LINE連携あり（公開時にLINEにも通知）" : ""}
+          {lineUserId ? " ／ LINE連携あり（公開時にLINEにも通知）" : ""}
         </p>
 
         <div className="flex items-center gap-2 mb-3">
@@ -517,7 +600,7 @@ function LabEditorModal({ init, onClose, onSaved }) {
             </button>
           )}
           <span className="text-[11px] mr-auto" style={{ color: "#B08A90" }}>
-            下書きは患者からは見えません。公開すると{init.email || init.line_user_id ? "通知が送られ、" : ""}患者が閲覧できるようになります
+            下書きは患者からは見えません。公開すると{email.trim() || lineUserId ? "通知が送られ、" : ""}患者が閲覧できるようになります
           </span>
           <button onClick={() => save(false)} disabled={!canSave || busy} className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#8A7378", opacity: !canSave || busy ? 0.5 : 1 }}>
             下書き保存
