@@ -410,6 +410,28 @@ function LabEditorModal({ init, onClose, onSaved }) {
       return row ? String(row.value || "").split(" ／ ")[0].trim() : "";
     };
     try {
+      // 受付記録を先に引く（⓪の申請フォームが受付IDに紐付いているため）
+      const { data: cks } = await supabase.from("reception_checkins")
+        .select("id, booking_id, patient_name, patient_kana, date_of_birth, line_user_id")
+        .eq("chart_number", no).order("created_at", { ascending: false }).limit(5);
+      const checkins = cks || [];
+
+      // ⓪ 結果申請フォーム（患者が自分で登録した検査結果用の連絡先）。
+      //    問診票と違う連絡先を書く方がいるので、電話・メールはこれが最優先。
+      //    複数回申請していても最新の提出1件を採る
+      if (checkins.length) {
+        const { data: apps } = await supabase.from("lab_result_applications")
+          .select("phone, email, submitted_at")
+          .in("checkin_id", checkins.map((c) => c.id))
+          .eq("status", "submitted")
+          .order("submitted_at", { ascending: false }).limit(1);
+        if (apps && apps[0]) {
+          const a = apps[0];
+          const d = new Date(a.submitted_at);
+          take(`結果申請フォーム（${d.getMonth() + 1}/${d.getDate()}提出）`, { phone: a.phone, email: a.email });
+        }
+      }
+
       // ① 過去の検査結果（2回目以降はこれでほぼ完結）
       const { data: prev } = await supabase.from("lab_results")
         .select("patient_name, patient_kana, dob, phone, email, line_user_id")
@@ -420,10 +442,6 @@ function LabEditorModal({ init, onClose, onSaved }) {
       }
 
       // ② 受付記録（氏名・カナ・生年月日・LINE・予約ID）
-      const { data: cks } = await supabase.from("reception_checkins")
-        .select("id, booking_id, patient_name, patient_kana, date_of_birth, line_user_id")
-        .eq("chart_number", no).order("created_at", { ascending: false }).limit(5);
-      const checkins = cks || [];
       for (const c of checkins) {
         take("受付", { name: c.patient_name, kana: c.patient_kana, dob: c.date_of_birth, line: c.line_user_id });
       }
@@ -2194,6 +2212,10 @@ export default function StaffView() {
   const [checkingIn, setCheckingIn] = useState(null);
   // 問診票のQRを見せる対象の受付行
   const [qrFor, setQrFor] = useState(null);
+  // 検査結果オンライン確認の申請（lab_result_applications）。checkin_id → 行 のMapと、
+  // 申請フォームのQRモーダル
+  const [labApps, setLabApps] = useState(new Map());
+  const [labApplyQr, setLabApplyQr] = useState(null);
   // 患者を探す（過去の問診票の呼び出し）
   const [query, setQuery] = useState({ name: "", dob: "", chart: "" });
   const [results, setResults] = useState(null); // null=まだ検索していない（問診票）
@@ -2632,6 +2654,82 @@ export default function StaffView() {
       setGuideMailing(null);
     }
   };
+  /* ---- 検査結果オンライン確認の申請（lab_result_applications）----
+     受付行から申請フォームのリンクを患者に渡す。メール（Edge Function lab-apply-mail、
+     スタッフのログイン必須・宛先はDB行の invite_email だけ）と、メールが無い方向けの
+     QR表示の2経路。1受付1行（unique index）でトークンは固定＝再送してもURLは同じ */
+  const LAB_APPLY_URL = "https://keicuri-booking.vercel.app/results/apply";
+  const [labApplyBusy, setLabApplyBusy] = useState(null); // 処理中の受付ID（連打よけ）
+
+  // 受付行に対応する申請行を用意する。既にあればそれを使い（invite_emailだけ追従）、
+  // 無ければ作る。同時作成でunique制約に当たったら読み直す
+  const ensureLabApplication = async (c, inviteEmail) => {
+    const cols = "id, checkin_id, token, status, invite_sent_at, invite_email, email, phone, submitted_at";
+    const existing = labApps.get(c.id);
+    if (existing) {
+      if (inviteEmail && existing.invite_email !== inviteEmail) {
+        await supabase.from("lab_result_applications")
+          .update({ invite_email: inviteEmail }).eq("id", existing.id);
+        return { ...existing, invite_email: inviteEmail };
+      }
+      return existing;
+    }
+    const { data, error } = await supabase.from("lab_result_applications")
+      .insert({
+        checkin_id: c.id,
+        patient_name: c.patient_name || null,
+        patient_kana: c.patient_kana || null,
+        invite_email: inviteEmail || null,
+      })
+      .select(cols)
+      .single();
+    if (error) {
+      const { data: again } = await supabase.from("lab_result_applications")
+        .select(cols).eq("checkin_id", c.id).maybeSingle();
+      if (again) return again;
+      throw new Error(error.message);
+    }
+    return data;
+  };
+
+  const sendLabApplyMail = async (c, email) => {
+    if (labApplyBusy) return;
+    if (!window.confirm(`検査結果オンライン確認の申請フォームのご案内を ${email} へメールで送ります。よろしいですか？`)) return;
+    setLabApplyBusy(c.id);
+    try {
+      const app = await ensureLabApplication(c, email);
+      const { data, error } = await supabase.functions.invoke("lab-apply-mail", {
+        body: { applicationId: app.id },
+      });
+      if (error) {
+        let detail = error.message || "";
+        try { const j = await error.context?.json?.(); if (j?.error) detail = j.error; } catch { /* ignore */ }
+        throw new Error(detail);
+      }
+      if (data?.error) throw new Error(data.error);
+      setNotice(`結果申請のご案内をメールで送りました（${data?.email || email}）`);
+      load();
+    } catch (e) {
+      setLoadError(`結果申請のメールを送れませんでした: ${e.message}`);
+    } finally {
+      setLabApplyBusy(null);
+    }
+  };
+
+  const showLabApplyQr = async (c) => {
+    if (labApplyBusy) return;
+    setLabApplyBusy(c.id);
+    try {
+      const app = await ensureLabApplication(c, null);
+      setLabApplyQr({ checkin: c, url: `${LAB_APPLY_URL}?tk=${app.token}` });
+      load();
+    } catch (e) {
+      setLoadError(`結果申請のQRを用意できませんでした: ${e.message}`);
+    } finally {
+      setLabApplyBusy(null);
+    }
+  };
+
   const printMonshinBatch = async () => {
     if (!monshinBatchRef.current || monshinPrinting || monshinPrintRows.length === 0) return;
     const iosWindow = IS_IOS ? window.open("", "_blank") : null;
@@ -2713,6 +2811,17 @@ export default function StaffView() {
     setBookings(bRes.data || []);
     setBookingForms(bForms);
     setLastUpdated(new Date());
+
+    // 検査結果オンライン確認の申請。この日の受付に紐付く分だけ・列指定（egress節約）
+    const checkinIds = (cRes.data || []).map((c) => c.id);
+    if (checkinIds.length) {
+      supabase.from("lab_result_applications")
+        .select("id, checkin_id, token, status, invite_sent_at, invite_email, email, phone, submitted_at")
+        .in("checkin_id", checkinIds)
+        .then(({ data }) => setLabApps(new Map((data || []).map((r) => [r.checkin_id, r]))));
+    } else {
+      setLabApps(new Map());
+    }
 
     // 予定表で「×（受付なし）」を出すために、この日の閉じた枠を引く。
     // 休診日も一緒に読み直す（設定タブや別の端末での変更を30秒以内に拾う）
@@ -4433,6 +4542,9 @@ export default function StaffView() {
                         const booking = bookingById.get(c.booking_id);
                         const kana = kanaFor(c, anyForm, booking);
                         const phone = phoneFor(c, anyForm, booking);
+                        // 検査結果オンライン確認の申請。提出済みなら検査結果の連絡先はこちらが正
+                        const labApp = labApps.get(c.id);
+                        const labAppDone = labApp?.status === "submitted";
                         const isDone = c.chart_done && c.payment_done;
                         // 予約の方は呼ぶ順番の判断が変わる（飛び込みより予約時間が優先）。
                         // 受付の運用基準: 予約時間から7分までの受付は許容、8分以降を「遅」とする
@@ -4703,9 +4815,11 @@ export default function StaffView() {
                                     patient_name: c.patient_name || "",
                                     patient_kana: c.patient_kana || kana?.text || "",
                                     dob: c.date_of_birth || "",
-                                    phone: phone?.text || "",
+                                    // 提出済みの結果申請があれば、電話・メールはフォームの値を優先する
+                                    // （問診票と違う連絡先を書く方がいるため。申請が無ければ従来どおり）
+                                    phone: (labAppDone && labApp.phone) || phone?.text || "",
                                     chart_number: c.chart_number || anyForm?.chart_number || "",
-                                    email: anyForm ? emailFromIntakeAnswers(anyForm) : "",
+                                    email: (labAppDone && labApp.email) || (anyForm ? emailFromIntakeAnswers(anyForm) : ""),
                                     line_user_id: c.line_user_id || booking?.line_user_id || null,
                                   })}
                                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
@@ -4714,6 +4828,38 @@ export default function StaffView() {
                                   <FlaskConical size={12} />
                                   検査
                                 </button>
+                                {/* 検査結果オンライン確認の申請フォームを患者に渡す。
+                                    提出済み→バッジ / 問診票にメールあり→メール送信 / 無し→QR */}
+                                {labAppDone ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap"
+                                    style={{ background: "#DFF5F3", color: "#0F6E56" }}
+                                    title={`結果申請フォーム提出済み（${labApp.email || ""}）`}
+                                  >
+                                    <CheckCircle2 size={12} />
+                                    申請済み
+                                  </span>
+                                ) : anyForm && emailFromIntakeAnswers(anyForm) ? (
+                                  <button
+                                    onClick={() => sendLabApplyMail(c, emailFromIntakeAnswers(anyForm))}
+                                    disabled={labApplyBusy === c.id}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: labApplyBusy === c.id ? 0.5 : 1 }}
+                                  >
+                                    <Mail size={12} />
+                                    {labApplyBusy === c.id ? "送信中..." : labApp?.invite_sent_at ? "結果申請を再送" : "結果申請をメール"}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={() => showLabApplyQr(c)}
+                                    disabled={labApplyBusy === c.id}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                    style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: labApplyBusy === c.id ? 0.5 : 1 }}
+                                  >
+                                    <QrCode size={12} />
+                                    結果申請QR
+                                  </button>
+                                )}
                                 </div>
                                 {/* 押し間違い・別人の受付・動作確認の後始末。
                                     予約は「予約中」に戻り、問診票は残る */}
@@ -5003,6 +5149,43 @@ export default function StaffView() {
                 <QrImage url={intakeUrlForCheckin(qrFor)} />
                 <p className="text-xs leading-relaxed" style={{ color: "#8A7378" }}>
                   患者さんのスマホでこのQRを読み取っていただくと、この受付に紐付いた問診票が開きます。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 検査結果オンライン確認・申請フォームのQRモーダル（メールが無い患者さん向け） */}
+        {labApplyQr && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(58,46,48,0.5)" }}
+            onClick={() => setLabApplyQr(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl overflow-hidden text-center"
+              style={{ background: "#FFFFFF" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F2DFE4" }}>
+                <div className="text-left">
+                  <div className="text-base font-bold" style={{ color: "#3A2E30" }}>結果申請のQR</div>
+                  <div className="text-xs" style={{ color: "#B08A90" }}>
+                    {labApplyQr.checkin.checkin_number}　{labApplyQr.checkin.patient_name}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setLabApplyQr(null)}
+                  className="p-2 rounded-xl active:opacity-70"
+                  style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-6 flex flex-col items-center gap-4">
+                <QrImage url={labApplyQr.url} />
+                <p className="text-xs leading-relaxed" style={{ color: "#8A7378" }}>
+                  患者さんのスマホでこのQRを読み取っていただくと、検査結果オンライン確認の申請フォームが開きます。
                 </p>
               </div>
             </div>
