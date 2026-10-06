@@ -817,12 +817,60 @@ function LabMasterEditor({ onClose }) {
   );
 }
 
+// タイムスタンプ → 「M/D」。検査結果タブの申請一覧用（端末のJSTで表示）
+function labMdLabel(ts) {
+  const d = new Date(ts);
+  return isNaN(d) ? "" : `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 // 「検査結果」タブの一覧。最近の入力＋カルテ番号/氏名の検索＋新規
 function LabPanel({ onEdit, onNew, reloadKey }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState("");
   const [loadErr, setLoadErr] = useState("");
   const [managing, setManaging] = useState(false);
+  // 申請フォーム（lab_result_applications）の状況。
+  // waiting=提出済みでまだ結果を送っていない方 / invited=案内済みで患者の入力待ち
+  const [apps, setApps] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      // トークンの有効期間（90日）と同じ範囲を見る
+      const since = new Date(Date.now() - 90 * 864e5).toISOString();
+      const { data: appRows, error } = await supabase.from("lab_result_applications")
+        .select("id, patient_name, patient_kana, dob, phone, email, status, submitted_at, created_at")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (!alive) return;
+      if (error) { setApps({ waiting: [], invited: [] }); return; }
+      const submitted = (appRows || []).filter((a) => a.status === "submitted");
+      const invited = (appRows || []).filter((a) => a.status === "invited");
+      // 申請の提出より後に作られた同じ生年月日＋電話の検査結果が公開済みなら
+      // 「送信済み」とみなして送信待ちから外す（過去の検査の結果では消えない）
+      let waiting = submitted;
+      if (submitted.length) {
+        const dobs = [...new Set(submitted.map((a) => a.dob).filter(Boolean))];
+        const { data: lrs } = await supabase.from("lab_results").select("*").in("dob", dobs);
+        if (!alive) return;
+        const all = lrs || [];
+        waiting = submitted
+          .map((a) => {
+            const mine = all.filter((r) =>
+              r.dob === a.dob && String(r.phone) === String(a.phone) && r.created_at >= a.submitted_at);
+            return {
+              ...a,
+              published: mine.some((r) => r.status === "published"),
+              draft: mine.find((r) => r.status === "draft") || null,
+            };
+          })
+          .filter((a) => !a.published);
+      }
+      setApps({ waiting, invited });
+    })();
+    return () => { alive = false; };
+  }, [reloadKey]);
 
   useEffect(() => {
     let alive = true;
@@ -867,6 +915,83 @@ function LabPanel({ onEdit, onNew, reloadKey }) {
       <p className="text-[11px] mb-3" style={{ color: "#B08A90" }}>
         受付一覧の各行の「検査」ボタンから開くと、患者情報が自動で入ります。患者さんは予約サイトの「検査結果の確認」（生年月日＋電話下4桁）で閲覧します。
       </p>
+      {/* 申請フォームの状況。検索中は本来の一覧に集中できるよう出さない */}
+      {!q.trim() && apps && (apps.waiting.length > 0 || apps.invited.length > 0) && (
+        <div className="rounded-2xl overflow-hidden mb-4" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+          <div className="px-3 py-2.5" style={{ background: "#FAEEDA" }}>
+            <span className="text-xs font-bold" style={{ color: "#854F0B" }}>
+              申請中（結果の送信待ち） {apps.waiting.length}件
+            </span>
+            <span className="ml-2 text-[11px]" style={{ color: "#854F0B", opacity: 0.8 }}>
+              申請フォームでご連絡先を登録済みの方。結果を入力して公開するとここから消えます
+            </span>
+          </div>
+          {apps.waiting.length === 0 ? (
+            <p className="px-3 py-3 text-sm m-0" style={{ color: "#B08A90" }}>いまは送信待ちの方はいません。</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" style={{ color: "#3A2E30", minWidth: 700 }}>
+                <thead>
+                  <tr className="text-left text-xs" style={{ color: "#B08A90", background: "#FFF8F7" }}>
+                    <th className="px-3 py-2 font-medium">申請日</th>
+                    <th className="px-2 py-2 font-medium">お名前</th>
+                    <th className="px-2 py-2 font-medium">検査結果用メール</th>
+                    <th className="px-2 py-2 font-medium">電話</th>
+                    <th className="px-2 py-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {apps.waiting.map((a) => (
+                    <tr key={a.id} style={{ borderTop: "1px solid #F8ECEE" }}>
+                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>
+                        {labMdLabel(a.submitted_at)}
+                      </td>
+                      <td className="px-2 py-2.5">
+                        {a.patient_name}
+                        {a.patient_kana && <span className="text-[11px] ml-1.5" style={{ color: "#B08A90" }}>{a.patient_kana}</span>}
+                        <div className="text-[11px]" style={{ color: "#B08A90" }}>{a.dob}</div>
+                      </td>
+                      <td className="px-2 py-2.5 text-xs" style={{ wordBreak: "break-all" }}>{a.email}</td>
+                      <td className="px-2 py-2.5 whitespace-nowrap" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>{a.phone}</td>
+                      <td className="px-2 py-2.5 text-right whitespace-nowrap">
+                        {a.draft ? (
+                          <button
+                            onClick={() => onEdit(a.draft)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                            style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#854F0B" }}
+                          >
+                            下書きを開く
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onEdit({
+                              patient_name: a.patient_name || "",
+                              patient_kana: a.patient_kana || "",
+                              dob: a.dob || "",
+                              phone: a.phone || "",
+                              email: a.email || "",
+                            })}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold"
+                            style={{ background: "#0F8B8D", color: "#FFFFFF" }}
+                          >
+                            結果を入力
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {apps.invited.length > 0 && (
+            <p className="px-3 py-2 text-[11px] m-0" style={{ borderTop: "1px solid #F8ECEE", color: "#B08A90" }}>
+              このほか、QR・メールでご案内済みでフォームの入力待ちが {apps.invited.length} 件：
+              {apps.invited.map((a) => `${a.patient_name || "（お名前なし）"}（${labMdLabel(a.created_at)}）`).join("・")}
+            </p>
+          )}
+        </div>
+      )}
       {loadErr && <p className="text-sm mb-2" style={{ color: "#D64550" }}>{loadErr}</p>}
       {rows === null ? (
         <p className="text-sm" style={{ color: "#B08A90" }}>読み込み中…</p>
