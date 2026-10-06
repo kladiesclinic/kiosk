@@ -305,8 +305,18 @@ function labItemLabel(it) {
 
 // 選択内容から患者への案内文を組み立てる（スタッフが編集できる下書き）。
 // 方針: 陽性・頸がん異常はどちらも来院のお願いに統一。薬のことも診察の要否も書かない。
+// 例外: カンジダ陽性だけは専用の定型文（かゆみの経過確認＋症状が出たら来院でお薬。
+//       ユーザー指定の文面 2026-10-06 — 文言を変えるときはユーザーに確認）
+const LAB_CANDIDA_POSITIVE_NOTE =
+  "カンジダが陽性でした。その後かゆみの症状は落ち着いてますでしょうか。" +
+  "カンジダは免疫が下がっているときに症状が出てくる場合があります。" +
+  "またおなじようなかゆみの症状が感じられる場合はお薬をお渡ししますので症状がでたらご来院ください。";
+
 function labGuidanceFor(sel, tests) {
-  const posNames = tests.filter((t) => t.kind !== "cervical" && sel[t.key] === "positive").map((t) => t.name);
+  const candidaPos = tests.some((t) => t.key === "candida" && sel[t.key] === "positive");
+  const posNames = tests
+    .filter((t) => t.kind !== "cervical" && t.key !== "candida" && sel[t.key] === "positive")
+    .map((t) => t.name);
   const cervAbnormal = tests.some((t) => t.kind === "cervical" && sel[t.key] && sel[t.key] !== "NILM");
   const negCount = tests.filter((t) =>
     (t.kind !== "cervical" && sel[t.key] === "negative") || (t.kind === "cervical" && sel[t.key] === "NILM")).length;
@@ -317,7 +327,10 @@ function labGuidanceFor(sel, tests) {
   if (cervAbnormal) {
     parts.push("子宮頸がん検診は再検査をおすすめする結果でした。ご来院をお願いいたします。");
   }
-  if (!posNames.length && !cervAbnormal) {
+  if (candidaPos) {
+    parts.push(LAB_CANDIDA_POSITIVE_NOTE);
+  }
+  if (!posNames.length && !cervAbnormal && !candidaPos) {
     if (negCount > 0) parts.push("いずれも陰性・異常なしでした。");
   } else if (negCount > 0) {
     parts.push("その他の項目は陰性・異常なしでした。");
