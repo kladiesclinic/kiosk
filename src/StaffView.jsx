@@ -2319,6 +2319,590 @@ function FeedbackTab({ isAdmin, adminName, onCountChange }) {
   );
 }
 
+// ── フェムケア施術の同意書（femcare_consents）────────────────
+// タブ本体: 直近90日の一覧＋名前検索＋新規リンク作成。行を開くと詳細モーダルで
+// 患者の提出内容（カウンセリング回答・同意チェック・署名）を確認し、紙のサロン
+// 記入欄にあたるスタッフ記入欄（禁忌・可否・担当者・提案プラン・パッチテスト）を書ける。
+
+const FEMCARE_STAFF_STATUS = [["none", "禁忌なし"], ["caution", "注意あり"]];
+const FEMCARE_DECISION = [["allowed", "施術可能"], ["deferred", "見送り"]];
+const FEMCARE_PATCH = [["24h", "①パッチテスト（24時間）"], ["pre15", "②施術前の肌反応確認（15〜20分）"]];
+const FEMCARE_PATCH_RESULT = [["none", "異常なし"], ["redness", "赤み"], ["itch", "かゆみ"], ["other", "その他"]];
+const femcareLabel = (pairs, v) => (pairs.find(([k]) => k === v) || [])[1] || "";
+
+function femcareDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function FemcarePanel({ reloadKey, onOpen, onQr }) {
+  const [rows, setRows] = useState(null);
+  const [q, setQ] = useState("");
+  const [err, setErr] = useState("");
+  // 予約・受付に紐付かない方（飛び込み等）向けの新規リンク作成
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newKana, setNewKana] = useState("");
+  const [newCounseling, setNewCounseling] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const loadRows = () => {
+    let query = supabase.from("femcare_consents")
+      .select("id, checkin_id, token, status, include_counseling, patient_name, patient_kana, invite_email, invite_sent_at, email, submitted_at, signed_at, copy_mail_sent_at, staff_status, staff_decision, staff_name, created_at")
+      .gte("created_at", new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(100);
+    const s = q.trim().replace(/[,()]/g, "");
+    if (s) query = query.or(`patient_name.ilike.*${s}*,patient_kana.ilike.*${s}*`);
+    query.then(({ data, error }) => {
+      if (error) setErr(error.message);
+      else { setErr(""); setRows(data || []); }
+    });
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(loadRows, [q, reloadKey]);
+
+  const createRow = async () => {
+    if (!newName.trim() || busy) return;
+    setBusy(true);
+    try {
+      const { data, error } = await supabase.from("femcare_consents")
+        .insert({
+          patient_name: newName.trim(),
+          patient_kana: newKana.trim() || null,
+          include_counseling: newCounseling,
+        })
+        .select("id, token, patient_name")
+        .single();
+      if (error) throw error;
+      setCreating(false);
+      setNewName("");
+      setNewKana("");
+      setNewCounseling(true);
+      onQr(data);
+      loadRows();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
+          フェムケア施術の同意書
+        </h2>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="名前・カナで検索"
+            className="h-10 px-3 rounded-xl text-sm outline-none"
+            style={{ background: "#FFFFFF", border: "1.5px solid #F2DFE4", color: "#3A2E30", width: 180 }}
+          />
+          <button
+            onClick={() => setCreating((v) => !v)}
+            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-sm font-medium active:opacity-70"
+            style={{ background: "#FFFFFF", border: "1.5px solid #F2DFE4", color: "#C2447E" }}
+          >
+            <Plus size={14} /> 新規リンク
+          </button>
+        </div>
+      </div>
+
+      {creating && (
+        <div className="rounded-xl p-4 mb-3 flex items-end gap-3 flex-wrap" style={{ background: "#FFF8F7", border: "1px solid #F2DFE4" }}>
+          <div>
+            <div className="text-[11px] mb-1" style={{ color: "#8A7378" }}>お名前</div>
+            <input value={newName} onChange={(e) => setNewName(e.target.value)} className="h-10 px-3 rounded-lg text-sm outline-none" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }} placeholder="山田 花子" />
+          </div>
+          <div>
+            <div className="text-[11px] mb-1" style={{ color: "#8A7378" }}>カナ（任意）</div>
+            <input value={newKana} onChange={(e) => setNewKana(e.target.value)} className="h-10 px-3 rounded-lg text-sm outline-none" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }} placeholder="ヤマダ ハナコ" />
+          </div>
+          <label className="inline-flex items-center gap-1.5 h-10 text-sm" style={{ color: "#3A2E30" }}>
+            <input type="checkbox" checked={newCounseling} onChange={(e) => setNewCounseling(e.target.checked)} />
+            カウンセリングも含める（初回）
+          </label>
+          <button
+            onClick={createRow}
+            disabled={!newName.trim() || busy}
+            className="h-10 px-4 rounded-xl text-sm font-bold active:opacity-70"
+            style={{ background: "#C2447E", color: "#FFFFFF", opacity: !newName.trim() || busy ? 0.5 : 1 }}
+          >
+            作成してQRを表示
+          </button>
+        </div>
+      )}
+
+      {err && <p className="text-xs mb-2" style={{ color: "#D64550" }}>{err}</p>}
+
+      <div className="rounded-xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid #F2DFE4" }}>
+        {rows === null ? (
+          <p className="p-6 text-sm" style={{ color: "#B08A90" }}>読み込み中…</p>
+        ) : rows.length === 0 ? (
+          <p className="p-6 text-sm" style={{ color: "#B08A90" }}>
+            まだ記録がありません。受付一覧のフェムケア予約の行、または右上の「新規リンク」からご案内できます。
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ minWidth: 760 }}>
+              <thead>
+                <tr style={{ background: "#FFF8F7", color: "#8A7378" }}>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap">状態</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium">お名前</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap">提出日時</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap">内容</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap">スタッフ判定</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap">控えメール</th>
+                  <th className="px-3 py-2.5" />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} style={{ borderTop: "1px solid #FAEEF0" }}>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {r.status === "submitted" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FDEFF5", color: "#C2447E" }}>
+                          <CheckCircle2 size={11} /> 提出済み
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>
+                          {r.invite_sent_at ? "案内済み" : "未案内"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="font-bold" style={{ color: "#3A2E30" }}>{r.patient_name || "（名前なし）"}</div>
+                      {r.patient_kana && <div className="text-[11px]" style={{ color: "#B08A90" }}>{r.patient_kana}</div>}
+                    </td>
+                    <td className="px-3 py-3 text-xs whitespace-nowrap" style={{ color: "#8A7378", fontFamily: "'JetBrains Mono', monospace" }}>
+                      {r.submitted_at ? femcareDateTime(r.submitted_at) : "—"}
+                    </td>
+                    <td className="px-3 py-3 text-xs whitespace-nowrap" style={{ color: "#8A7378" }}>
+                      {r.include_counseling ? "カウンセリング＋同意書" : "同意書のみ"}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      {r.staff_decision ? (
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+                          style={r.staff_decision === "allowed" ? { background: "#DFF5F3", color: "#0F6E56" } : { background: "#FCE9EA", color: "#D64550" }}
+                        >
+                          {femcareLabel(FEMCARE_DECISION, r.staff_decision)}
+                        </span>
+                      ) : (
+                        <span className="text-xs" style={{ color: "#C9AEB3" }}>未記入</span>
+                      )}
+                      {r.staff_name && <div className="text-[10px] mt-0.5" style={{ color: "#B08A90" }}>{r.staff_name}</div>}
+                    </td>
+                    <td className="px-3 py-3 text-xs whitespace-nowrap" style={{ color: r.copy_mail_sent_at ? "#0F6E56" : "#C9AEB3" }}>
+                      {r.copy_mail_sent_at ? "送信済み" : "—"}
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => onOpen(r)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                          style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#C2447E" }}
+                        >
+                          <FileText size={12} /> 開く
+                        </button>
+                        {r.status !== "submitted" && (
+                          <button
+                            onClick={() => onQr(r)}
+                            title="記入ページのQRを表示"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium active:opacity-70"
+                            style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                          >
+                            <QrCode size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <p className="text-[11px] mt-2" style={{ color: "#B08A90" }}>
+        直近90日・最新100件まで。提出済みの行を開くと、回答の確認とスタッフ記入欄（禁忌・可否・担当者など）の入力ができます。
+      </p>
+    </section>
+  );
+}
+
+// 印刷用（A4）。カウンセリングがあれば1枚目、同意書＋署名＋スタッフ記入欄を最終ページに
+function FemcarePrintSheets({ row }) {
+  const sheetStyle = {
+    display: "none",
+    width: 1040,
+    padding: "48px 56px",
+    background: "#FFFFFF",
+    color: "#222222",
+    fontFamily: "'Zen Kaku Gothic New', 'Hiragino Kaku Gothic ProN', sans-serif",
+  };
+  const h = (txt) => (
+    <div style={{ fontSize: 15, fontWeight: 700, margin: "18px 0 6px", color: "#8A2E55" }}>{txt}</div>
+  );
+  const head = (title) => (
+    <div style={{ borderBottom: "2px solid #8A2E55", paddingBottom: 10, marginBottom: 14 }}>
+      <div style={{ fontSize: 22, fontWeight: 700 }}>{title}</div>
+      <div style={{ fontSize: 13, color: "#777", marginTop: 2 }}>
+        ケイ・レディースクリニック新宿　フェムケア（Vwand＋1℃）施術
+      </div>
+    </div>
+  );
+  const patient = (
+    <div style={{ fontSize: 13, display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 6 }}>
+      <span>お名前: <b>{row.patient_name || ""}</b>{row.patient_kana ? `（${row.patient_kana}）` : ""}</span>
+      <span>生年月日: {row.dob || ""}</span>
+      <span>電話: {row.phone || ""}</span>
+      <span>メール: {row.email || ""}</span>
+    </div>
+  );
+  return (
+    <>
+      {Array.isArray(row.counseling) && row.counseling.length > 0 && (
+        <div className="femcare-print-sheet" style={sheetStyle}>
+          {head("カウンセリングシート")}
+          {patient}
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, marginTop: 8 }}>
+            <tbody>
+              {row.counseling.map((a, i) => (
+                <tr key={i} style={{ borderBottom: "1px solid #EEE" }}>
+                  <td style={{ padding: "5px 8px 5px 0", width: "38%", color: "#666", verticalAlign: "top" }}>{a.label}</td>
+                  <td style={{ padding: "5px 0", fontWeight: a.value === "—" ? 400 : 600 }}>{a.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="femcare-print-sheet" style={sheetStyle}>
+        {head("禁忌事項・施術同意書")}
+        {patient}
+        {(Array.isArray(row.consent) ? row.consent : []).map((s, i) => (
+          <div key={i}>
+            {h(s.section)}
+            {(s.items || []).map((item, j) => (
+              <div key={j} style={{ fontSize: 12, padding: "2px 0" }}>☑ {item}</div>
+            ))}
+          </div>
+        ))}
+        <div style={{ marginTop: 20, paddingTop: 12, borderTop: "1px solid #CCC", fontSize: 14 }}>
+          署名: <b style={{ fontSize: 17 }}>{row.signature_name || ""}</b>
+          <span style={{ marginLeft: 24 }}>同意日時: {femcareDateTime(row.signed_at)}</span>
+        </div>
+        <div style={{ marginTop: 18, padding: 14, border: "1.5px solid #DDD", borderRadius: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>スタッフ記入欄</div>
+          <div style={{ fontSize: 12.5, display: "flex", gap: 20, flexWrap: "wrap" }}>
+            <span>確認: {femcareLabel(FEMCARE_STAFF_STATUS, row.staff_status) || "　　　"}</span>
+            <span>判定: {femcareLabel(FEMCARE_DECISION, row.staff_decision) || "　　　"}</span>
+            <span>担当者: {row.staff_name || "　　　"}</span>
+            <span>パッチテスト: {femcareLabel(FEMCARE_PATCH, row.patch_test) || "—"}{row.patch_result ? `（結果: ${femcareLabel(FEMCARE_PATCH_RESULT, row.patch_result)}${row.patch_note ? `・${row.patch_note}` : ""}）` : ""}</span>
+          </div>
+          {row.staff_note && <div style={{ fontSize: 12.5, marginTop: 6 }}>注意内容: {row.staff_note}</div>}
+          {row.staff_plan && <div style={{ fontSize: 12.5, marginTop: 4 }}>提案プラン: {row.staff_plan}</div>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function FemcareDetailModal({ init, myName, onClose, onSaved, onQr }) {
+  const [row, setRow] = useState(null);
+  const [err, setErr] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const printRef = useRef(null);
+  // スタッフ記入欄（紙のサロン記入欄）
+  const [staffStatus, setStaffStatus] = useState(null);
+  const [staffDecision, setStaffDecision] = useState(null);
+  const [staffNote, setStaffNote] = useState("");
+  const [staffName, setStaffName] = useState("");
+  const [staffPlan, setStaffPlan] = useState("");
+  const [patchTest, setPatchTest] = useState(null);
+  const [patchResult, setPatchResult] = useState(null);
+  const [patchNote, setPatchNote] = useState("");
+
+  useEffect(() => {
+    supabase.from("femcare_consents").select("*").eq("id", init.id).single()
+      .then(({ data, error }) => {
+        if (error) { setErr(error.message); return; }
+        setRow(data);
+        setStaffStatus(data.staff_status);
+        setStaffDecision(data.staff_decision);
+        setStaffNote(data.staff_note || "");
+        setStaffName(data.staff_name || myName || "");
+        setStaffPlan(data.staff_plan || "");
+        setPatchTest(data.patch_test);
+        setPatchResult(data.patch_result);
+        setPatchNote(data.patch_note || "");
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [init.id]);
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    const { error } = await supabase.from("femcare_consents").update({
+      staff_status: staffStatus,
+      staff_decision: staffDecision,
+      staff_note: staffNote.trim() || null,
+      staff_name: staffName.trim() || null,
+      staff_plan: staffPlan.trim() || null,
+      patch_test: patchTest,
+      patch_result: patchResult,
+      patch_note: patchNote.trim() || null,
+      staff_updated_at: new Date().toISOString(),
+    }).eq("id", init.id);
+    setSaving(false);
+    if (error) setErr(error.message);
+    else onSaved();
+  };
+
+  const resendCopy = async () => {
+    if (!row || resending) return;
+    if (!window.confirm(`同意書の控えを ${row.email} へ再送します。よろしいですか？`)) return;
+    setResending(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("femcare-consent-mail", {
+        body: { mode: "copy", token: row.token, resend: true },
+      });
+      if (error) {
+        let detail = error.message || "";
+        try { const j = await error.context?.json?.(); if (j?.error) detail = j.error; } catch { /* ignore */ }
+        throw new Error(detail);
+      }
+      if (data?.error) throw new Error(data.error);
+      setErr("");
+      window.alert("控えを再送しました。");
+    } catch (e) {
+      setErr(`控えを再送できませんでした: ${e.message}`);
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm("この同意書の記録を削除します。元に戻せません。よろしいですか？")) return;
+    const { error } = await supabase.from("femcare_consents").delete().eq("id", init.id);
+    if (error) setErr(error.message);
+    else onSaved();
+  };
+
+  const print = async () => {
+    if (!printRef.current || printing) return;
+    const els = [...printRef.current.querySelectorAll(".femcare-print-sheet")];
+    if (!els.length) return;
+    const iosWindow = IS_IOS ? window.open("", "_blank") : null;
+    setPrinting(true);
+    try {
+      await printElementsAsPdf(els, iosWindow, `フェムケア同意書_${row?.patient_name || ""}.pdf`);
+    } catch (e) {
+      if (iosWindow && !iosWindow.closed) iosWindow.close();
+      setErr(`印刷用PDFを作れませんでした: ${e.message}`);
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const chipBtn = (selected, label, onClick, color = "#C2447E") => (
+    <button
+      key={label}
+      type="button"
+      onClick={onClick}
+      className="px-3 py-1.5 rounded-lg text-xs font-medium active:opacity-70"
+      style={selected
+        ? { background: color, border: `1px solid ${color}`, color: "#FFFFFF" }
+        : { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+    >
+      {label}
+    </button>
+  );
+  const inputStyle = { background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#3A2E30" };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      style={{ background: "rgba(58,46,48,0.5)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[88vh] rounded-2xl flex flex-col overflow-hidden"
+        style={{ background: "#FFFFFF" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F2DFE4" }}>
+          <div>
+            <div className="text-base font-bold" style={{ color: "#3A2E30" }}>
+              フェムケア同意書　{row?.patient_name || init.patient_name || ""}
+            </div>
+            <div className="text-xs" style={{ color: "#B08A90" }}>
+              {row?.submitted_at ? `提出 ${femcareDateTime(row.submitted_at)}` : "未提出（案内中）"}
+              {row?.include_counseling === false && "　同意書のみ"}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {row?.status === "submitted" && (
+              <button
+                onClick={print}
+                disabled={printing}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium active:opacity-70"
+                style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: printing ? 0.5 : 1 }}
+              >
+                <Printer size={13} /> {printing ? "作成中…" : "印刷"}
+              </button>
+            )}
+            {row?.status === "submitted" && row?.email && (
+              <button
+                onClick={resendCopy}
+                disabled={resending}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium active:opacity-70"
+                style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378", opacity: resending ? 0.5 : 1 }}
+              >
+                <Mail size={13} /> 控えを再送
+              </button>
+            )}
+            {row?.status !== "submitted" && row?.token && (
+              <button
+                onClick={() => onQr(row)}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium active:opacity-70"
+                style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+              >
+                <QrCode size={13} /> QR
+              </button>
+            )}
+            <button onClick={remove} title="削除" className="p-2 rounded-lg active:opacity-70" style={{ color: "#C9AEB3" }}>
+              <Trash2 size={14} />
+            </button>
+            <button onClick={onClose} className="p-2 rounded-xl active:opacity-70" style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}>
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto p-5 space-y-5">
+          {err && <p className="text-xs" style={{ color: "#D64550" }}>{err}</p>}
+          {!row ? (
+            <p className="text-sm" style={{ color: "#B08A90" }}>読み込み中…</p>
+          ) : (
+            <>
+              {/* 患者情報 */}
+              <div className="text-xs flex flex-wrap gap-x-5 gap-y-1" style={{ color: "#8A7378" }}>
+                {row.patient_kana && <span>カナ: {row.patient_kana}</span>}
+                {row.dob && <span>生年月日: {row.dob}</span>}
+                {row.phone && <span>電話: {row.phone}</span>}
+                {row.email && <span>メール: {row.email}</span>}
+                {row.copy_mail_sent_at && <span style={{ color: "#0F6E56" }}>控えメール送信済み（{femcareDateTime(row.copy_mail_sent_at)}）</span>}
+              </div>
+
+              {/* スタッフ記入欄（紙のサロン記入欄） */}
+              <div className="rounded-xl p-4 space-y-3" style={{ background: "#FFF8F7", border: "1px solid #F2DFE4" }}>
+                <div className="text-sm font-bold" style={{ color: "#3A2E30" }}>スタッフ記入欄</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs w-16" style={{ color: "#8A7378" }}>確認</span>
+                  {FEMCARE_STAFF_STATUS.map(([k, label]) =>
+                    chipBtn(staffStatus === k, label, () => setStaffStatus(staffStatus === k ? null : k), k === "caution" ? "#B7791F" : "#0F8B8D"))}
+                  <span className="text-xs w-16 ml-4" style={{ color: "#8A7378" }}>判定</span>
+                  {FEMCARE_DECISION.map(([k, label]) =>
+                    chipBtn(staffDecision === k, label, () => setStaffDecision(staffDecision === k ? null : k), k === "deferred" ? "#D64550" : "#0F8B8D"))}
+                </div>
+                <div className="flex items-start gap-2 flex-wrap">
+                  <span className="text-xs w-16 mt-2" style={{ color: "#8A7378" }}>注意内容</span>
+                  <input value={staffNote} onChange={(e) => setStaffNote(e.target.value)} className="flex-1 min-w-[220px] px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} placeholder="注意ありの内容など" />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs w-16" style={{ color: "#8A7378" }}>担当者</span>
+                  <input value={staffName} onChange={(e) => setStaffName(e.target.value)} className="w-40 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} />
+                  <span className="text-xs ml-2" style={{ color: "#8A7378" }}>提案プラン</span>
+                  <input value={staffPlan} onChange={(e) => setStaffPlan(e.target.value)} className="flex-1 min-w-[180px] px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs w-16" style={{ color: "#8A7378" }}>パッチ</span>
+                  {FEMCARE_PATCH.map(([k, label]) =>
+                    chipBtn(patchTest === k, label, () => setPatchTest(patchTest === k ? null : k), "#0F8B8D"))}
+                </div>
+                {patchTest && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs w-16" style={{ color: "#8A7378" }}>結果</span>
+                    {FEMCARE_PATCH_RESULT.map(([k, label]) =>
+                      chipBtn(patchResult === k, label, () => setPatchResult(patchResult === k ? null : k), k === "none" ? "#0F8B8D" : "#B7791F"))}
+                    <input value={patchNote} onChange={(e) => setPatchNote(e.target.value)} className="w-40 px-3 py-2 rounded-lg text-sm outline-none" style={inputStyle} placeholder="その他の内容" />
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="px-5 py-2 rounded-xl text-sm font-bold active:opacity-70"
+                    style={{ background: "#C2447E", color: "#FFFFFF", opacity: saving ? 0.6 : 1 }}
+                  >
+                    {saving ? "保存中…" : "保存"}
+                  </button>
+                </div>
+              </div>
+
+              {/* 同意書のチェック内容（提出時の文言の焼き込み） */}
+              {row.status === "submitted" && (
+                <div>
+                  <div className="text-sm font-bold mb-2" style={{ color: "#3A2E30" }}>同意書（提出内容）</div>
+                  <div className="space-y-3">
+                    {(Array.isArray(row.consent) ? row.consent : []).map((s, i) => (
+                      <div key={i}>
+                        <div className="text-xs font-bold mb-1" style={{ color: "#C2447E" }}>{s.section}</div>
+                        {(s.items || []).map((item, j) => (
+                          <div key={j} className="text-xs py-0.5 flex gap-1.5" style={{ color: "#5A4A4E" }}>
+                            <CheckCircle2 size={13} color="#0F8B8D" className="shrink-0 mt-px" />
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 px-3 py-2 rounded-lg text-sm" style={{ background: "#FDEFF5", color: "#8A2E55" }}>
+                    署名: <b>{row.signature_name}</b>　同意日時: {femcareDateTime(row.signed_at)}
+                  </div>
+                </div>
+              )}
+
+              {/* カウンセリングシートの回答 */}
+              {Array.isArray(row.counseling) && row.counseling.length > 0 && (
+                <div>
+                  <div className="text-sm font-bold mb-2" style={{ color: "#3A2E30" }}>カウンセリングシート</div>
+                  <table className="w-full text-xs" style={{ borderCollapse: "collapse" }}>
+                    <tbody>
+                      {row.counseling.map((a, i) => (
+                        <tr key={i} style={{ borderTop: "1px solid #FAEEF0" }}>
+                          <td className="py-1.5 pr-3 align-top" style={{ color: "#8A7378", width: "40%" }}>{a.label}</td>
+                          <td className="py-1.5" style={{ color: "#3A2E30", fontWeight: a.value === "—" ? 400 : 600 }}>{a.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+      {/* 印刷用の隠しレイアウト（printElementsAsPdf が1枚ずつ表示→画像化する） */}
+      {row && (
+        <div ref={printRef} style={{ position: "fixed", left: "-10000px", top: 0 }} onClick={(e) => e.stopPropagation()}>
+          <FemcarePrintSheets row={row} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
@@ -2354,6 +2938,12 @@ export default function StaffView() {
   // 申請フォームのQRモーダル
   const [labApps, setLabApps] = useState(new Map());
   const [labApplyQr, setLabApplyQr] = useState(null);
+  // フェムケア施術の同意書（femcare_consents）。checkin_id → 行 のMapと、
+  // 記入ページのQRモーダル・フェムケアタブの詳細モーダル・再読込キー
+  const [femcareConsents, setFemcareConsents] = useState(new Map());
+  const [femcareQr, setFemcareQr] = useState(null);
+  const [femcareDetail, setFemcareDetail] = useState(null);
+  const [femcareReload, setFemcareReload] = useState(0);
   // 患者を探す（過去の問診票の呼び出し）
   const [query, setQuery] = useState({ name: "", dob: "", chart: "" });
   const [results, setResults] = useState(null); // null=まだ検索していない（問診票）
@@ -2868,6 +3458,94 @@ export default function StaffView() {
     }
   };
 
+  /* ---- フェムケア施術の同意書（femcare_consents）----
+     受付行からカウンセリング・同意書の記入リンクを患者に渡す。構えは結果申請と同じ:
+     メール（Edge Function femcare-consent-mail mode:"invite"、スタッフログイン必須・
+     宛先はDB行の invite_email だけ）と QR の2経路。1受付1行でトークン固定。
+     カウンセリングシートは初回のみなので、行を作るときに含めるかを確認する */
+  const FEMCARE_CONSENT_URL = "https://keicuri-booking.vercel.app/femcare/consent";
+  const FEMCARE_COLS = "id, checkin_id, token, status, include_counseling, invite_sent_at, invite_email, email, submitted_at, copy_mail_sent_at";
+  const [femcareBusy, setFemcareBusy] = useState(null); // 処理中の受付ID（連打よけ）
+
+  const ensureFemcareConsent = async (c, inviteEmail) => {
+    const existing = femcareConsents.get(c.id);
+    if (existing) {
+      if (inviteEmail && existing.invite_email !== inviteEmail) {
+        await supabase.from("femcare_consents")
+          .update({ invite_email: inviteEmail }).eq("id", existing.id);
+        return { ...existing, invite_email: inviteEmail };
+      }
+      return existing;
+    }
+    // 初回かどうかの目安: 同じ名前で提出済みカウンセリングがあるか（最終判断はスタッフ）
+    let hasPrev = false;
+    if (c.patient_name) {
+      const { data: prev } = await supabase.from("femcare_consents")
+        .select("id").eq("patient_name", c.patient_name).eq("status", "submitted")
+        .not("counseling", "is", null).limit(1);
+      hasPrev = !!(prev && prev.length);
+    }
+    const include = window.confirm(
+      (hasPrev ? "※この方は以前にカウンセリングシートの提出があります。\n" : "") +
+      "カウンセリングシートも含めますか？（初めての方は OK）\nOK=含める ／ キャンセル=同意書のみ"
+    );
+    const { data, error } = await supabase.from("femcare_consents")
+      .insert({
+        checkin_id: c.id,
+        patient_name: c.patient_name || null,
+        patient_kana: c.patient_kana || null,
+        invite_email: inviteEmail || null,
+        include_counseling: include,
+      })
+      .select(FEMCARE_COLS)
+      .single();
+    if (error) {
+      const { data: again } = await supabase.from("femcare_consents")
+        .select(FEMCARE_COLS).eq("checkin_id", c.id).maybeSingle();
+      if (again) return again;
+      throw new Error(error.message);
+    }
+    return data;
+  };
+
+  const sendFemcareMail = async (c, email) => {
+    if (femcareBusy) return;
+    if (!window.confirm(`フェムケアのカウンセリング・同意書のご案内を ${email} へメールで送ります。よろしいですか？`)) return;
+    setFemcareBusy(c.id);
+    try {
+      const row = await ensureFemcareConsent(c, email);
+      const { data, error } = await supabase.functions.invoke("femcare-consent-mail", {
+        body: { mode: "invite", id: row.id },
+      });
+      if (error) {
+        let detail = error.message || "";
+        try { const j = await error.context?.json?.(); if (j?.error) detail = j.error; } catch { /* ignore */ }
+        throw new Error(detail);
+      }
+      if (data?.error) throw new Error(data.error);
+      setNotice(`同意書のご案内をメールで送りました（${data?.email || email}）`);
+      load();
+    } catch (e) {
+      setLoadError(`同意書のメールを送れませんでした: ${e.message}`);
+    } finally {
+      setFemcareBusy(null);
+    }
+  };
+
+  const showFemcareQr = async (c) => {
+    if (femcareBusy) return;
+    setFemcareBusy(c.id);
+    try {
+      const row = await ensureFemcareConsent(c, null);
+      setFemcareQr({ name: c.patient_name || "", url: `${FEMCARE_CONSENT_URL}?tk=${row.token}` });
+      load();
+    } catch (e) {
+      setLoadError(`同意書のQRを用意できませんでした: ${e.message}`);
+    } finally {
+      setFemcareBusy(null);
+    }
+  };
+
   const printMonshinBatch = async () => {
     if (!monshinBatchRef.current || monshinPrinting || monshinPrintRows.length === 0) return;
     const iosWindow = IS_IOS ? window.open("", "_blank") : null;
@@ -2957,8 +3635,14 @@ export default function StaffView() {
         .select("id, checkin_id, token, status, invite_sent_at, invite_email, email, phone, submitted_at")
         .in("checkin_id", checkinIds)
         .then(({ data }) => setLabApps(new Map((data || []).map((r) => [r.checkin_id, r]))));
+      // フェムケアの同意書も同じ構えで（この日の受付に紐付く分だけ・列指定）
+      supabase.from("femcare_consents")
+        .select("id, checkin_id, token, status, include_counseling, invite_sent_at, invite_email, email, submitted_at, copy_mail_sent_at")
+        .in("checkin_id", checkinIds)
+        .then(({ data }) => setFemcareConsents(new Map((data || []).map((r) => [r.checkin_id, r]))));
     } else {
       setLabApps(new Map());
+      setFemcareConsents(new Map());
     }
 
     // 予定表で「×（受付なし）」を出すために、この日の閉じた枠を引く。
@@ -3084,7 +3768,7 @@ export default function StaffView() {
     load();
     // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
-    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
+    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" || tab === "femcare" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     // 30秒ごと。画面が隠れているあいだ（iPadで別アプリを前に出している等）は読まず、
     // 前に戻った瞬間に1回読み直す。以前は10秒ごと・常時で、Supabase の転送量の大半を占めていた
@@ -3707,6 +4391,8 @@ export default function StaffView() {
                   ? "かねこさんへの要望・報告と対応状況"
                   : tab === "lab"
                   ? "検査結果の入力とオンライン公開"
+                  : tab === "femcare"
+                  ? "フェムケア施術のカウンセリング・同意書"
                   : tab === "pillorder"
                     ? `${isToday ? "本日" : dateKey} のオンライン診療 ${pillorderActive.length}件　`
                     : tab === "zoom"
@@ -3725,7 +4411,7 @@ export default function StaffView() {
                 患者を探すタブは日付で絞らないので出さない */}
             <div
               className="h-10 flex items-center gap-2 px-3 rounded-xl text-sm"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" ? "none" : undefined }}
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" || tab === "femcare" ? "none" : undefined }}
             >
               <CalendarDays size={15} color="#B08A90" />
               <input
@@ -3825,6 +4511,7 @@ export default function StaffView() {
               { id: "pillorder", label: "pillorder", Icon: Stethoscope },
               { id: "zoom", label: "Zoom英語", Icon: Video },
               { id: "lab", label: "検査結果", Icon: FlaskConical },
+              { id: "femcare", label: "フェムケア", Icon: Dumbbell },
               { id: "search", label: "患者を探す", Icon: Search },
               { id: "feedback", label: "要望", Icon: MessageCircle },
               { id: "settings", label: "設定", Icon: Settings },
@@ -4428,6 +5115,14 @@ export default function StaffView() {
             />
           )}
 
+          {tab === "femcare" && (
+            <FemcarePanel
+              reloadKey={femcareReload}
+              onOpen={(r) => setFemcareDetail(r)}
+              onQr={(r) => setFemcareQr({ name: r.patient_name || "", url: `${FEMCARE_CONSENT_URL}?tk=${r.token}` })}
+            />
+          )}
+
           {tab === "search" && (
           /* 患者を探す。日付をまたいで過去の問診票を呼び出し、もう一度見る・印刷する。
              生年月日は前方一致なので、年だけ・年月だけでも候補を絞れる */
@@ -4688,6 +5383,10 @@ export default function StaffView() {
                         // 検査結果オンライン確認の申請。提出済みなら検査結果の連絡先はこちらが正
                         const labApp = labApps.get(c.id);
                         const labAppDone = labApp?.status === "submitted";
+                        // フェムケア施術の同意書。予約メニューがフェムケアの行だけにボタンを出す
+                        const femcare = femcareConsents.get(c.id);
+                        const femcareDone = femcare?.status === "submitted";
+                        const isFemcareVisit = booking?.visit_menus?.kind === "femcare" || !!femcare;
                         const isDone = c.chart_done && c.payment_done;
                         // 予約の方は呼ぶ順番の判断が変わる（飛び込みより予約時間が優先）。
                         // 受付の運用基準: 予約時間から7分までの受付は許容、8分以降を「遅」とする
@@ -5002,6 +5701,40 @@ export default function StaffView() {
                                     <QrCode size={12} />
                                     結果申請QR
                                   </button>
+                                )}
+                                {/* フェムケア施術の同意書。予約メニューがフェムケアの行だけ。
+                                    提出済み→バッジ / 問診票にメールあり→メール送信 / 無し→QR */}
+                                {isFemcareVisit && (
+                                  femcareDone ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap"
+                                      style={{ background: "#FDEFF5", color: "#C2447E" }}
+                                      title={`同意書提出済み（${femcare?.email || ""}）`}
+                                    >
+                                      <CheckCircle2 size={12} />
+                                      同意書済み
+                                    </span>
+                                  ) : anyForm && emailFromIntakeAnswers(anyForm) ? (
+                                    <button
+                                      onClick={() => sendFemcareMail(c, emailFromIntakeAnswers(anyForm))}
+                                      disabled={femcareBusy === c.id}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                      style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#C2447E", opacity: femcareBusy === c.id ? 0.5 : 1 }}
+                                    >
+                                      <Mail size={12} />
+                                      {femcareBusy === c.id ? "送信中..." : femcare?.invite_sent_at ? "同意書を再送" : "同意書をメール"}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => showFemcareQr(c)}
+                                      disabled={femcareBusy === c.id}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70 whitespace-nowrap"
+                                      style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#C2447E", opacity: femcareBusy === c.id ? 0.5 : 1 }}
+                                    >
+                                      <QrCode size={12} />
+                                      同意書QR
+                                    </button>
+                                  )
                                 )}
                                 </div>
                                 {/* 押し間違い・別人の受付・動作確認の後始末。
@@ -5335,6 +6068,41 @@ export default function StaffView() {
           </div>
         )}
 
+        {/* フェムケア同意書の記入ページQR（受付一覧・フェムケアタブ共用） */}
+        {femcareQr && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: "rgba(58,46,48,0.5)" }}
+            onClick={() => setFemcareQr(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl overflow-hidden text-center"
+              style={{ background: "#FFFFFF" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: "1px solid #F2DFE4" }}>
+                <div className="text-left">
+                  <div className="text-base font-bold" style={{ color: "#3A2E30" }}>フェムケア同意書のQR</div>
+                  <div className="text-xs" style={{ color: "#B08A90" }}>{femcareQr.name}</div>
+                </div>
+                <button
+                  onClick={() => setFemcareQr(null)}
+                  className="p-2 rounded-xl active:opacity-70"
+                  style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-6 flex flex-col items-center gap-4">
+                <QrImage url={femcareQr.url} />
+                <p className="text-xs leading-relaxed" style={{ color: "#8A7378" }}>
+                  患者さんのスマホでこのQRを読み取っていただくと、フェムケア施術のカウンセリング・同意書の記入ページが開きます。
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 問診票モーダル */}
         {selectedForm && (
           <div
@@ -5492,6 +6260,20 @@ export default function StaffView() {
       </div>
 
       {/* 検査結果の入力・編集モーダル（受付一覧の「検査」ボタンと検査結果タブの両方から） */}
+      {femcareDetail && (
+        <FemcareDetailModal
+          init={femcareDetail}
+          myName={myName}
+          onClose={() => setFemcareDetail(null)}
+          onSaved={() => {
+            setFemcareDetail(null);
+            setFemcareReload((k) => k + 1);
+            load();
+          }}
+          onQr={(r) => setFemcareQr({ name: r.patient_name || "", url: `${FEMCARE_CONSENT_URL}?tk=${r.token}` })}
+        />
+      )}
+
       {labEditor && (
         <LabEditorModal
           init={labEditor}
