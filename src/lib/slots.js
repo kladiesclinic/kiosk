@@ -31,21 +31,22 @@ export const BOOKING_CUTOFF_MINUTES = 15;
 // その曜日の営業時間から枠の開始時刻一覧を作る（休憩帯は除外）。
 // isHoliday=true の日は日曜（index 0）の時間を適用する（祝日運用）。
 // minutes を渡すとその刻みで作る（薬の受け取りだけ診察と別の刻みにするため）。
-// wholeSlot=true は「枠の終わりまで休憩に重ならない」時刻だけ出す — 1時間ずっと
-// 使うフェムケア用（12:00開始だと12:30からの休憩に食い込むので除外する）。
+// occupyMinutes（>0）は「開始からその分数をまるごと使う」メニュー用 — 1時間使う
+// フェムケア（刻み30分・占有60分）で、終了が休憩・閉店に食い込む開始時刻を出さない。
 // 診察は枠の途中で休憩に入っても診察自体は枠より短いので従来どおり開始時刻だけ見る。
-export function buildSlotTimes(settings, date, isHoliday = false, minutes, wholeSlot = false) {
+export function buildSlotTimes(settings, date, isHoliday = false, minutes, occupyMinutes = 0) {
   const hours = settings?.weeklyHours?.[isHoliday ? 0 : date.getDay()];
   if (!hours || !hours.startTime || !hours.endTime) return [];
   const step = minutes || settings.slotMinutes;
+  const occupy = occupyMinutes || step;
   const start = timeToMinutes(hours.startTime);
   const end = timeToMinutes(hours.endTime);
   const hasBreak = hours.breakStart && hours.breakEnd;
   const breakStart = hasBreak ? timeToMinutes(hours.breakStart) : null;
   const breakEnd = hasBreak ? timeToMinutes(hours.breakEnd) : null;
   const times = [];
-  for (let t = start; t + step <= end; t += step) {
-    if (hasBreak && (wholeSlot ? t < breakEnd && t + step > breakStart : t >= breakStart && t < breakEnd)) continue;
+  for (let t = start; t + (occupyMinutes ? occupy : step) <= end; t += step) {
+    if (hasBreak && (occupyMinutes ? t < breakEnd && t + occupy > breakStart : t >= breakStart && t < breakEnd)) continue;
     times.push(minutesToTime(t));
   }
   return times;

@@ -48,26 +48,25 @@ export function BookingEditor({ menus, settings, holidays, initial, onDone, onCa
     if (!settings || !dateKey) return [];
     const [y, m, d] = dateKey.split("-").map(Number);
     // 患者さんが見るのと同じ刻みで出す（薬の受け取りは診察と別、
-    // メニュー自身が刻みを持つ場合＝フェムケア60分はそちらを優先。
-    // 刻みを持つメニューは枠をまるごと使うので休憩に食い込む開始時刻は出さない）
+    // メニュー自身が刻みを持つ場合＝フェムケア30分刻みはそちらを優先。
+    // フェムケアは開始から60分まるごと使うので、休憩・閉店に食い込む開始時刻は出さない）
     return buildSlotTimes(settings, new Date(y, m - 1, d), holidays?.has?.(dateKey),
       menuSel?.slot_minutes || slotMinutesFor(settings, menuKind === "pickup"),
-      !!menuSel?.slot_minutes);
+      menuKind === "femcare" ? (menuSel?.duration_min || 60) : 0);
   }, [settings, dateKey, holidays, menuSel, menuKind]);
 
   const save = async () => {
     if (!name.trim() || !menuId || !dateKey || !time) return;
     setSaving(true);
 
-    // 定員チェック: フェムケアは専用枠（同じ時間帯に1名まで、診察とは別カウント）。
+    // 定員チェック: フェムケアは専用枠（既存のフェムケア予約と前後60分の重なり不可、診察とは別カウント）。
     // 診察（pickup・femcare以外）は全体定員。薬の受け取りは無制限。
     // 受付済み(done)も枠を占有として数える（早め受付で枠が空き戻るのを防ぐ・050と同じ）
     if (menuKind === "femcare") {
-      const { count, error: countError } = await supabase
+      const { data: fcRows, error: countError } = await supabase
         .from("visit_bookings")
-        .select("id, visit_menus!inner(kind)", { count: "exact", head: true })
+        .select("id, time, visit_menus!inner(kind)")
         .eq("date", dateKey)
-        .eq("time", time)
         .in("status", ["booked", "done"])
         .eq("visit_menus.kind", "femcare")
         .neq("id", initial?.id || "");
@@ -76,9 +75,11 @@ export function BookingEditor({ menus, settings, holidays, initial, onDone, onCa
         showToast("空き状況の確認に失敗しました");
         return;
       }
-      if (count >= 1) {
+      const toMin = (s) => { const [hh, mm] = String(s).slice(0, 5).split(":").map(Number); return hh * 60 + mm; };
+      const dur = menuSel?.duration_min || 60;
+      if ((fcRows || []).some((b) => Math.abs(toMin(b.time) - toMin(time)) < dur)) {
         setSaving(false);
-        showToast("この枠は満枠です（フェムケアは同じ時間帯に1名まで）");
+        showToast("この時間帯は満枠です（フェムケアは前後60分と重ねられません）");
         return;
       }
     } else if (menuKind !== "pickup") {
