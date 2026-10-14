@@ -41,29 +41,54 @@ export function BookingEditor({ menus, settings, holidays, initial, onDone, onCa
   const [note, setNote] = useState(initial?.note || "");
   const [saving, setSaving] = useState(false);
 
-  const menuKind = menus.find((m) => m.id === menuId)?.kind || "other";
+  const menuSel = menus.find((m) => m.id === menuId);
+  const menuKind = menuSel?.kind || "other";
 
   const times = useMemo(() => {
     if (!settings || !dateKey) return [];
     const [y, m, d] = dateKey.split("-").map(Number);
-    // 患者さんが見るのと同じ刻みで出す（薬の受け取りは診察と別）
+    // 患者さんが見るのと同じ刻みで出す（薬の受け取りは診察と別、
+    // メニュー自身が刻みを持つ場合＝フェムケア60分はそちらを優先。
+    // 刻みを持つメニューは枠をまるごと使うので休憩に食い込む開始時刻は出さない）
     return buildSlotTimes(settings, new Date(y, m - 1, d), holidays?.has?.(dateKey),
-      slotMinutesFor(settings, menuKind === "pickup"));
-  }, [settings, dateKey, holidays, menuKind]);
+      menuSel?.slot_minutes || slotMinutesFor(settings, menuKind === "pickup"),
+      !!menuSel?.slot_minutes);
+  }, [settings, dateKey, holidays, menuSel, menuKind]);
 
   const save = async () => {
     if (!name.trim() || !menuId || !dateKey || !time) return;
     setSaving(true);
 
-    // 定員チェック: 診察（pickup以外）のみ。薬の受け取りは無制限。
-    if (menuKind !== "pickup") {
+    // 定員チェック: フェムケアは専用枠（同じ時間帯に1名まで、診察とは別カウント）。
+    // 診察（pickup・femcare以外）は全体定員。薬の受け取りは無制限。
+    // 受付済み(done)も枠を占有として数える（早め受付で枠が空き戻るのを防ぐ・050と同じ）
+    if (menuKind === "femcare") {
       const { count, error: countError } = await supabase
         .from("visit_bookings")
         .select("id, visit_menus!inner(kind)", { count: "exact", head: true })
         .eq("date", dateKey)
         .eq("time", time)
-        .eq("status", "booked")
-        .neq("visit_menus.kind", "pickup")
+        .in("status", ["booked", "done"])
+        .eq("visit_menus.kind", "femcare")
+        .neq("id", initial?.id || "");
+      if (countError) {
+        setSaving(false);
+        showToast("空き状況の確認に失敗しました");
+        return;
+      }
+      if (count >= 1) {
+        setSaving(false);
+        showToast("この枠は満枠です（フェムケアは同じ時間帯に1名まで）");
+        return;
+      }
+    } else if (menuKind !== "pickup") {
+      const { count, error: countError } = await supabase
+        .from("visit_bookings")
+        .select("id, visit_menus!inner(kind)", { count: "exact", head: true })
+        .eq("date", dateKey)
+        .eq("time", time)
+        .in("status", ["booked", "done"])
+        .not("visit_menus.kind", "in", "(pickup,femcare)")
         .neq("id", initial?.id || "");
       if (countError) {
         setSaving(false);

@@ -25,7 +25,7 @@ import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
 import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
 import { buildSlotTimes, timeToMinutes } from "./lib/slots.js";
-import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical } from "lucide-react";
+import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical, Dumbbell } from "lucide-react";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -3938,6 +3938,8 @@ export default function StaffView() {
                         // 受付機でチェックイン済みなら受付番号も添える（同日の受付から booking_id で照合）
                         const checkin = checkins.find((c) => c.booking_id === b.id) || null;
                         const isPickup = b.visit_menus?.kind === "pickup";
+                        // フェムケア（骨盤底筋トレーニング）は診察でも薬でもないので専用の色
+                        const isFemcare = b.visit_menus?.kind === "femcare";
                         return (
                           <tr key={b.id} style={{ borderTop: "1px solid #FAEEF0", opacity: b.status === "cancelled" ? 0.45 : 1 }}>
                             <td className="px-3 py-3 font-bold" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace" }}>
@@ -3975,12 +3977,14 @@ export default function StaffView() {
                                 style={
                                   isPickup
                                     ? { background: "#DFF5F3", color: "#0F8B8D" }
-                                    : VISIT_KIND_BADGE[b.visit_kind]
-                                      ? { background: VISIT_KIND_BADGE[b.visit_kind].bg, color: VISIT_KIND_BADGE[b.visit_kind].fg }
-                                      : { background: "#FCE9EA", color: "#D64550" }
+                                    : isFemcare
+                                      ? { background: "#FDEFF5", color: "#C2447E" }
+                                      : VISIT_KIND_BADGE[b.visit_kind]
+                                        ? { background: VISIT_KIND_BADGE[b.visit_kind].bg, color: VISIT_KIND_BADGE[b.visit_kind].fg }
+                                        : { background: "#FCE9EA", color: "#D64550" }
                                 }
                               >
-                                {isPickup ? <PackageCheck size={12} /> : <Stethoscope size={12} />}
+                                {isPickup ? <PackageCheck size={12} /> : isFemcare ? <Dumbbell size={12} /> : <Stethoscope size={12} />}
                                 {b.visit_menus?.name || b.menu_id}
                               </span>
                             </td>
@@ -4013,7 +4017,8 @@ export default function StaffView() {
                                   )}
                                 </div>
                               ) : (
-                                <span className="text-xs" style={{ color: "#C9AEB3" }}>{isPickup ? "—" : "未記入"}</span>
+                                // 薬受け取り・フェムケアは問診票を書かないので「未記入」を出さない
+                                <span className="text-xs" style={{ color: "#C9AEB3" }}>{isPickup || isFemcare ? "—" : "未記入"}</span>
                               )}
                             </td>
                             <td className="px-2 py-3">
