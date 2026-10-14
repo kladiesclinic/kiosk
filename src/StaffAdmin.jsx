@@ -63,6 +63,19 @@ export function BookingEditor({ menus, settings, holidays, initial, onDone, onCa
     // 診察（pickup・femcare以外）は全体定員。薬の受け取りは無制限。
     // 受付済み(done)も枠を占有として数える（早め受付で枠が空き戻るのを防ぐ・050と同じ）
     if (menuKind === "femcare") {
+      // 登録された実施日（担当の出勤日）だけ受け付ける
+      const { data: openRow, error: openErr } = await supabase
+        .from("femcare_open_dates").select("date").eq("date", dateKey).maybeSingle();
+      if (openErr) {
+        setSaving(false);
+        showToast("実施日の確認に失敗しました");
+        return;
+      }
+      if (!openRow) {
+        setSaving(false);
+        showToast("この日はフェムケアの実施日ではありません（設定→休診設定で実施日を登録してください）");
+        return;
+      }
       const { data: fcRows, error: countError } = await supabase
         .from("visit_bookings")
         .select("id, time, visit_menus!inner(kind)")
@@ -478,20 +491,42 @@ function ClosedTab({ showToast }) {
   const [slotDate, setSlotDate] = useState(toDateKey(new Date()));
   const [closedSlots, setClosedSlots] = useState(new Set());
   const [settings, setSettings] = useState(null);
+  // フェムケアの実施日（担当の出勤日）。登録された日だけフェムケアの予約を受け付ける
+  const [femcareDates, setFemcareDates] = useState(null);
+  const [newFemcareDate, setNewFemcareDate] = useState("");
 
   // 一覧は {date, name} の配列で持つ
   const loadAll = async () => {
-    const [closedRes, holidayRes, settingsRes] = await Promise.all([
+    const [closedRes, holidayRes, settingsRes, femcareRes] = await Promise.all([
       supabase.from("visit_closed_dates").select("date, name, pickup_closed").order("date"),
       supabase.from("visit_holiday_dates").select("date, name").order("date"),
       supabase.from("visit_settings").select("*").eq("id", "default").single(),
+      supabase.from("femcare_open_dates").select("date").order("date"),
     ]);
     const closed = closedRes.error ? [] : closedRes.data;
     const holidays = holidayRes.error ? [] : holidayRes.data;
     setClosedDates(closed);
     setHolidayDates(holidays);
+    setFemcareDates(femcareRes.error ? [] : femcareRes.data);
     if (!settingsRes.error && settingsRes.data) setSettings(settingsFromRow(settingsRes.data));
     return { closed, holidays, excluded: settingsRes.data?.holiday_sync_excluded || [] };
+  };
+
+  const addFemcareDate = async () => {
+    if (!newFemcareDate) return;
+    const { error } = await supabase.from("femcare_open_dates").insert({ date: newFemcareDate });
+    if (error) showToast("追加できませんでした（既に登録済み？）");
+    else {
+      setNewFemcareDate("");
+      showToast("フェムケアの実施日を追加しました");
+      loadAll();
+    }
+  };
+
+  const removeFemcareDate = async (date) => {
+    const { error } = await supabase.from("femcare_open_dates").delete().eq("date", date);
+    if (error) showToast("削除できませんでした");
+    else loadAll();
   };
 
   useEffect(() => {
@@ -697,6 +732,42 @@ function ClosedTab({ showToast }) {
                     </button>
                     <button onClick={() => removeClosedDate(r.date)}><Trash2 size={14} color={T.alert} /></button>
                   </span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+      </StaticCard>
+
+      <StaticCard>
+        <div className="text-xs font-bold mb-1" style={{ color: T.muted }}>フェムケアの実施日</div>
+        <p className="text-[11px] mb-3" style={{ color: T.faint }}>
+          フェムケア（骨盤底筋トレーニング）は、ここに登録した日だけ予約を受け付けます。
+          登録がない日は患者さんの画面で「−（受付なし）」になります。休診日は登録しても受付されません。
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="date"
+            value={newFemcareDate}
+            onChange={(e) => setNewFemcareDate(e.target.value)}
+            className="flex-1 p-2 rounded-lg text-sm outline-none"
+            style={{ background: T.bg, border: `1px solid ${T.line}` }}
+          />
+          <PrimaryButton onClick={addFemcareDate} disabled={!newFemcareDate}><Plus size={14} /> 追加</PrimaryButton>
+        </div>
+        {femcareDates === null ? null : (() => {
+          const today = toDateKey(new Date());
+          const future = femcareDates.filter((r) => r.date >= today);
+          return future.length === 0 ? (
+            <p className="text-xs mt-3" style={{ color: T.faint }}>
+              実施日が登録されていません（いまはフェムケアの予約を受け付けていない状態です）
+            </p>
+          ) : (
+            <div className="mt-3 space-y-1.5 max-h-64 overflow-y-auto">
+              {future.map((r) => (
+                <div key={r.date} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: T.bg }}>
+                  <span className="text-sm" style={{ fontFamily: FONTS.mono }}>{formatDateLabel(r.date)}</span>
+                  <button onClick={() => removeFemcareDate(r.date)}><Trash2 size={14} color={T.alert} /></button>
                 </div>
               ))}
             </div>
