@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import { domToCanvas } from "modern-screenshot";
 import QRCode from "qrcode";
 import {
   ClipboardList,
@@ -101,6 +102,22 @@ const IS_IOS =
 // 印刷してしまう。そのため受付一覧の見た目がそのまま何枚にも渡って出ていた。
 // iPadでは作ったPDFを新しいタブに出し、共有メニューの「プリント」から
 // 出してもらう。PDF自体は他の端末とまったく同じものになる
+// 1枚ぶんの要素を画像化する。modern-screenshot（SVG foreignObject＝ブラウザ自身の
+// 描画そのまま）を使う。以前の html2canvas は自前でベースラインを計算していて、
+// Chrome 156 あたりから Noto Sans JP を数px下に描くようになり、…切り用の
+// overflow:hidden で太字の下半分が欠けた（2026-11-13 の1日の予定表）。
+// iPadのSafariは foreignObject の描画が不安定なことがあるので、従来どおり
+// html2canvas を使う（iPadでは欠けは起きていない）。失敗時も html2canvas に落とす
+export async function captureElement(el) {
+  const opts = { scale: 2, backgroundColor: "#FFFFFF" };
+  if (!IS_IOS) {
+    try {
+      return await domToCanvas(el, opts);
+    } catch { /* 下のhtml2canvasで撮り直す */ }
+  }
+  return html2canvas(el, opts);
+}
+
 async function printElementAsPdf(el, iosWindow, fileName) {
   el.style.display = "block";
   // Webフォントが届く前に画像化すると代替フォントの字幅で組まれ、行の折り返しが
@@ -108,7 +125,7 @@ async function printElementAsPdf(el, iosWindow, fileName) {
   if (document.fonts && document.fonts.ready) {
     try { await document.fonts.ready; } catch { /* 待てなくても続行する */ }
   }
-  const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#FFFFFF" });
+  const canvas = await captureElement(el);
   el.style.display = "none";
 
   // 必ずA4・1枚に収める: 幅いっぱいで高さが超える場合は縮小してフィットさせる
@@ -201,7 +218,7 @@ async function printElementsAsPdf(els, iosWindow, fileName) {
     const el = els[i];
     el.style.display = "block";
     // eslint-disable-next-line no-await-in-loop
-    const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#FFFFFF" });
+    const canvas = await captureElement(el);
     el.style.display = "none";
     const img = canvas.toDataURL("image/jpeg", 0.95);
     let imgW = pageW - margin * 2;
@@ -1783,7 +1800,7 @@ const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
 const SCHEDULE_SHEET_W = 794;
 const SCHEDULE_SHEET_H = Math.round((SCHEDULE_SHEET_W * 281) / 194); // 1150
 // 見出し・表の見出し行・欄外の注記を引いた、枠に使える高さ
-const SCHEDULE_BODY_PX = 1044;
+export const SCHEDULE_BODY_PX = 1044;
 // 高さの見積もりに使う実測値。字は小さくせず、行間とセルの余白を詰めて枠を低くする。
 // 1行目に保険とカルテ番号を右寄せで入れて、2行目は診察内容だけにした
 // （2行目の右半分が空いていたぶん、枠が1つあたり25pxほど余っていた）
@@ -1801,8 +1818,8 @@ const SCHEDULE_COMPACT_PAD_PX = 1;
 const SCHEDULE_COL_W = [58, 366, 330];
 // 列の中で文字に使える幅（列の幅 − セルの余白8 − チェック欄と間隔14）と、
 // 診察内容が1行に入る全角の文字数（10.5pxで割ったもの）
-const SCHEDULE_VISIT_COL = { px: SCHEDULE_COL_W[1] - 22, chars: 32 };
-const SCHEDULE_ONLINE_COL = { px: SCHEDULE_COL_W[2] - 22, chars: 29 };
+export const SCHEDULE_VISIT_COL = { px: SCHEDULE_COL_W[1] - 22, chars: 32 };
+export const SCHEDULE_ONLINE_COL = { px: SCHEDULE_COL_W[2] - 22, chars: 29 };
 
 // 文字の幅のおよそ。半角（英数記号・半角カナ）は全角のおよそ0.55倍
 function textPx(s, size) {
@@ -1838,7 +1855,7 @@ function scheduleRightChars(e) {
 // 組み方の候補。上から順に試して、A4に収まった最初のものを使う。
 // 余白があるうちはお名前・カナを折り返し、診察内容も2行使って最後まで出す。
 // 入らなくなってから、内容 → カナ の順に削る（お名前は最後まで削らない）
-const SCHEDULE_MODES = [
+export const SCHEDULE_MODES = [
   { compact: false, maxLines: 2, nameLines: 2 },
   { compact: false, maxLines: 1, nameLines: 2 },
   { compact: false, maxLines: 1, nameLines: 1 },
@@ -1871,14 +1888,33 @@ function scheduleEntryPx(e, col, mode) {
   );
 }
 
-// 枠1つに要る高さ。来院とオンラインの高いほうで決まる
-function scheduleRowPx(r, mode) {
-  const sum = (list, col) => list.reduce((n, e) => n + scheduleEntryPx(e, col, mode), 0);
-  return Math.max(
-    mode.compact ? SCHEDULE_COMPACT_PX : SCHEDULE_EMPTY_ROW_PX,
-    (mode.compact ? SCHEDULE_COMPACT_PAD_PX : SCHEDULE_ROW_PAD_PX) +
-      Math.max(sum(r.visits, SCHEDULE_VISIT_COL), sum(r.onlines, SCHEDULE_ONLINE_COL))
-  );
+// 列ごとの「あふれたら直下の空き枠へ食い込む」割り付け。入りきらない枠は、直下の
+// 空き枠（来院側は休診の枠を除く）を rowSpan で取り込んで続きを流し込む。
+// 戻り値 spans[i] はその枠の rowSpan（取り込まれた枠は 0 ＝ td を描かない）。
+// fits は、取り込んでもなお入らない枠が無いか（組み方・ページ割りの判定に使う）
+export function scheduleColumnSpans(rows, key, col, mode, rowH) {
+  const pad = mode.compact ? SCHEDULE_COMPACT_PAD_PX : SCHEDULE_ROW_PAD_PX;
+  const spans = rows.map(() => 1);
+  let fits = true;
+  for (let i = 0; i < rows.length; ) {
+    const list = rows[i][key];
+    if (!list.length) { i += 1; continue; }
+    const needed = pad + list.reduce((n, e) => n + scheduleEntryPx(e, col, mode), 0);
+    let span = 1;
+    while (
+      needed > span * rowH &&
+      i + span < rows.length &&
+      rows[i + span][key].length === 0 &&
+      (key === "onlines" || !rows[i + span].closed)
+    ) {
+      spans[i + span] = 0;
+      span += 1;
+    }
+    spans[i] = span;
+    if (needed > span * rowH) fits = false;
+    i += span;
+  }
+  return { spans, fits };
 }
 
 // 予定表の1人ぶん。枠の時刻と違う時刻の方（薬の受け取りなど刻みが細かい予約）は
@@ -1987,7 +2023,7 @@ function ScheduleEntry({ e, showTime, mode, col }) {
 }
 
 // 予定表1ページぶん。画面外に置いて画像化するので、色は白黒印刷でも潰れない濃さにする
-function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, zoomCount, note, mode }) {
+export function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount, zoomCount, note, mode }) {
   const wd = /^\d{4}-\d{2}-\d{2}$/.test(dateKey)
     ? WEEKDAY_JA[new Date(`${dateKey}T00:00:00`).getDay()]
     : "";
@@ -1995,6 +2031,9 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
   const head = { ...cell, background: "#EAEAEA", fontWeight: 700, textAlign: "left", fontSize: 11 };
   // 枠の高さはこのページの枠の数で決める。全部そろえて、A4を使い切る
   const rowH = rows.length ? Math.floor(SCHEDULE_BODY_PX / rows.length) : SCHEDULE_BODY_PX;
+  // 入りきらない枠が直下の空き枠を取り込む割り付け（列ごとに独立）
+  const visitSpans = scheduleColumnSpans(rows, "visits", SCHEDULE_VISIT_COL, mode, rowH).spans;
+  const onlineSpans = scheduleColumnSpans(rows, "onlines", SCHEDULE_ONLINE_COL, mode, rowH).spans;
   return (
     <div
       style={{
@@ -2050,9 +2089,11 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {rows.map((r, i) => (
             // 高さは全部そろえる。空いている枠には何も書かない（白いほうが空きが見える）。
-            // 枠を閉じている時間だけは灰色にして、書き込めないことを色で示す
+            // 枠を閉じている時間だけは灰色にして、書き込めないことを色で示す。
+            // 入りきらない枠は直下の空き枠と結合（rowSpan）して続きを流し込む —
+            // 結合した枠（span 0）には td を描かない
             <tr key={r.time} style={{ height: rowH }}>
               <td
                 style={{
@@ -2066,16 +2107,20 @@ function ScheduleSheet({ rows, dateKey, page, pageCount, visitCount, onlineCount
               >
                 {r.time}
               </td>
-              <td style={{ ...cell, background: r.closed ? "#EDEDED" : "#FFFFFF" }}>
-                {r.visits.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} col={SCHEDULE_VISIT_COL} />
-                ))}
-              </td>
-              <td style={{ ...cell, background: "#F7F7F7" }}>
-                {r.onlines.map((e) => (
-                  <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} col={SCHEDULE_ONLINE_COL} />
-                ))}
-              </td>
+              {visitSpans[i] > 0 && (
+                <td rowSpan={visitSpans[i]} style={{ ...cell, background: r.closed ? "#EDEDED" : "#FFFFFF" }}>
+                  {r.visits.map((e) => (
+                    <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} col={SCHEDULE_VISIT_COL} />
+                  ))}
+                </td>
+              )}
+              {onlineSpans[i] > 0 && (
+                <td rowSpan={onlineSpans[i]} style={{ ...cell, background: "#F7F7F7" }}>
+                  {r.onlines.map((e) => (
+                    <ScheduleEntry key={e.key} e={e} showTime={e.time !== r.time} mode={mode} col={SCHEDULE_ONLINE_COL} />
+                  ))}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -3171,8 +3216,18 @@ export default function StaffView() {
         ].filter(Boolean),
       };
     });
+    // 同じ人が問診票を2回送ってくることがある（例: 9月に1通・前日にもう1通）。
+    // どちらも calendly-sync が同じ予約の日時を書き込むので、放っておくと同じ枠に
+    // 同じ人が2行並ぶ。予約の行に新しい方の問診票が付いた後、残りが「同じ人・同じ
+    // 予約時刻」なら同じ予約の重複なので載せない。時刻が違う・予約に紐付かない
+    // 問診票は、人が消える方が困るので今までどおり独立した行で残す
+    const sameBookingAsSome = (m) => !!m.reserve_at && calBookings.some((b) =>
+      !b.canceled && samePerson(b, m) &&
+      new Date(b.start_at).getTime() === new Date(m.reserve_at).getTime()
+    );
     zoomRows.forEach((m) => {
       if (used.has(m.id)) return;
+      if (sameBookingAsSome(m)) return;
       rows.push({
         key: `m:${m.id}`, at: m.reserve_at || m.created_at,
         time: m.reserve_at ? hhmm(m.reserve_at) : hhmm(m.created_at),
@@ -4297,9 +4352,18 @@ export default function StaffView() {
     const rows = scheduleGrid.rows;
     if (!rows.length) return { pages: [], mode: SCHEDULE_MODES[0] };
     // 枠の高さはページ内で共通なので、1枠増やすと全部の枠が低くなる。
-    // 「いちばん高さが要る枠 × 枠数」が1ページに収まるかで判定する
+    // 混んだ枠は直下の空き枠へ食い込める（scheduleColumnSpans）ので、
+    // 「全部の枠が、借りられる空き枠まで含めて収まるか」で判定する。
+    // 時刻の目盛りとして読めるよう、枠自体の最低の高さは確保する
     const fits = (pages, mode) =>
-      pages.every((p) => p.length * Math.max(...p.map((r) => scheduleRowPx(r, mode))) <= SCHEDULE_BODY_PX);
+      pages.every((p) => {
+        const rowH = Math.floor(SCHEDULE_BODY_PX / p.length);
+        if (rowH < (mode.compact ? SCHEDULE_COMPACT_PX : SCHEDULE_EMPTY_ROW_PX)) return false;
+        return (
+          scheduleColumnSpans(p, "visits", SCHEDULE_VISIT_COL, mode, rowH).fits &&
+          scheduleColumnSpans(p, "onlines", SCHEDULE_ONLINE_COL, mode, rowH).fits
+        );
+      });
     const split = (count) => {
       const per = Math.ceil(rows.length / count);
       const pages = [];
