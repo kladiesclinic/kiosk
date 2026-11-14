@@ -454,7 +454,7 @@ function LabEditorModal({ init, onClose, onSaved }) {
         const { data: apps } = await supabase.from("lab_result_applications")
           .select("phone, email, submitted_at")
           .in("checkin_id", checkins.map((c) => c.id))
-          .neq("status", "invited").is("replied_at", null).is("refunded_at", null)
+          .eq("status", "submitted")
           .order("submitted_at", { ascending: false }).limit(1);
         if (apps && apps[0]) {
           const a = apps[0];
@@ -3543,7 +3543,7 @@ export default function StaffView() {
     let hasPrev = false;
     if (c.patient_name) {
       const { data: prev } = await supabase.from("femcare_consents")
-        .select("id").eq("patient_name", c.patient_name).neq("status", "invited").is("replied_at", null).is("refunded_at", null)
+        .select("id").eq("patient_name", c.patient_name).eq("status", "submitted")
         .not("counseling", "is", null).limit(1);
       hasPrev = !!(prev && prev.length);
     }
