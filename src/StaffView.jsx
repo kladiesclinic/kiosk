@@ -26,7 +26,8 @@ import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
 import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
 import { buildSlotTimes, timeToMinutes } from "./lib/slots.js";
-import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical, Dumbbell } from "lucide-react";
+import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical, Dumbbell, Camera } from "lucide-react";
+import CasesPanel from "./CasesPanel.jsx";
 
 const FONT_IMPORT = `
 @import url('https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500;600&display=swap');
@@ -2999,6 +3000,12 @@ export default function StaffView() {
   const [pastCharts, setPastCharts] = useState(new Map());
   // 要望タブ: 未対応の件数バッジと、チェック時に記録する自分の名前
   const [feedbackOpen, setFeedbackOpen] = useState(0);
+  // 口コミ・症例の未確認（患者さんが提出済み・スタッフ未確認）件数。タブを開かなくても気づけるように最初に1回数える
+  const [casesOpen, setCasesOpen] = useState(0);
+  useEffect(() => {
+    supabase.from("case_submissions").select("id", { count: "exact", head: true }).eq("status", "submitted")
+      .then(({ count }) => setCasesOpen(count || 0));
+  }, []);
   const [myName, setMyName] = useState("");
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -3823,7 +3830,7 @@ export default function StaffView() {
     load();
     // 自動更新は増える可能性のある日だけ: 受付タブは今日、予約タブは今日以降。
     // 患者を探すタブは日付と関係ないので更新しない（入力中に画面が動くのを防ぐ）
-    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" || tab === "femcare" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
+    const canGrow = tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" || tab === "femcare" || tab === "cases" ? false : (tab === "bookings" || tab === "pillorder" || tab === "zoom") ? dateKey >= todayKey() : isToday;
     if (!canGrow) return;
     // 30秒ごと。画面が隠れているあいだ（iPadで別アプリを前に出している等）は読まず、
     // 前に戻った瞬間に1回読み直す。以前は10秒ごと・常時で、Supabase の転送量の大半を占めていた
@@ -4457,6 +4464,8 @@ export default function StaffView() {
                   ? "検査結果の入力とオンライン公開"
                   : tab === "femcare"
                   ? "フェムケア施術のカウンセリング・同意書"
+                  : tab === "cases"
+                  ? "Google口コミ投稿者の申請（スクショ・ビフォーアフター）"
                   : tab === "pillorder"
                     ? `${isToday ? "本日" : dateKey} のオンライン診療 ${pillorderActive.length}件　`
                     : tab === "zoom"
@@ -4475,7 +4484,7 @@ export default function StaffView() {
                 患者を探すタブは日付で絞らないので出さない */}
             <div
               className="h-10 flex items-center gap-2 px-3 rounded-xl text-sm"
-              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" || tab === "femcare" ? "none" : undefined }}
+              style={{ background: "#FFF8F7", border: "1.5px solid #F2DFE4", color: "#3A2E30", display: tab === "search" || tab === "settings" || tab === "feedback" || tab === "lab" || tab === "femcare" || tab === "cases" ? "none" : undefined }}
             >
               <CalendarDays size={15} color="#B08A90" />
               <input
@@ -4576,6 +4585,7 @@ export default function StaffView() {
               { id: "zoom", label: "Zoom英語", Icon: Video },
               { id: "lab", label: "検査結果", Icon: FlaskConical },
               { id: "femcare", label: "フェムケア", Icon: Dumbbell },
+              { id: "cases", label: "口コミ・症例", Icon: Camera },
               { id: "search", label: "患者を探す", Icon: Search },
               { id: "feedback", label: "要望", Icon: MessageCircle },
               { id: "settings", label: "設定", Icon: Settings },
@@ -4598,7 +4608,7 @@ export default function StaffView() {
                 <Icon size={15} />
                 {label}
                 {/* 未対応の要望があるあいだは件数を出す（開かなくても気づけるように） */}
-                {id === "feedback" && feedbackOpen > 0 && (
+                {((id === "feedback" && feedbackOpen > 0) || (id === "cases" && casesOpen > 0)) && (
                   <span
                     className="ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
                     style={{
@@ -4607,7 +4617,7 @@ export default function StaffView() {
                       color: tab === id ? "#0F8B8D" : "#FFFFFF",
                     }}
                   >
-                    {feedbackOpen}
+                    {id === "cases" ? casesOpen : feedbackOpen}
                   </span>
                 )}
                 {/* 未確認の当日予約（pillorder / Zoom英語）の件数 */}
@@ -5170,6 +5180,8 @@ export default function StaffView() {
           {tab === "feedback" && (
             <FeedbackTab isAdmin adminName={myName} onCountChange={setFeedbackOpen} />
           )}
+
+          {tab === "cases" && <CasesPanel myName={myName} onCountChange={setCasesOpen} />}
 
           {tab === "lab" && (
             <LabPanel
