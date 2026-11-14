@@ -497,7 +497,15 @@ export default function CasesPanel({ myName, onCountChange }) {
   const [rows, setRows] = useState(null);
   const [counts, setCounts] = useState({});
   const [thumbs, setThumbs] = useState({});
-  const [filter, setFilter] = useState("waiting");
+  // 選んだステータスの集合（OR で抽出）。空なら全件
+  const [filter, setFilter] = useState(() => new Set(["waiting"]));
+  const toggleFilter = (id) =>
+    setFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
   const [creating, setCreating] = useState(false);
@@ -536,7 +544,8 @@ export default function CasesPanel({ myName, onCountChange }) {
   useEffect(() => { load(); }, []);
 
   const shown = useMemo(() => {
-    const f = FILTERS.find((x) => x.id === filter) || FILTERS[0];
+    const picked = FILTERS.filter((x) => filter.has(x.id));
+    const f = { match: (r) => r.status !== "invited" && (picked.length === 0 || picked.some((x) => x.match(r))) };
     const s = q.trim();
     return (rows || []).filter((r) => f.match(r) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""} ${r.packing_no || ""}`.includes(s.replace(/^#/, ""))));
   }, [rows, filter, q]);
@@ -590,17 +599,31 @@ export default function CasesPanel({ myName, onCountChange }) {
       )}
 
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="inline-flex rounded-xl overflow-hidden" style={{ border: `1.5px solid ${C.line}`, background: "#FFFFFF" }}>
-          {FILTERS.map((f) => {
-            const n = (rows || []).filter((r) => f.match(r)).length;
-            return (
-              <button key={f.id} onClick={() => setFilter(f.id)} className="px-4 py-2 text-sm font-bold"
-                style={filter === f.id ? { background: C.teal, color: "#FFFFFF" } : { color: C.muted }}>
-                {f.label} {n}
-              </button>
-            );
-          })}
-        </div>
+        {/* ステータスの絞り込み（複数選択可。何も選ばなければ全件） */}
+        <span className="text-xs" style={{ color: C.muted }}>ステータス</span>
+        {FILTERS.map((f) => {
+          const n = (rows || []).filter((r) => f.match(r)).length;
+          const on = filter.has(f.id);
+          const st = STAGE[f.id];
+          return (
+            <button key={f.id} onClick={() => toggleFilter(f.id)} aria-pressed={on}
+              className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-sm font-bold"
+              style={on
+                ? { background: st.bg, color: st.fg, border: `1.5px solid ${st.fg}` }
+                : { background: "#FFFFFF", color: C.muted, border: `1.5px solid ${C.line}` }}>
+              <span className="w-4 h-4 rounded flex items-center justify-center text-[11px]"
+                style={on ? { background: st.fg, color: "#FFFFFF" } : { border: `1.5px solid ${C.line}` }}>
+                {on ? "✓" : ""}
+              </span>
+              {f.label} {n}
+            </button>
+          );
+        })}
+        {filter.size > 0 && (
+          <button onClick={() => setFilter(new Set())} className="h-10 px-2 text-xs underline" style={{ color: C.muted }}>
+            すべて表示
+          </button>
+        )}
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="名前・施術・カルテ番号・梱包票で検索"
           className="h-10 px-3 rounded-xl text-sm outline-none" style={{ background: "#FFFFFF", border: `1.5px solid ${C.line}`, color: C.ink, width: 240 }} />
       </div>
