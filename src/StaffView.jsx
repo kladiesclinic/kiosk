@@ -454,7 +454,7 @@ function LabEditorModal({ init, onClose, onSaved }) {
         const { data: apps } = await supabase.from("lab_result_applications")
           .select("phone, email, submitted_at")
           .in("checkin_id", checkins.map((c) => c.id))
-          .eq("status", "submitted")
+          .neq("status", "invited").is("replied_at", null).is("refunded_at", null)
           .order("submitted_at", { ascending: false }).limit(1);
         if (apps && apps[0]) {
           const a = apps[0];
@@ -3003,7 +3003,7 @@ export default function StaffView() {
   // 口コミ・症例の未確認（患者さんが提出済み・スタッフ未確認）件数。タブを開かなくても気づけるように最初に1回数える
   const [casesOpen, setCasesOpen] = useState(0);
   useEffect(() => {
-    supabase.from("case_submissions").select("id", { count: "exact", head: true }).eq("status", "submitted")
+    supabase.from("case_submissions").select("id", { count: "exact", head: true }).neq("status", "invited").is("replied_at", null).is("refunded_at", null)
       .then(({ count }) => setCasesOpen(count || 0));
   }, []);
   const [myName, setMyName] = useState("");
@@ -3543,7 +3543,7 @@ export default function StaffView() {
     let hasPrev = false;
     if (c.patient_name) {
       const { data: prev } = await supabase.from("femcare_consents")
-        .select("id").eq("patient_name", c.patient_name).eq("status", "submitted")
+        .select("id").eq("patient_name", c.patient_name).neq("status", "invited").is("replied_at", null).is("refunded_at", null)
         .not("counseling", "is", null).limit(1);
       hasPrev = !!(prev && prev.length);
     }

@@ -20,14 +20,18 @@ const STATUS = {
   published: { label: "掲載済み", bg: "#E6EEFB", fg: "#2D5AA8" },
   archived: { label: "取り下げ", bg: "#F3EFEF", fg: "#8A7378" },
 };
-const FILTERS = [
-  { id: "todo", label: "未確認", match: (r) => r.status === "submitted" },
-  // 申請が届いていて、まだ返金していないもの（写真を使わない・取り下げでも返金はする前提で全部含める）
-  { id: "refund", label: "返金待ち", match: (r) => r.status !== "invited" && !r.refunded_at },
-  { id: "invited", label: "未提出", match: (r) => r.status === "invited" },
-  { id: "ok", label: "使用OK・掲載済み", match: (r) => r.status === "approved" || r.status === "published" },
-  { id: "all", label: "すべて", match: () => true },
-];
+// スタッフ画面は 返金待ち → 返信済（Google口コミに当院から返信）→ 返金済 の3段階だけで管理する（088）
+const stageOf = (r) => (r.refunded_at ? "refunded" : r.replied_at ? "replied" : "waiting");
+const STAGE = {
+  waiting: { label: "返金待ち", bg: "#FFF6E5", fg: "#854F0B" },
+  replied: { label: "返信済", bg: "#E6EEFB", fg: "#2D5AA8" },
+  refunded: { label: "返金済", bg: "#E9F5EC", fg: "#1F8B4C" },
+};
+const FILTERS = ["waiting", "replied", "refunded"].map((id) => ({
+  id,
+  label: STAGE[id].label,
+  match: (r) => r.status !== "invited" && stageOf(r) === id,
+}));
 
 const C = {
   ink: "#3A2E30", muted: "#8A7378", faint: "#B08A90", line: "#F2DFE4", bg: "#FFF8F7",
@@ -82,6 +86,11 @@ function ConsentBadges({ row }) {
       ))}
     </span>
   );
+}
+
+function StagePill({ row }) {
+  const s = STAGE[stageOf(row)];
+  return <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: s.bg, color: s.fg }}>{s.label}</span>;
 }
 
 function StatusPill({ status }) {
@@ -208,6 +217,15 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
     return true;
   };
 
+  const toggleReplied = async () => {
+    if (row.replied_at) {
+      if (!window.confirm("返信済を取り消します。よろしいですか？")) return;
+      await save({ replied_at: null, replied_by: null });
+    } else {
+      await save({ replied_at: new Date().toISOString(), replied_by: myName || null });
+    }
+  };
+
   const toggleRefund = async () => {
     if (row.refunded_at) {
       if (!window.confirm("返金済みを取り消します。よろしいですか？")) return;
@@ -215,15 +233,6 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
     } else {
       await save({ refunded_at: new Date().toISOString(), refunded_by: myName || null });
     }
-  };
-
-  const setStatus = async (status) => {
-    if ((status === "approved" || status === "published") && photos.some((p) => p.kind !== "review") && (!row.treatment || !row.cost || !row.risks)) {
-      setErr("写真を使う場合は、施術・費用・リスク/副作用を記入してください（医療広告ガイドラインの併記事項）。");
-      return;
-    }
-    const { data: auth } = await supabase.auth.getUser();
-    await save({ status, reviewed_by: auth?.user?.id || null, reviewed_at: new Date().toISOString() });
   };
 
   const updatePhoto = async (p, patch) => {
@@ -348,7 +357,7 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-lg font-bold" style={heading}>{row.patient_name || "（名前なし）"}</h3>
-              <StatusPill status={row.status} />
+              <StagePill row={row} />
             </div>
             <div className="text-xs flex items-center gap-2 flex-wrap" style={{ color: C.faint }}>
               作成 {fmtDate(row.created_at)}{row.signed_at && ` ／ 提出 ${fmtDate(row.signed_at)}（署名: ${row.signature_name}）`}
@@ -373,22 +382,35 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
           </div>
         )}
 
-        {row.status !== "invited" && (
-          <div className="flex items-center gap-3 flex-wrap mb-4 p-3 rounded-xl"
-            style={row.refunded_at ? { background: "#E9F5EC", border: "1px solid #BFE3CB" } : { background: "#FFF6E5", border: "1px solid #F3DDAE" }}>
-            <span className="text-sm font-bold" style={{ color: row.refunded_at ? "#1F8B4C" : "#854F0B" }}>
-              {row.refunded_at
-                ? `返金済み（${fmtDate(row.refunded_at)}${row.refunded_by ? `・${row.refunded_by}` : ""}）`
-                : "返金はまだです"}
-            </span>
-            <button onClick={toggleRefund} disabled={busy} className="h-10 px-4 rounded-xl text-sm font-bold ml-auto"
-              style={row.refunded_at
-                ? { background: "#FFFFFF", border: `1.5px solid ${C.line}`, color: C.muted }
-                : { background: "#1F8B4C", color: "#FFFFFF" }}>
-              {row.refunded_at ? "取り消す" : "返金済みにする"}
-            </button>
-          </div>
-        )}
+        {row.status !== "invited" && (() => {
+          const st = STAGE[stageOf(row)];
+          const who = (at, by) => `${fmtDate(at)}${by ? `・${by}` : ""}`;
+          const ghost = { background: "#FFFFFF", border: `1.5px solid ${C.line}`, color: C.muted };
+          return (
+            <div className="flex items-center gap-3 flex-wrap mb-4 p-3 rounded-xl" style={{ background: st.bg }}>
+              <div>
+                <div className="text-sm font-bold" style={{ color: st.fg }}>{st.label}</div>
+                <div className="text-[11px]" style={{ color: st.fg }}>
+                  {row.replied_at && `返信 ${who(row.replied_at, row.replied_by)}`}
+                  {row.replied_at && row.refunded_at && "　"}
+                  {row.refunded_at && `返金 ${who(row.refunded_at, row.refunded_by)}`}
+                </div>
+              </div>
+              <div className="flex gap-2 ml-auto flex-wrap">
+                {!row.refunded_at && (
+                  <button onClick={toggleReplied} disabled={busy} className="h-10 px-4 rounded-xl text-sm font-bold"
+                    style={row.replied_at ? ghost : { background: "#2D5AA8", color: "#FFFFFF" }}>
+                    {row.replied_at ? "返信済を取り消す" : "返信済にする"}
+                  </button>
+                )}
+                <button onClick={toggleRefund} disabled={busy} className="h-10 px-4 rounded-xl text-sm font-bold"
+                  style={row.refunded_at ? ghost : { background: "#1F8B4C", color: "#FFFFFF" }}>
+                  {row.refunded_at ? "返金済を取り消す" : "返金済にする"}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {(row.treatment_started || row.medications || row.change_noticed) && (
           <div className="mb-4 p-3 rounded-xl text-sm" style={{ background: C.bg, border: `1px solid ${C.line}` }}>
@@ -459,14 +481,6 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
         <div className="flex items-center gap-2 flex-wrap pt-3" style={{ borderTop: `1px solid ${C.line}` }}>
           <button onClick={() => save()} disabled={busy || !dirty} className="h-10 px-4 rounded-xl text-sm font-bold"
             style={{ background: C.teal, color: "#FFFFFF", opacity: busy || !dirty ? 0.4 : 1 }}>保存</button>
-          {row.status !== "invited" && (
-            <>
-              <button onClick={() => setStatus("approved")} disabled={busy} className="h-10 px-3 rounded-xl text-sm font-medium" style={{ border: `1.5px solid ${C.line}`, color: C.tealDark }}>使用OK</button>
-              <button onClick={() => setStatus("published")} disabled={busy} className="h-10 px-3 rounded-xl text-sm font-medium" style={{ border: `1.5px solid ${C.line}`, color: "#2D5AA8" }}>掲載済みにする</button>
-              <button onClick={() => setStatus("rejected")} disabled={busy} className="h-10 px-3 rounded-xl text-sm font-medium" style={{ border: `1.5px solid ${C.line}`, color: C.muted }}>使用しない</button>
-              <button onClick={() => setStatus("archived")} disabled={busy} className="h-10 px-3 rounded-xl text-sm font-medium" style={{ border: `1.5px solid ${C.line}`, color: C.muted }} title="同意の撤回など">取り下げ</button>
-            </>
-          )}
           <button onClick={download} disabled={busy || photos.length === 0}
             className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-sm font-medium ml-auto" style={{ border: `1.5px solid ${C.line}`, color: C.tealDark }}>
             <Download size={15} /> ZIPでダウンロード
@@ -483,7 +497,7 @@ export default function CasesPanel({ myName, onCountChange }) {
   const [rows, setRows] = useState(null);
   const [counts, setCounts] = useState({});
   const [thumbs, setThumbs] = useState({});
-  const [filter, setFilter] = useState("todo");
+  const [filter, setFilter] = useState("waiting");
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
   const [creating, setCreating] = useState(false);
@@ -498,7 +512,7 @@ export default function CasesPanel({ myName, onCountChange }) {
     if (error) return setErr(error.message);
     setErr("");
     setRows(data || []);
-    onCountChange?.((data || []).filter((r) => r.status === "submitted").length);
+    onCountChange?.((data || []).filter((r) => r.status !== "invited" && stageOf(r) === "waiting").length);
     const ids = (data || []).map((r) => r.id);
     if (!ids.length) return;
     const { data: ph } = await supabase.from("case_photos").select("submission_id, storage_path, kind, sort").in("submission_id", ids).order("sort");
@@ -522,7 +536,7 @@ export default function CasesPanel({ myName, onCountChange }) {
   useEffect(() => { load(); }, []);
 
   const shown = useMemo(() => {
-    const f = FILTERS.find((x) => x.id === filter) || FILTERS[3];
+    const f = FILTERS.find((x) => x.id === filter) || FILTERS[0];
     const s = q.trim();
     return (rows || []).filter((r) => f.match(r) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""} ${r.packing_no || ""}`.includes(s.replace(/^#/, ""))));
   }, [rows, filter, q]);
@@ -542,40 +556,16 @@ export default function CasesPanel({ myName, onCountChange }) {
     load();
   };
 
-  const downloadAllOk = async () => {
-    const targets = (rows || []).filter((r) => r.status === "approved");
-    if (!targets.length) return;
-    setBusy(true);
-    try {
-      const zip = new JSZip();
-      const { data: ph, error } = await supabase.from("case_photos").select("*").in("submission_id", targets.map((r) => r.id)).order("kind").order("sort");
-      if (error) throw error;
-      for (const r of targets) await addCaseToZip(zip, r, (ph || []).filter((p) => p.submission_id === r.id));
-      await saveZip(zip, `cases_使用OK_${ymd()}.zip`);
-    } catch (e) {
-      setErr(`ダウンロードできませんでした: ${e.message}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const approvedCount = (rows || []).filter((r) => r.status === "approved").length;
-
   return (
     <section className="flex flex-col gap-4">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-bold mb-1" style={heading}>Google口コミ・症例写真の申請</h2>
           <p className="text-xs" style={{ color: C.faint }}>
-            Google口コミを投稿した患者さんにQRを渡すと、スマホから口コミのスクリーンショット（必須）・ビフォーアフター写真・媒体での使用への同意を申請できます。届いたものを確認して「使用OK」にしてください。
+            Google口コミを投稿した患者さんにQRを渡すと、スマホから口コミのスクリーンショット（必須）・ビフォーアフター写真・媒体での使用への同意を申請できます。届いたら Google口コミに返信して「返信済」、返金したら「返金済」にしてください。
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={downloadAllOk} disabled={busy || approvedCount === 0}
-            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-sm font-medium"
-            style={{ background: "#FFFFFF", border: `1.5px solid ${C.line}`, color: C.tealDark, opacity: approvedCount === 0 ? 0.4 : 1 }}>
-            <Download size={14} /> 使用OKをまとめてZIP（{approvedCount}）
-          </button>
           <button onClick={() => setCreating((v) => !v)}
             className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-sm font-bold" style={{ background: C.teal, color: "#FFFFFF" }}>
             <Plus size={14} /> 新規QR発行
@@ -629,8 +619,7 @@ export default function CasesPanel({ myName, onCountChange }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold" style={{ color: C.ink }}>{r.patient_name || "（名前なし）"}</span>
-                  <StatusPill status={r.status} />
-                  {r.refunded_at && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: "#E9F5EC", color: "#1F8B4C" }}>返金済み</span>}
+                  <StagePill row={r} />
                   <ConsentBadges row={r} />
                 </div>
                 <div className="text-xs truncate" style={{ color: C.muted }}>
