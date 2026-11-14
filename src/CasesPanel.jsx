@@ -21,9 +21,11 @@ const STATUS = {
   archived: { label: "取り下げ", bg: "#F3EFEF", fg: "#8A7378" },
 };
 const FILTERS = [
-  { id: "todo", label: "未確認", match: (s) => s === "submitted" },
-  { id: "invited", label: "未提出", match: (s) => s === "invited" },
-  { id: "ok", label: "使用OK・掲載済み", match: (s) => s === "approved" || s === "published" },
+  { id: "todo", label: "未確認", match: (r) => r.status === "submitted" },
+  // 申請が届いていて、まだ返金していないもの（写真を使わない・取り下げでも返金はする前提で全部含める）
+  { id: "refund", label: "返金待ち", match: (r) => r.status !== "invited" && !r.refunded_at },
+  { id: "invited", label: "未提出", match: (r) => r.status === "invited" },
+  { id: "ok", label: "使用OK・掲載済み", match: (r) => r.status === "approved" || r.status === "published" },
   { id: "all", label: "すべて", match: () => true },
 ];
 
@@ -206,6 +208,15 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
     return true;
   };
 
+  const toggleRefund = async () => {
+    if (row.refunded_at) {
+      if (!window.confirm("返金済みを取り消します。よろしいですか？")) return;
+      await save({ refunded_at: null, refunded_by: null });
+    } else {
+      await save({ refunded_at: new Date().toISOString(), refunded_by: myName || null });
+    }
+  };
+
   const setStatus = async (status) => {
     if ((status === "approved" || status === "published") && photos.some((p) => p.kind !== "review") && (!row.treatment || !row.cost || !row.risks)) {
       setErr("写真を使う場合は、施術・費用・リスク/副作用を記入してください（医療広告ガイドラインの併記事項）。");
@@ -362,6 +373,23 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
           </div>
         )}
 
+        {row.status !== "invited" && (
+          <div className="flex items-center gap-3 flex-wrap mb-4 p-3 rounded-xl"
+            style={row.refunded_at ? { background: "#E9F5EC", border: "1px solid #BFE3CB" } : { background: "#FFF6E5", border: "1px solid #F3DDAE" }}>
+            <span className="text-sm font-bold" style={{ color: row.refunded_at ? "#1F8B4C" : "#854F0B" }}>
+              {row.refunded_at
+                ? `返金済み（${fmtDate(row.refunded_at)}${row.refunded_by ? `・${row.refunded_by}` : ""}）`
+                : "返金はまだです"}
+            </span>
+            <button onClick={toggleRefund} disabled={busy} className="h-10 px-4 rounded-xl text-sm font-bold ml-auto"
+              style={row.refunded_at
+                ? { background: "#FFFFFF", border: `1.5px solid ${C.line}`, color: C.muted }
+                : { background: "#1F8B4C", color: "#FFFFFF" }}>
+              {row.refunded_at ? "取り消す" : "返金済みにする"}
+            </button>
+          </div>
+        )}
+
         {(row.treatment_started || row.medications || row.change_noticed) && (
           <div className="mb-4 p-3 rounded-xl text-sm" style={{ background: C.bg, border: `1px solid ${C.line}` }}>
             <div className="text-[11px] font-bold mb-1.5" style={{ color: C.tealDark }}>治療について（患者さん入力）</div>
@@ -496,7 +524,7 @@ export default function CasesPanel({ myName, onCountChange }) {
   const shown = useMemo(() => {
     const f = FILTERS.find((x) => x.id === filter) || FILTERS[3];
     const s = q.trim();
-    return (rows || []).filter((r) => f.match(r.status) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""} ${r.packing_no || ""}`.includes(s.replace(/^#/, ""))));
+    return (rows || []).filter((r) => f.match(r) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""} ${r.packing_no || ""}`.includes(s.replace(/^#/, ""))));
   }, [rows, filter, q]);
 
   const createRow = async () => {
@@ -574,7 +602,7 @@ export default function CasesPanel({ myName, onCountChange }) {
       <div className="flex items-center gap-2 flex-wrap">
         <div className="inline-flex rounded-xl overflow-hidden" style={{ border: `1.5px solid ${C.line}`, background: "#FFFFFF" }}>
           {FILTERS.map((f) => {
-            const n = (rows || []).filter((r) => f.match(r.status)).length;
+            const n = (rows || []).filter((r) => f.match(r)).length;
             return (
               <button key={f.id} onClick={() => setFilter(f.id)} className="px-4 py-2 text-sm font-bold"
                 style={filter === f.id ? { background: C.teal, color: "#FFFFFF" } : { color: C.muted }}>
@@ -602,6 +630,7 @@ export default function CasesPanel({ myName, onCountChange }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold" style={{ color: C.ink }}>{r.patient_name || "（名前なし）"}</span>
                   <StatusPill status={r.status} />
+                  {r.refunded_at && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: "#E9F5EC", color: "#1F8B4C" }}>返金済み</span>}
                   <ConsentBadges row={r} />
                 </div>
                 <div className="text-xs truncate" style={{ color: C.muted }}>
