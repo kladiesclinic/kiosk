@@ -362,6 +362,18 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
           </div>
         )}
 
+        {(row.treatment_started || row.medications || row.change_noticed) && (
+          <div className="mb-4 p-3 rounded-xl text-sm" style={{ background: C.bg, border: `1px solid ${C.line}` }}>
+            <div className="text-[11px] font-bold mb-1.5" style={{ color: C.tealDark }}>治療について（患者さん入力）</div>
+            {[["治療を始めた時期", row.treatment_started], ["服用しているお薬", row.medications], ["肌の変化を感じ始めた時期", row.change_noticed]].map(([k, v]) => (
+              <div key={k} className="flex gap-3 py-0.5">
+                <span className="text-xs shrink-0" style={{ color: C.muted, width: 150 }}>{k}</span>
+                <span style={{ color: C.ink }}>{v || "—"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Google口コミのスクリーンショット */}
         <div className="mb-4" style={{ maxWidth: 420 }}>{column("review", "Google口コミのスクリーンショット")}</div>
 
