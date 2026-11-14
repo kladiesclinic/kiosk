@@ -349,6 +349,19 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
 
         {err && <div className="p-3 rounded-xl text-sm mb-3" style={{ background: C.alertBg, color: "#B03A44" }}>{err}</div>}
 
+        {(row.packing_no || row.card_last4) && (
+          <div className="flex gap-3 flex-wrap mb-4">
+            <div className="px-3 py-2 rounded-xl text-sm" style={{ background: C.bg, border: `1px solid ${C.line}` }}>
+              <span className="text-[11px] mr-2" style={{ color: C.muted }}>梱包票</span>
+              <b style={{ fontFamily: "monospace", letterSpacing: 1 }}>#{row.packing_no || "—"}</b>
+            </div>
+            <div className="px-3 py-2 rounded-xl text-sm" style={{ background: C.bg, border: `1px solid ${C.line}` }}>
+              <span className="text-[11px] mr-2" style={{ color: C.muted }}>カード下4桁</span>
+              <b style={{ fontFamily: "monospace", letterSpacing: 2 }}>{row.card_last4 || "—"}</b>
+            </div>
+          </div>
+        )}
+
         {/* Google口コミのスクリーンショット */}
         <div className="mb-4" style={{ maxWidth: 420 }}>{column("review", "Google口コミのスクリーンショット")}</div>
 
@@ -471,7 +484,7 @@ export default function CasesPanel({ myName, onCountChange }) {
   const shown = useMemo(() => {
     const f = FILTERS.find((x) => x.id === filter) || FILTERS[3];
     const s = q.trim();
-    return (rows || []).filter((r) => f.match(r.status) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""}`.includes(s)));
+    return (rows || []).filter((r) => f.match(r.status) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""} ${r.packing_no || ""}`.includes(s.replace(/^#/, ""))));
   }, [rows, filter, q]);
 
   const createRow = async () => {
@@ -558,7 +571,7 @@ export default function CasesPanel({ myName, onCountChange }) {
             );
           })}
         </div>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="名前・施術・カルテ番号で検索"
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="名前・施術・カルテ番号・梱包票で検索"
           className="h-10 px-3 rounded-xl text-sm outline-none" style={{ background: "#FFFFFF", border: `1.5px solid ${C.line}`, color: C.ink, width: 240 }} />
       </div>
 
@@ -580,6 +593,7 @@ export default function CasesPanel({ myName, onCountChange }) {
                   <ConsentBadges row={r} />
                 </div>
                 <div className="text-xs truncate" style={{ color: C.muted }}>
+                  {r.packing_no && `#${r.packing_no}　`}
                   {r.treatment || "施術未記入"}
                   {counts[r.id] && `　スクショ${counts[r.id].review}・ビフォー${counts[r.id].before}・アフター${counts[r.id].after}`}
                   {`　${fmtDate(r.signed_at || r.created_at)}`}
