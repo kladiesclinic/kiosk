@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import QRCode from "qrcode";
 import JSZip from "jszip";
 import { Plus, X, Camera, Download, Trash2, ArrowUp, ArrowDown, Star, Copy } from "lucide-react";
 import { supabase } from "./supabase.js";
@@ -74,7 +73,6 @@ async function shrinkImage(file, maxSide = 2000) {
 function ConsentBadges({ row }) {
   const items = [
     (row.consent_hp || row.consent_sns || row.consent_ads) && "媒体使用OK",
-    row.status !== "invited" && (row.face_visible_ok ? "顔出し可" : "顔NG"),
   ].filter(Boolean);
   return (
     <span className="inline-flex gap-1 flex-wrap">
@@ -98,33 +96,6 @@ function StatusPill({ status }) {
   return <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: s.bg, color: s.fg }}>{s.label}</span>;
 }
 
-function QrModal({ row, onClose }) {
-  const url = `${CASE_URL}?tk=${row.token}`;
-  const [dataUrl, setDataUrl] = useState(null);
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    QRCode.toDataURL(url, { width: 520, margin: 1, color: { dark: "#3A2E30", light: "#FFFFFF" } }).then(setDataUrl).catch(() => {});
-  }, [url]);
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(58,46,48,.45)" }} onClick={onClose}>
-      <div className="p-6 text-center max-w-sm w-full" style={card} onClick={(e) => e.stopPropagation()}>
-        <div className="text-base font-bold mb-1" style={heading}>{row.patient_name ? `${row.patient_name} 様` : "Google口コミ 申請フォーム"}</div>
-        <div className="text-xs mb-4" style={{ color: C.faint }}>スマホのカメラで読み取ってもらってください（90日有効・1回だけ提出できます）</div>
-        {dataUrl ? <img src={dataUrl} alt="提出フォームのQRコード" width={260} height={260} className="mx-auto rounded-xl" /> : <div style={{ width: 260, height: 260 }} className="mx-auto" />}
-        <div className="mt-4 flex gap-2 justify-center">
-          <button
-            onClick={() => navigator.clipboard?.writeText(url).then(() => setCopied(true))}
-            className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl text-sm font-medium"
-            style={{ background: "#FFFFFF", border: `1.5px solid ${C.line}`, color: C.tealDark }}
-          >
-            <Copy size={14} /> {copied ? "コピーしました" : "URLをコピー"}
-          </button>
-          <button onClick={onClose} className="h-10 px-4 rounded-xl text-sm font-bold" style={{ background: C.teal, color: "#FFFFFF" }}>閉じる</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // 1件分の info.txt（掲載時の併記事項の控え。患者の氏名・連絡先は入れない）
 function infoText(row, photos) {
@@ -139,7 +110,7 @@ function infoText(row, photos) {
     `リスク・副作用: ${row.risks || "（未記入）"}`,
     "",
     `媒体（Instagramなど）での使用: ${row.consent_hp || row.consent_sns || row.consent_ads ? "同意あり" : "同意なし"}`,
-    `顔が写った写真の使用: ${row.face_visible_ok ? "可" : "不可（顔が分からないよう加工・トリミングすること）"}`,
+    "顔: 写っている場合はモザイクをかけて掲載すること",
     `同意日: ${fmtDate(row.signed_at)}`,
     `写真: Google口コミのスクショ${r}枚 / ビフォー${b}枚 / アフター${a}枚`,
     "",
@@ -508,11 +479,7 @@ export default function CasesPanel({ myName, onCountChange }) {
     });
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newTreatment, setNewTreatment] = useState("");
   const [busy, setBusy] = useState(false);
-  const [qr, setQr] = useState(null);
   const [detail, setDetail] = useState(null);
 
   const load = async () => {
@@ -550,20 +517,6 @@ export default function CasesPanel({ myName, onCountChange }) {
     return (rows || []).filter((r) => f.match(r) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""} ${r.packing_no || ""}`.includes(s.replace(/^#/, ""))));
   }, [rows, filter, q]);
 
-  const createRow = async () => {
-    if (busy) return;
-    setBusy(true);
-    const { data, error } = await supabase.from("case_submissions")
-      .insert({ patient_name: newName.trim() || null, treatment: newTreatment.trim() || null })
-      .select("*").single();
-    setBusy(false);
-    if (error) return setErr(error.message);
-    setCreating(false);
-    setNewName("");
-    setNewTreatment("");
-    setQr(data);
-    load();
-  };
 
   return (
     <section className="flex flex-col gap-4">
@@ -571,32 +524,12 @@ export default function CasesPanel({ myName, onCountChange }) {
         <div>
           <h2 className="text-lg font-bold mb-1" style={heading}>Google口コミ・症例写真の申請</h2>
           <p className="text-xs" style={{ color: C.faint }}>
-            Google口コミを投稿した患者さんにQRを渡すと、スマホから口コミのスクリーンショット（必須）・ビフォーアフター写真・媒体での使用への同意を申請できます。届いたら Google口コミに返信して「返信済」、返金したら「返金済」にしてください。
+            共通QR（keicuri-booking.vercel.app/case）から届いた申請の一覧です。届いたら Google口コミに返信して「返信済」、返金したら「返金済」にしてください。
           </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setCreating((v) => !v)}
-            className="inline-flex items-center gap-1.5 h-10 px-3 rounded-xl text-sm font-bold" style={{ background: C.teal, color: "#FFFFFF" }}>
-            <Plus size={14} /> 新規QR発行
-          </button>
         </div>
       </div>
 
       {err && <div className="p-3 rounded-xl text-sm" style={{ background: C.alertBg, color: "#B03A44" }}>{err}</div>}
-
-      {creating && (
-        <div className="p-4 flex items-end gap-3 flex-wrap" style={{ ...card, background: C.bg }}>
-          <label>
-            <div className="text-[11px] mb-1" style={{ color: C.muted }}>お名前（院内用）</div>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} className="h-10 px-3 rounded-lg text-sm outline-none" style={{ ...input, background: "#FFFFFF" }} placeholder="山田 花子" />
-          </label>
-          <label>
-            <div className="text-[11px] mb-1" style={{ color: C.muted }}>施術内容</div>
-            <input value={newTreatment} onChange={(e) => setNewTreatment(e.target.value)} className="h-10 px-3 rounded-lg text-sm outline-none" style={{ ...input, background: "#FFFFFF", width: 240 }} placeholder="例: ピーリング（ニキビ治療）" />
-          </label>
-          <button onClick={createRow} disabled={busy} className="h-10 px-4 rounded-xl text-sm font-bold" style={{ background: C.teal, color: "#FFFFFF" }}>QRを作る</button>
-        </div>
-      )}
 
       <div className="flex items-center gap-2 flex-wrap">
         {/* ステータスの絞り込み（複数選択可。何も選ばなければ全件） */}
@@ -653,14 +586,10 @@ export default function CasesPanel({ myName, onCountChange }) {
                 </div>
               </div>
             </button>
-            {r.status === "invited" && (
-              <button onClick={() => setQr(r)} className="h-9 px-3 rounded-xl text-xs font-medium shrink-0" style={{ border: `1.5px solid ${C.line}`, color: C.tealDark }}>QRを表示</button>
-            )}
           </div>
         ))}
       </div>
 
-      {qr && <QrModal row={qr} onClose={() => setQr(null)} />}
       {detail && <DetailModal row={detail} myName={myName} onClose={() => setDetail(null)} onChanged={load} />}
     </section>
   );
