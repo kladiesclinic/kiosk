@@ -86,6 +86,18 @@ function ConsentBadges({ row }) {
   );
 }
 
+// 返金額: ビフォーとアフターの写真が両方あれば 3,300円、なければ（文章の口コミのみ）500円
+const refundAmount = (c) => (c && c.before > 0 && c.after > 0 ? 3300 : 500);
+function AmountPill({ amount }) {
+  const big = amount >= 3300;
+  return (
+    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+      style={big ? { background: "#E8524F", color: "#FFFFFF" } : { background: "#FFFFFF", color: "#B03532", border: "1px solid #F2C7C8" }}>
+      返金 {amount.toLocaleString()}円
+    </span>
+  );
+}
+
 function StagePill({ row }) {
   const s = STAGE[stageOf(row)];
   return <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: s.bg, color: s.fg }}>{s.label}</span>;
@@ -329,6 +341,7 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
             <div className="flex items-center gap-2 mb-1">
               <h3 className="text-lg font-bold" style={heading}>{row.patient_name || "（名前なし）"}</h3>
               <StagePill row={row} />
+              <AmountPill amount={refundAmount({ before: photos.filter((p) => p.kind === "before").length, after: photos.filter((p) => p.kind === "after").length })} />
             </div>
             <div className="text-xs flex items-center gap-2 flex-wrap" style={{ color: C.faint }}>
               作成 {fmtDate(row.created_at)}{row.signed_at && ` ／ 提出 ${fmtDate(row.signed_at)}（署名: ${row.signature_name}）`}
@@ -360,7 +373,10 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
           return (
             <div className="flex items-center gap-3 flex-wrap mb-4 p-3 rounded-xl" style={{ background: st.bg }}>
               <div>
-                <div className="text-sm font-bold" style={{ color: st.fg }}>{st.label}</div>
+                <div className="text-sm font-bold" style={{ color: st.fg }}>
+                  {st.label}　返金額 {refundAmount({ before: photos.filter((p) => p.kind === "before").length, after: photos.filter((p) => p.kind === "after").length }).toLocaleString()}円
+                  <span className="text-[11px] font-normal">（ビフォーとアフターが両方あれば3,300円、なければ500円）</span>
+                </div>
                 <div className="text-[11px]" style={{ color: st.fg }}>
                   {row.replied_at && `返信 ${who(row.replied_at, row.replied_by)}`}
                   {row.replied_at && row.refunded_at && "　"}
@@ -576,6 +592,7 @@ export default function CasesPanel({ myName, onCountChange }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold" style={{ color: C.ink }}>{r.patient_name || "（名前なし）"}</span>
                   <StagePill row={r} />
+                  <AmountPill amount={refundAmount(counts[r.id])} />
                   <ConsentBadges row={r} />
                 </div>
                 <div className="text-xs truncate" style={{ color: C.muted }}>
