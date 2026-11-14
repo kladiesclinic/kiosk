@@ -110,7 +110,7 @@ function infoText(row, photos) {
     `リスク・副作用: ${row.risks || "（未記入）"}`,
     "",
     `媒体（Instagramなど）での使用: ${row.consent_hp || row.consent_sns || row.consent_ads ? "同意あり" : "同意なし"}`,
-    "顔: 写っている場合はモザイクをかけて掲載すること",
+    "顔: 写っている場合は目元にモザイクをかけて掲載すること",
     `同意日: ${fmtDate(row.signed_at)}`,
     `写真: Google口コミのスクショ${r}枚 / ビフォー${b}枚 / アフター${a}枚`,
     "",
