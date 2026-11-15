@@ -26,7 +26,7 @@ import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
 import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
 import { buildSlotTimes, timeToMinutes } from "./lib/slots.js";
-import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical, Dumbbell, Camera } from "lucide-react";
+import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical, Dumbbell, Camera, Hospital, Laptop } from "lucide-react";
 import CasesPanel from "./CasesPanel.jsx";
 
 const FONT_IMPORT = `
@@ -113,7 +113,10 @@ export async function captureElement(el) {
   const opts = { scale: 2, backgroundColor: "#FFFFFF" };
   if (!IS_IOS) {
     try {
-      return await domToCanvas(el, opts);
+      // 1件印刷では画面外の入れ物（position:fixed; left:-10000px）そのものを渡している。
+      // modern-screenshot は複製にその位置まで写すので、中身が枠の外に出て真っ白になっていた
+      // （2026-11-15、PCの問診票個別印刷）。複製の一番外側だけ通常配置に戻して撮る
+      return await domToCanvas(el, { ...opts, style: { position: "static", left: "0", top: "0", margin: "0" } });
     } catch { /* 下のhtml2canvasで撮り直す */ }
   }
   return html2canvas(el, opts);
@@ -2949,9 +2952,50 @@ function FemcareDetailModal({ init, myName, onClose, onSaved, onQr }) {
   );
 }
 
+// スタッフ画面のタブのまとまり（2026-11-15 整理）。上の段=グループ、下の段=中の小タブ。
+// tab の id は従来どおり（中身・日付選択・自動更新はすべて tab を見ているので変えていない）。
+// 要望・設定はグループに入れず、右端の小さなアイコンにする（受付スタッフは普段使わない）
+const TAB_GROUPS = [
+  {
+    id: "visit", label: "来院", Icon: Hospital,
+    tabs: [
+      { id: "checkins", label: "受付一覧", Icon: ClipboardList },
+      { id: "bookings", label: "予約状況", Icon: CalendarCheck },
+      { id: "femcare", label: "フェムケア", Icon: Dumbbell },
+      { id: "lab", label: "検査結果", Icon: FlaskConical },
+    ],
+  },
+  {
+    id: "online", label: "オンライン", Icon: Laptop,
+    tabs: [
+      { id: "pillorder", label: "pillorder", Icon: Stethoscope },
+      { id: "zoom", label: "Zoom英語", Icon: Video },
+      { id: "cases", label: "口コミ・症例", Icon: Camera },
+    ],
+  },
+  {
+    id: "search", label: "患者を探す", Icon: Search,
+    tabs: [{ id: "search", label: "患者を探す", Icon: Search }],
+  },
+];
+
 export default function StaffView() {
   // 表示タブ: 受付一覧 / 予約状況（来院予約 booking-app の visit_bookings を同じ画面で確認できる）
   const [tab, setTab] = useState("checkins");
+  // グループごとに最後に開いていた小タブ（グループのボタンを押したときにそこへ戻す）
+  const [lastTabByGroup, setLastTabByGroup] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("kiosk-last-tab-by-group") || "{}"); } catch { return {}; }
+  });
+  useEffect(() => {
+    const g = TAB_GROUPS.find((x) => x.tabs.some((t) => t.id === tab));
+    if (!g) return;
+    setLastTabByGroup((prev) => {
+      if (prev[g.id] === tab) return prev;
+      const next = { ...prev, [g.id]: tab };
+      try { localStorage.setItem("kiosk-last-tab-by-group", JSON.stringify(next)); } catch { /* 保存できなくても動く */ }
+      return next;
+    });
+  }, [tab]);
   const [checkins, setCheckins] = useState([]);
   const [forms, setForms] = useState([]);
   const [bookings, setBookings] = useState([]);
@@ -3062,8 +3106,8 @@ export default function StaffView() {
   }, []);
   const samedayNew = samedayResv.filter((r) => !samedaySeen.pill.has(r.reserve_id)).length;
   const samedayCalNew = samedayCal.filter((r) => !samedaySeen.cal.has(r.invitee_uri)).length;
-  const pillTabRef = useRef(null); // 吹き出しの位置合わせ用（pillorderタブのボタン）
-  const zoomTabRef = useRef(null); // 同じく Zoom英語タブ
+  const pillTabRef = useRef(null); // 当日予約の吹き出しの位置合わせ用（「オンライン」グループのボタン）
+
   // タブを開いているあいだに入った分も含めて「見た」扱いにする
   useEffect(() => {
     if (tab === "pillorder" && samedayNew > 0) {
@@ -4552,86 +4596,130 @@ export default function StaffView() {
         {/* 幅は画面いっぱいまで使う。1024pxで頭打ちにしていたので、
             列がそろわず横スクロールになっていた（iPadは横向きで1024px） */}
         <div className={`relative px-3 sm:px-6 ${samedayNew > 0 || samedayCalNew > 0 ? "pt-12" : "pt-4"} max-w-[1500px] mx-auto w-full`}>
-          {/* オンライン診察（pillorder / Zoom英語=Calendly）に当日予約が入ったら、そのタブの真上に
-              吹き出しで知らせる。タブを開くと消える（見た予約は端末に記憶）。
-              タブ枠は overflow-hidden なので枠の外に置く */}
-          {[
-            { id: "pillorder", n: samedayNew, ref: pillTabRef, label: "オンライン診察" },
-            { id: "zoom", n: samedayCalNew, ref: zoomTabRef, label: "Zoom英語" },
-          ].filter((p) => p.n > 0).map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setTab(p.id)}
-              className="sameday-pop absolute flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-md"
-              style={{
-                top: 8,
-                left: p.ref.current ? p.ref.current.offsetLeft : undefined,
-                background: "#D64550", color: "#FFFFFF", zIndex: 5, whiteSpace: "nowrap",
-              }}
-            >
-              <Bell size={13} />
-              当日予約 {p.n}件（{p.label}）
+          {(() => {
+            // タブはグループ（来院／オンライン／患者を探す）＋中の小タブの2段。要望・設定は右端のアイコン
+            const curGroup = TAB_GROUPS.find((g) => g.tabs.some((t) => t.id === tab));
+            const counts = { pillorder: samedayNew, zoom: samedayCalNew, cases: casesOpen };
+            const openTab = (id) => {
+              setTab(id);
+              // 予約タブで未来日を見ていた場合、受付タブは未来分が無いので今日に戻す
+              if (id === "checkins" && dateKey > todayKey()) setDateKey(todayKey());
+            };
+            const badge = (n, onColor) => n > 0 && (
               <span
-                className="absolute"
-                style={{ left: 18, bottom: -6, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid #D64550" }}
-              />
-            </button>
-          ))}
-          <div className="inline-flex rounded-xl overflow-hidden" style={{ border: "1.5px solid #F2DFE4", background: "#FFFFFF" }}>
-            {[
-              { id: "checkins", label: "受付一覧", Icon: ClipboardList },
-              { id: "bookings", label: "予約状況", Icon: CalendarCheck },
-              { id: "pillorder", label: "pillorder", Icon: Stethoscope },
-              { id: "zoom", label: "Zoom英語", Icon: Video },
-              { id: "lab", label: "検査結果", Icon: FlaskConical },
-              { id: "femcare", label: "フェムケア", Icon: Dumbbell },
-              { id: "cases", label: "口コミ・症例", Icon: Camera },
-              { id: "search", label: "患者を探す", Icon: Search },
-              { id: "feedback", label: "要望", Icon: MessageCircle },
-              { id: "settings", label: "設定", Icon: Settings },
-            ].map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                ref={id === "pillorder" ? pillTabRef : id === "zoom" ? zoomTabRef : undefined}
-                onClick={() => {
-                  setTab(id);
-                  // 予約タブで未来日を見ていた場合、受付タブは未来分が無いので今日に戻す
-                  if (id === "checkins" && dateKey > todayKey()) setDateKey(todayKey());
+                className="ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
+                style={{
+                  minWidth: 18, height: 18, padding: "0 5px",
+                  background: onColor ? "#FFFFFF" : "#D64550",
+                  color: onColor ? "#0F8B8D" : "#FFFFFF",
                 }}
-                className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold"
-                style={
-                  tab === id
-                    ? { background: "#0F8B8D", color: "#FFFFFF" }
-                    : { background: "#FFFFFF", color: "#8A7378" }
-                }
               >
-                <Icon size={15} />
-                {label}
-                {/* 未対応の要望があるあいだは件数を出す（開かなくても気づけるように） */}
-                {((id === "feedback" && feedbackOpen > 0) || (id === "cases" && casesOpen > 0)) && (
-                  <span
-                    className="ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
-                    style={{
-                      minWidth: 17, height: 17, padding: "0 4px",
-                      background: tab === id ? "#FFFFFF" : "#D64550",
-                      color: tab === id ? "#0F8B8D" : "#FFFFFF",
-                    }}
-                  >
-                    {id === "cases" ? casesOpen : feedbackOpen}
-                  </span>
+                {n}
+              </span>
+            );
+            const pops = [
+              { id: "pillorder", n: samedayNew, label: "オンライン診察" },
+              { id: "zoom", n: samedayCalNew, label: "Zoom英語" },
+            ].filter((p) => p.n > 0);
+            return (
+              <>
+                {/* オンライン診察（pillorder / Zoom英語=Calendly）に当日予約が入ったら、「オンライン」の
+                    ボタンの真上に吹き出しで知らせる。押すとそのタブを開き、開くと消える（見た予約は端末に記憶） */}
+                {pops.length > 0 && (
+                  <div className="absolute flex gap-2" style={{ top: 8, left: pillTabRef.current ? pillTabRef.current.offsetLeft : 24, zIndex: 5 }}>
+                    {pops.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => openTab(p.id)}
+                        className="sameday-pop relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold shadow-md"
+                        style={{ background: "#D64550", color: "#FFFFFF", whiteSpace: "nowrap" }}
+                      >
+                        <Bell size={13} />
+                        当日予約 {p.n}件（{p.label}）
+                        <span
+                          className="absolute"
+                          style={{ left: 18, bottom: -6, width: 0, height: 0, borderLeft: "6px solid transparent", borderRight: "6px solid transparent", borderTop: "6px solid #D64550" }}
+                        />
+                      </button>
+                    ))}
+                  </div>
                 )}
-                {/* 未確認の当日予約（pillorder / Zoom英語）の件数 */}
-                {((id === "pillorder" && samedayNew > 0) || (id === "zoom" && samedayCalNew > 0)) && (
-                  <span
-                    className="ml-0.5 inline-flex items-center justify-center rounded-full text-[10px] font-bold"
-                    style={{ minWidth: 17, height: 17, padding: "0 4px", background: "#D64550", color: "#FFFFFF" }}
-                  >
-                    {id === "pillorder" ? samedayNew : samedayCalNew}
-                  </span>
+
+                {/* 上の段: グループ */}
+                <div className="flex items-center gap-2">
+                  {TAB_GROUPS.map((g) => {
+                    const on = curGroup?.id === g.id;
+                    const n = g.tabs.reduce((s, t) => s + (counts[t.id] || 0), 0);
+                    const remembered = lastTabByGroup[g.id];
+                    const target = g.tabs.some((t) => t.id === remembered) ? remembered : g.tabs[0].id;
+                    return (
+                      <button
+                        key={g.id}
+                        ref={g.id === "online" ? pillTabRef : undefined}
+                        onClick={() => openTab(target)}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[15px] font-bold whitespace-nowrap"
+                        style={on
+                          ? { background: "#0F8B8D", color: "#FFFFFF", border: "1.5px solid #0F8B8D" }
+                          : { background: "#FFFFFF", color: "#8A7378", border: "1.5px solid #F2DFE4" }}
+                      >
+                        <g.Icon size={17} />
+                        {g.label}
+                        {badge(n, on)}
+                      </button>
+                    );
+                  })}
+                  <div className="ml-auto flex items-center gap-2">
+                    {[
+                      { id: "feedback", label: "要望", Icon: MessageCircle, n: feedbackOpen },
+                      { id: "settings", label: "設定", Icon: Settings, n: 0 },
+                    ].map(({ id, label, Icon, n }) => (
+                      <button
+                        key={id}
+                        onClick={() => openTab(id)}
+                        aria-label={label}
+                        title={label}
+                        className="relative flex items-center justify-center rounded-xl"
+                        style={{
+                          width: 42, height: 42,
+                          ...(tab === id
+                            ? { background: "#0F8B8D", color: "#FFFFFF", border: "1.5px solid #0F8B8D" }
+                            : { background: "#FFFFFF", color: "#8A7378", border: "1.5px solid #F2DFE4" }),
+                        }}
+                      >
+                        <Icon size={18} />
+                        {n > 0 && (
+                          <span
+                            className="absolute inline-flex items-center justify-center rounded-full text-[10px] font-bold"
+                            style={{ top: -6, right: -6, minWidth: 18, height: 18, padding: "0 5px", background: "#D64550", color: "#FFFFFF" }}
+                          >
+                            {n}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 下の段: 選んでいるグループの中の小タブ（2つ以上あるときだけ） */}
+                {curGroup && curGroup.tabs.length > 1 && (
+                  <div className="inline-flex flex-wrap mt-2.5 rounded-xl overflow-hidden" style={{ border: "1.5px solid #F2DFE4", background: "#FFFFFF" }}>
+                    {curGroup.tabs.map(({ id, label, Icon }) => (
+                      <button
+                        key={id}
+                        onClick={() => openTab(id)}
+                        className="flex items-center gap-1.5 px-4 py-2 text-sm font-bold"
+                        style={tab === id ? { background: "#DFF5F3", color: "#127D82" } : { background: "#FFFFFF", color: "#8A7378" }}
+                      >
+                        <Icon size={14} />
+                        {label}
+                        {badge(counts[id] || 0, false)}
+                      </button>
+                    ))}
+                  </div>
                 )}
-              </button>
-            ))}
-          </div>
+              </>
+            );
+          })()}
         </div>
 
         <main className="p-3 sm:p-6 flex flex-col gap-8 max-w-[1500px] mx-auto w-full">
