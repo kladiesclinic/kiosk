@@ -40,6 +40,32 @@ const card = { background: "#FFFFFF", border: `1px solid ${C.line}`, borderRadiu
 const input = { background: C.bg, border: `1.5px solid ${C.line}`, color: C.ink };
 const heading = { color: C.ink, fontFamily: "'Zen Kaku Gothic New', sans-serif" };
 
+// 返金の条件（チラシ・申請フォームと同じ）: 申請から1か月以上口コミが掲載されていたら返金。お一人様1回まで
+const refundableFrom = (r) => {
+  const t = r.submitted_at || r.signed_at;
+  if (!t) return null;
+  const d = new Date(t);
+  d.setMonth(d.getMonth() + 1);
+  return d;
+};
+const isRefundable = (r) => {
+  const d = refundableFrom(r);
+  return !!d && d.getTime() <= Date.now();
+};
+const normName = (v) => (v || "").replace(/[\s　]/g, "");
+// 同じ名前 or 同じ梱包票番号の、ほかの申請（未提出は除く）
+function findDupes(rows) {
+  const live = (rows || []).filter((r) => r.status !== "invited");
+  const out = {};
+  for (const r of live) {
+    out[r.id] = live.filter((o) => o.id !== r.id && (
+      (normName(r.patient_name) && normName(o.patient_name) === normName(r.patient_name)) ||
+      (r.packing_no && o.packing_no === r.packing_no)
+    ));
+  }
+  return out;
+}
+
 const fmtDate = (ts) => {
   if (!ts) return "";
   const d = new Date(ts);
@@ -157,7 +183,7 @@ async function saveZip(zip, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-function DetailModal({ row: initial, myName, onClose, onChanged }) {
+function DetailModal({ row: initial, myName, dupes = [], onClose, onChanged }) {
   const [row, setRow] = useState(initial);
   const [photos, setPhotos] = useState([]);
   const [urls, setUrls] = useState({});
@@ -222,6 +248,13 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
     if (!row.refunded_at && !row.refund_amount) {
       setErr("先に返金額（500円／3,300円）を選んでください。");
       return;
+    }
+    if (!row.refunded_at) {
+      const from = refundableFrom(row);
+      const msg = isRefundable(row)
+        ? "Googleの口コミがまだ掲載されていることを確認しましたか？返金済にします。"
+        : `申請から1か月たっていません（返金できる日: ${from ? fmtDate(from) : "—"}）。それでも返金済にしますか？`;
+      if (!window.confirm(msg)) return;
     }
     if (row.refunded_at) {
       if (!window.confirm("返金済みを取り消します。よろしいですか？")) return;
@@ -379,6 +412,13 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
           </div>
         )}
 
+        {dupes.length > 0 && (
+          <div className="mb-3 p-3 rounded-xl text-xs" style={{ background: "#FCE9EA", color: "#B03A44", border: "1px solid #F2C7C8" }}>
+            <b>お一人様1回まで：</b>同じ名前または梱包票番号の申請がほかに{dupes.length}件あります
+            {dupes.map((d) => `（${fmtDate(d.submitted_at || d.signed_at || d.created_at)}・${d.patient_name || "名前なし"}${d.packing_no ? `・#${d.packing_no}` : ""}・${STAGE[stageOf(d)].label}）`).join("")}
+          </div>
+        )}
+
         {row.status !== "invited" && (() => {
           const st = STAGE[stageOf(row)];
           const who = (at, by) => `${fmtDate(at)}${by ? `・${by}` : ""}`;
@@ -388,6 +428,13 @@ function DetailModal({ row: initial, myName, onClose, onChanged }) {
               <div>
                 <div className="text-sm font-bold" style={{ color: st.fg }}>{st.label}</div>
                 <div className="text-[11px]" style={{ color: st.fg }}>
+                  {`申請 ${fmtDate(row.submitted_at || row.signed_at)}`}
+                  {!row.refunded_at && refundableFrom(row) && (
+                    <span style={isRefundable(row) ? { color: "#1F8B4C", fontWeight: 700 } : { color: "#B03532", fontWeight: 700 }}>
+                      {isRefundable(row) ? "　返金できます（1か月経過）" : `　返金できる日 ${fmtDate(refundableFrom(row))}〜`}
+                    </span>
+                  )}
+                  {(row.replied_at || row.refunded_at) && "　"}
                   {row.replied_at && `返信 ${who(row.replied_at, row.replied_by)}`}
                   {row.replied_at && row.refunded_at && "　"}
                   {row.refunded_at && `返金 ${who(row.refunded_at, row.refunded_by)}`}
@@ -560,6 +607,7 @@ export default function CasesPanel({ myName, onCountChange }) {
     const s = q.trim();
     return (rows || []).filter((r) => f.match(r) && (!s || `${r.patient_name || ""} ${r.treatment || ""} ${r.chart_no || ""} ${r.packing_no || ""}`.includes(s.replace(/^#/, ""))));
   }, [rows, filter, q]);
+  const dupes = useMemo(() => findDupes(rows), [rows]);
 
 
   return (
@@ -621,6 +669,17 @@ export default function CasesPanel({ myName, onCountChange }) {
                   <span className="text-sm font-bold" style={{ color: C.ink }}>{r.patient_name || "（名前なし）"}</span>
                   <StagePill row={r} />
                   <AmountPill amount={r.refund_amount} />
+                  {!r.refunded_at && refundableFrom(r) && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+                      style={isRefundable(r) ? { background: "#E9F5EC", color: "#1F8B4C" } : { background: "#F3EFEF", color: "#8A7378" }}>
+                      {isRefundable(r) ? "返金できます" : `${fmtDate(refundableFrom(r))}〜返金可`}
+                    </span>
+                  )}
+                  {(dupes[r.id] || []).length > 0 && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ background: "#FCE9EA", color: "#B03A44" }}>
+                      重複の可能性
+                    </span>
+                  )}
                   <ConsentBadges row={r} />
                 </div>
                 <div className="text-xs truncate" style={{ color: C.muted }}>
@@ -635,7 +694,7 @@ export default function CasesPanel({ myName, onCountChange }) {
         ))}
       </div>
 
-      {detail && <DetailModal row={detail} myName={myName} onClose={() => setDetail(null)} onChanged={load} />}
+      {detail && <DetailModal row={detail} myName={myName} dupes={dupes[detail.id] || []} onClose={() => setDetail(null)} onChanged={load} />}
     </section>
   );
 }
