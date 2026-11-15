@@ -52,6 +52,8 @@ const isRefundable = (r) => {
   const d = refundableFrom(r);
   return !!d && d.getTime() <= Date.now();
 };
+// 注文番号の種類（090）: packing = お薬に同封の梱包票 / square = Square の請求書（英語の方に多い）
+const refKindLabel = (r) => (r.order_ref_kind === "square" ? "Square請求書" : "梱包票");
 const normName = (v) => (v || "").replace(/[\s　]/g, "");
 // 同じ名前 or 同じ梱包票番号の、ほかの申請（未提出は除く）
 function findDupes(rows) {
@@ -60,7 +62,7 @@ function findDupes(rows) {
   for (const r of live) {
     out[r.id] = live.filter((o) => o.id !== r.id && (
       (normName(r.patient_name) && normName(o.patient_name) === normName(r.patient_name)) ||
-      (r.packing_no && o.packing_no === r.packing_no)
+      (r.packing_no && o.packing_no === r.packing_no && (o.order_ref_kind || "packing") === (r.order_ref_kind || "packing"))
     ));
   }
   return out;
@@ -402,7 +404,7 @@ function DetailModal({ row: initial, myName, dupes = [], onClose, onChanged }) {
         {(row.packing_no || row.card_last4) && (
           <div className="flex gap-3 flex-wrap mb-4">
             <div className="px-3 py-2 rounded-xl text-sm" style={{ background: C.bg, border: `1px solid ${C.line}` }}>
-              <span className="text-[11px] mr-2" style={{ color: C.muted }}>梱包票</span>
+              <span className="text-[11px] mr-2" style={{ color: C.muted }}>{refKindLabel(row)}</span>
               <b style={{ fontFamily: "monospace", letterSpacing: 1 }}>#{row.packing_no || "—"}</b>
             </div>
             <div className="px-3 py-2 rounded-xl text-sm" style={{ background: C.bg, border: `1px solid ${C.line}` }}>
@@ -415,7 +417,7 @@ function DetailModal({ row: initial, myName, dupes = [], onClose, onChanged }) {
         {dupes.length > 0 && (
           <div className="mb-3 p-3 rounded-xl text-xs" style={{ background: "#FCE9EA", color: "#B03A44", border: "1px solid #F2C7C8" }}>
             <b>お一人様1回まで：</b>同じ名前または梱包票番号の申請がほかに{dupes.length}件あります
-            {dupes.map((d) => `（${fmtDate(d.submitted_at || d.signed_at || d.created_at)}・${d.patient_name || "名前なし"}${d.packing_no ? `・#${d.packing_no}` : ""}・${STAGE[stageOf(d)].label}）`).join("")}
+            {dupes.map((d) => `（${fmtDate(d.submitted_at || d.signed_at || d.created_at)}・${d.patient_name || "名前なし"}${d.packing_no ? `・${refKindLabel(d)}#${d.packing_no}` : ""}・${STAGE[stageOf(d)].label}）`).join("")}
           </div>
         )}
 
@@ -683,7 +685,7 @@ export default function CasesPanel({ myName, onCountChange }) {
                   <ConsentBadges row={r} />
                 </div>
                 <div className="text-xs truncate" style={{ color: C.muted }}>
-                  {r.packing_no && `#${r.packing_no}　`}
+                  {r.packing_no && `${r.order_ref_kind === "square" ? "Square請求書" : ""}#${r.packing_no}　`}
                   {r.treatment || "施術未記入"}
                   {counts[r.id] && `　スクショ${counts[r.id].review}・ビフォー${counts[r.id].before}・アフター${counts[r.id].after}`}
                   {`　${fmtDate(r.signed_at || r.created_at)}`}
