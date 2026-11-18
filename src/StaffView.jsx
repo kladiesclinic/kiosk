@@ -26,7 +26,7 @@ import { supabase } from "./supabase.js";
 import { guessKana } from "./kana.js";
 import { BookingEditor, SettingsTabs, settingsFromRow } from "./StaffAdmin.jsx";
 import { buildSlotTimes, timeToMinutes } from "./lib/slots.js";
-import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical, Dumbbell, Camera, Hospital, Laptop } from "lucide-react";
+import { Settings, Plus, Pencil, RotateCcw, MessageCircle, Bell, FlaskConical, Dumbbell, Camera, Hospital, Laptop, Star } from "lucide-react";
 import CasesPanel from "./CasesPanel.jsx";
 
 const FONT_IMPORT = `
@@ -3086,7 +3086,8 @@ function FemcareDetailModal({ init, myName, onClose, onSaved, onQr }) {
 
 // スタッフ画面のタブのまとまり（2026-11-15 整理）。上の段=グループ、下の段=中の小タブ。
 // tab の id は従来どおり（中身・日付選択・自動更新はすべて tab を見ているので変えていない）。
-// 要望・設定はグループに入れず、右端の小さなアイコンにする（受付スタッフは普段使わない）
+// 口コミ・症例・要望・設定はグループに入れず、右端の小さなアイコンにする（受付スタッフは普段使わない。
+// 口コミ・症例は 2026-11-18 にオンラインの小タブから移した。返金待ちの件数はアイコンに赤く出る）
 const TAB_GROUPS = [
   {
     id: "visit", label: "来院", Icon: Hospital,
@@ -3102,7 +3103,6 @@ const TAB_GROUPS = [
     tabs: [
       { id: "pillorder", label: "pillorder", Icon: Stethoscope },
       { id: "zoom", label: "Zoom英語", Icon: Video },
-      { id: "cases", label: "口コミ・症例", Icon: Camera },
     ],
   },
   {
@@ -4881,6 +4881,7 @@ export default function StaffView() {
                   })}
                   <div className="ml-auto flex items-center gap-2">
                     {[
+                      { id: "cases", label: "口コミ・症例", Icon: Star, n: casesOpen },
                       { id: "feedback", label: "要望", Icon: MessageCircle, n: feedbackOpen },
                       { id: "settings", label: "設定", Icon: Settings, n: 0 },
                     ].map(({ id, label, Icon, n }) => (
