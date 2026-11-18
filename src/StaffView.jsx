@@ -1423,6 +1423,138 @@ function VisitKindTag({ c }) {
 // total が無い（一度も開かれていない）とき:
 //   expected=false … 受診理由からガイド対象外（旧データで判定できない場合も含む）。何も出さない
 //   expected=true  … 対象のはずなのに未読のまま。声かけ／メール再送の判断材料として赤で出す
+// オンライン診療の「診察」列。完了／未完了を押して残し、未完了のときは診察しなかった理由を書く。
+// 理由の候補は押すと入力欄に入る（そのまま保存でも、書き足してもよい）
+const NOT_DONE_REASONS = [
+  "患者さんが入室しなかった",
+  "電話・連絡がつかなかった",
+  "診療時間内に順番が回らなかった",
+  "問診票が未記入だった",
+  "患者さんの都合で取りやめ",
+  "来院に変更",
+  "重複した予約だった",
+];
+export function ConsultOutcomeCell({ row, rec, edit, saving, onSave, onClear, onEdit }) {
+  const busy = saving === row.reserveId;
+  const editing = !!edit && edit.reserveId === row.reserveId;
+  const btn = "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium active:opacity-70";
+  const stamp = rec && rec.updated_at
+    ? `${rec.updated_by_name ? `${rec.updated_by_name}・` : ""}${hhmm(rec.updated_at)} 記録`
+    : "";
+  if (editing) {
+    return (
+      <div className="flex flex-col gap-1.5" style={{ minWidth: 230 }}>
+        <span className="text-[11px] font-bold" style={{ color: "#B7791F" }}>診察しなかった理由</span>
+        <div className="flex flex-wrap gap-1">
+          {NOT_DONE_REASONS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => onEdit({ reserveId: row.reserveId, reason: r })}
+              className="px-2 py-0.5 rounded-full text-[11px] active:opacity-70"
+              style={{
+                background: edit.reason === r ? "#FFF3DC" : "#FFF8F7",
+                border: `1px solid ${edit.reason === r ? "#B7791F" : "#F2DFE4"}`,
+                color: edit.reason === r ? "#B7791F" : "#8A7378",
+              }}
+            >
+              {r}
+            </button>
+          ))}
+        </div>
+        <textarea
+          value={edit.reason}
+          onChange={(e) => onEdit({ reserveId: row.reserveId, reason: e.target.value })}
+          rows={2}
+          maxLength={300}
+          placeholder="理由を書く（上の候補を押しても入ります）"
+          className="w-full px-2 py-1.5 rounded-lg text-xs"
+          style={{ border: "1.5px solid #F2DFE4", color: "#3A2E30", background: "#FFFFFF" }}
+        />
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            disabled={busy || !edit.reason.trim()}
+            onClick={() => onSave(row, "not_done", edit.reason)}
+            className={btn}
+            style={{ background: "#B7791F", color: "#FFFFFF", opacity: busy || !edit.reason.trim() ? 0.5 : 1 }}
+          >
+            {busy ? "保存中..." : "未完了で保存"}
+          </button>
+          <button type="button" onClick={() => onEdit(null)} className={btn} style={{ background: "#FFF8F7", border: "1px solid #F2DFE4", color: "#8A7378" }}>
+            やめる
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (rec && rec.outcome === "done") {
+    return (
+      <div className="flex flex-col items-start gap-0.5">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#E3F3F3", color: "#0F8B8D" }}>
+          <CheckCircle2 size={12} /> 診察完了
+        </span>
+        {stamp && <span className="text-[10px]" style={{ color: "#C9AEB3" }}>{stamp}</span>}
+        <button type="button" disabled={busy} onClick={() => onClear(row)} className="text-[10px] underline active:opacity-70" style={{ color: "#B08A90" }}>
+          記録を取り消す
+        </button>
+      </div>
+    );
+  }
+  if (rec && rec.outcome === "not_done") {
+    return (
+      <div className="flex flex-col items-start gap-0.5" style={{ maxWidth: 260 }}>
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold" style={{ background: "#FFF3DC", color: "#B7791F" }}>
+          未完了
+        </span>
+        <span className="text-xs leading-snug" style={{ color: rec.reason ? "#3A2E30" : "#B03A44" }}>
+          {rec.reason || "理由が未記入です"}
+        </span>
+        {stamp && <span className="text-[10px]" style={{ color: "#C9AEB3" }}>{stamp}</span>}
+        <span className="flex items-center gap-2">
+          <button type="button" disabled={busy} onClick={() => onEdit({ reserveId: row.reserveId, reason: rec.reason || "" })} className="text-[10px] underline active:opacity-70" style={{ color: "#B7791F" }}>
+            理由を直す
+          </button>
+          <button type="button" disabled={busy} onClick={() => onSave(row, "done", "")} className="text-[10px] underline active:opacity-70" style={{ color: "#0F8B8D" }}>
+            完了に変える
+          </button>
+          <button type="button" disabled={busy} onClick={() => onClear(row)} className="text-[10px] underline active:opacity-70" style={{ color: "#B08A90" }}>
+            記録を取り消す
+          </button>
+        </span>
+      </div>
+    );
+  }
+  // まだ記録なし
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {row.status === 3 && (
+        <span className="text-[10px]" style={{ color: "#0F8B8D" }}>pillorder では診察済</span>
+      )}
+      <span className="flex items-center gap-1.5">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onSave(row, "done", "")}
+          className={btn}
+          style={{ background: "#FFFFFF", border: "1.5px solid #0F8B8D", color: "#0F8B8D", opacity: busy ? 0.5 : 1 }}
+        >
+          <CheckCircle2 size={12} /> 完了
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => onEdit({ reserveId: row.reserveId, reason: "" })}
+          className={btn}
+          style={{ background: "#FFFFFF", border: "1.5px solid #E2C08A", color: "#B7791F", opacity: busy ? 0.5 : 1 }}
+        >
+          未完了
+        </button>
+      </span>
+    </div>
+  );
+}
+
 function GuideReadTag({ read, total, expected }) {
   if (!total) {
     if (!expected) return null;
@@ -3120,6 +3252,12 @@ export default function StaffView() {
   const [monshinRows, setMonshinRows] = useState([]);
   // pillorder の予約一覧（pillorder_reservations）。問診票が無い人も出すために予約を軸にする
   const [pillorderResv, setPillorderResv] = useState([]);
+  // オンライン診療の「診察した／しなかった」と、しなかった理由（pillorder_consult_outcomes、091）。
+  // reserve_id → 記録。テーブルがまだ無い環境では outcomeReady が false のままで、列ごと出さない
+  const [consultOutcomes, setConsultOutcomes] = useState({});
+  const [outcomeReady, setOutcomeReady] = useState(false);
+  const [outcomeEdit, setOutcomeEdit] = useState(null);     // 理由を入力中の行 { reserveId, reason }
+  const [outcomeSaving, setOutcomeSaving] = useState(null); // 保存中の reserve_id
   const [selectedMonshin, setSelectedMonshin] = useState(null);
   const [monshinPrinting, setMonshinPrinting] = useState(false);
   const monshinPrintRef = useRef(null); // 個別印刷用の隠しA4
@@ -3411,6 +3549,69 @@ export default function StaffView() {
     const { error } = await supabase.rpc("request_pillorder_reminder", { p_reserve_id: reserveId });
     if (error) setLoadError(`催促メールの依頼を登録できませんでした: ${error.message}`);
   };
+
+  // オンライン診療の「診察完了／未完了（＋診察しなかった理由）」を残す。
+  // 画面を先に書き換え、保存に失敗したら元に戻す（カルテ済・会計済と同じやり方）
+  const saveOutcome = async (row, outcome, reason) => {
+    const id = row.reserveId;
+    const prev = consultOutcomes[id];
+    const next = {
+      reserve_id: id,
+      outcome,
+      reason: outcome === "not_done" ? ((reason || "").trim() || null) : null,
+      start_at: row.at,
+      reserve_status: row.status,
+    };
+    setOutcomeSaving(id);
+    setConsultOutcomes((m) => ({ ...m, [id]: { ...(prev || {}), ...next, updated_at: new Date().toISOString() } }));
+    const { data, error } = await supabase
+      .from("pillorder_consult_outcomes")
+      .upsert(next, { onConflict: "reserve_id" })
+      .select()
+      .single();
+    setOutcomeSaving(null);
+    if (error) {
+      setConsultOutcomes((m) => {
+        const copy = { ...m };
+        if (prev) copy[id] = prev; else delete copy[id];
+        return copy;
+      });
+      setLoadError(`診察の記録を保存できませんでした: ${error.message}`);
+      return;
+    }
+    setLoadError("");
+    setConsultOutcomes((m) => ({ ...m, [id]: data }));
+    setOutcomeEdit((e) => (e && e.reserveId === id ? null : e));
+  };
+  // 押し間違えたときに記録を消す（消したことは監査ログに残る）
+  const clearOutcome = async (row) => {
+    const id = row.reserveId;
+    const prev = consultOutcomes[id];
+    if (!prev) return;
+    setOutcomeSaving(id);
+    setConsultOutcomes((m) => { const copy = { ...m }; delete copy[id]; return copy; });
+    const { error } = await supabase.from("pillorder_consult_outcomes").delete().eq("reserve_id", id);
+    setOutcomeSaving(null);
+    if (error) {
+      setConsultOutcomes((m) => ({ ...m, [id]: prev }));
+      setLoadError(`診察の記録を取り消せませんでした: ${error.message}`);
+      return;
+    }
+    setLoadError("");
+    setOutcomeEdit((e) => (e && e.reserveId === id ? null : e));
+  };
+  // 見出しに出す件数（キャンセルを除く予約のうち）。pillorder 側で「実施済」になっている分は完了に数える
+  const outcomeCounts = useMemo(() => {
+    const c = { done: 0, notDone: 0, none: 0 };
+    pillorderActive.forEach((r) => {
+      if (!r.reserveId) return;
+      const rec = consultOutcomes[r.reserveId];
+      if (rec ? rec.outcome === "done" : r.status === 3) c.done += 1;
+      else if (rec) c.notDone += 1;
+      else c.none += 1;
+    });
+    return c;
+  }, [pillorderActive, consultOutcomes]);
 
   // Zoom英語: 催促メールは Edge Function zoom-reminder が staff@klcs.jp から送る
   // （文面は関数側。送信結果は calendly_bookings.reminder_sent_at に残る）
@@ -3815,6 +4016,16 @@ export default function StaffView() {
       .lte("start_at", `${dateKey}T23:59:59+09:00`)
       .order("start_at", { ascending: true });
     setPillorderResv(rErr ? [] : (rData || []));
+    // この日の予約ぶんの「診察した／しなかった」の記録
+    {
+      const ids = (rErr ? [] : (rData || [])).map((r) => r.reserve_id);
+      const { data: oData, error: oErr } = await supabase
+        .from("pillorder_consult_outcomes")
+        .select("*")
+        .in("reserve_id", ids.length ? ids : [-1]);
+      setOutcomeReady(!oErr);
+      if (!oErr) setConsultOutcomes(Object.fromEntries((oData || []).map((o) => [o.reserve_id, o])));
+    }
 
     // Calendly の予約一覧（Zoom英語タブを開くたびに calendly-sync が calendly_bookings へ同期）
     const { data: cData, error: cErr } = await supabase
@@ -4952,6 +5163,11 @@ export default function StaffView() {
               <h2 className="text-lg font-bold" style={{ color: "#3A2E30", fontFamily: "'Zen Kaku Gothic New', sans-serif" }}>
                 {isToday ? "本日のオンライン診療" : `${dateKey} のオンライン診療`}（{pillorderActive.length}件
                 {pillorderUnfilled.length > 0 && <span style={{ color: "#B7791F" }}>・問診票未記入 {pillorderUnfilled.length}</span>}）
+                {outcomeReady && pillorderActive.length > 0 && (
+                  <span className="block text-xs font-normal mt-0.5" style={{ color: "#8A7378" }}>
+                    診察　完了 {outcomeCounts.done}・<span style={{ color: outcomeCounts.notDone ? "#B7791F" : "#8A7378" }}>未完了 {outcomeCounts.notDone}</span>・未記録 {outcomeCounts.none}
+                  </span>
+                )}
               </h2>
               <div className="flex items-center gap-2 flex-wrap">
                 {/* 来院とオンラインを枠ごとに並べた1日の予定表。まとめて印刷と同じ流れで使う */}
@@ -5005,6 +5221,7 @@ export default function StaffView() {
                         <th className="px-2 py-2.5 font-medium">お名前・生年月日・電話</th>
                         <th className="px-2 py-2.5 font-medium">注意</th>
                         <th className="px-2 py-2.5 font-medium">問診票</th>
+                        {outcomeReady && <th className="px-2 py-2.5 font-medium">診察</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -5017,6 +5234,7 @@ export default function StaffView() {
                             <td className="px-3 py-3 font-bold align-top" style={{ color: "#0F8B8D", fontFamily: "'JetBrains Mono', monospace", textDecoration: row.canceled ? "line-through" : "none" }}>
                               {row.time}
                               {row.noReserveTime && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>記入時刻</span>}
+                              {(row.status === 5 || row.status === 6) && <span className="block text-[10px] font-normal" style={{ color: "#B7791F" }}>当日順番待ち</span>}
                               {(row.status === 1 || row.status === 6) && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>仮予約</span>}
                               {row.status === 3 && <span className="block text-[10px] font-normal" style={{ color: "#C9AEB3" }}>診察済</span>}
                             </td>
@@ -5104,6 +5322,23 @@ export default function StaffView() {
                                 )
                               )}
                             </td>
+                            {outcomeReady && (
+                              <td className="px-2 py-3 align-top">
+                                {row.canceled || !row.reserveId ? (
+                                  <span style={{ color: "#C9AEB3" }}>—</span>
+                                ) : (
+                                  <ConsultOutcomeCell
+                                    row={row}
+                                    rec={consultOutcomes[row.reserveId]}
+                                    edit={outcomeEdit}
+                                    saving={outcomeSaving}
+                                    onSave={saveOutcome}
+                                    onClear={clearOutcome}
+                                    onEdit={setOutcomeEdit}
+                                  />
+                                )}
+                              </td>
+                            )}
                           </tr>
                         );
                       })}
