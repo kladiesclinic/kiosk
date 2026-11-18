@@ -1,0 +1,147 @@
+/* Shared styles for subpages (book / intake / zoom), matches index.html tokens */
+/* pillorder問診票（/monshin）と同じ配色・書体に統一。
+   --serif は名前を残しつつ中身をゴシック（Zen Kaku Gothic New）に差し替えて、
+   既存の var(--serif) 見出しがそのままゴシックの太字見出しになるようにしている。 */
+:root {
+  --paper: #FFF8F7;
+  --ink: #3A2E30;
+  --soft: #8A7378;
+  --faint: #B08A90;
+  --line: #ffd9dc;
+  --accent: #ff6766;
+  --accent-light: #ff9a99;
+  --serif: 'Zen Kaku Gothic New', 'Noto Sans JP', sans-serif;
+  --sans: 'Noto Sans JP', 'Inter', 'Helvetica Neue', sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--sans);
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+a { text-decoration: none; color: inherit; }
+.wrap { max-width: 720px; margin: 0 auto; padding-left: 20px; padding-right: 20px; }
+
+header {
+  position: sticky; top: 0; z-index: 20;
+  background: rgba(251,247,244,0.92);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+.header-inner {
+  max-width: 1024px; margin: 0 auto; padding: 16px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.brand-logo { height: 32px; width: auto; display: block; }
+.header-back { font-size: 13px; font-weight: 600; color: var(--soft); display: inline-flex; align-items: center; gap: 6px; }
+.header-back:hover { color: var(--ink); }
+
+.page-head { padding: clamp(40px, 7vw, 72px) 0 12px; }
+.eyebrow {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 16px;
+}
+h1.display {
+  font-family: var(--serif); font-weight: 300; line-height: 1.1; letter-spacing: -0.015em;
+  font-size: clamp(34px, 7vw, 54px);
+}
+h1.display em { font-style: italic; font-weight: 400; color: var(--accent); }
+.lede { font-size: 15.5px; line-height: 1.75; color: var(--soft); max-width: 560px; margin-top: 20px; }
+.lede a, .inline-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+.card {
+  background: #FFFFFF; border: 1px solid var(--line); border-radius: 20px;
+  padding: 28px 22px; margin-top: 36px;
+}
+@media (min-width: 640px) { .card { padding: 36px 32px; } }
+
+form .field { margin-bottom: 18px; }
+form label {
+  font-size: 12px; font-weight: 600; letter-spacing: normal; text-transform: none;
+  color: var(--soft); display: block; margin-bottom: 6px;
+}
+form .hint { font-size: 12px; color: var(--faint); margin-top: 5px; line-height: 1.5; }
+form input[type="text"], form input[type="email"], form input[type="tel"],
+form input[type="date"], form select, form textarea {
+  width: 100%; font-family: var(--sans); font-size: 16px; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--line); border-radius: 12px;
+  padding: 13px 14px; outline: none; transition: border-color .2s ease;
+  -webkit-appearance: none; appearance: none;
+}
+form select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237A6A66' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 14px center; padding-right: 38px;
+}
+form input:focus, form select:focus, form textarea:focus { border-color: var(--accent); }
+form textarea { min-height: 110px; resize: vertical; }
+.field-row { display: grid; grid-template-columns: 1fr; gap: 18px 14px; }
+@media (min-width: 560px) { .field-row { grid-template-columns: 1fr 1fr; } }
+.field-row .field { margin-bottom: 0; }
+.field-row + .field, .field-row + .field-row { margin-top: 18px; }
+
+.choice-group { display: flex; flex-direction: column; gap: 10px; }
+.choice {
+  display: flex; align-items: flex-start; gap: 10px; font-size: 14.5px; line-height: 1.5;
+  color: var(--ink); padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--paper); cursor: pointer;
+  text-transform: none; letter-spacing: normal; font-weight: 400; margin-bottom: 0;
+}
+.choice input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
+.choice small { display: block; color: var(--faint); font-size: 12.5px; margin-top: 2px; }
+/* pillorder問診票と同じ「選ぶとカードごとコーラル枠＋薄ピンク背景」。:has 未対応の
+   古い端末でも中のチェックはコーラルのままなので選択は分かる（グレースフル）。 */
+.choice:has(input:checked) { border-color: var(--accent); background: #ffe6e9; }
+
+.submit-btn {
+  font-family: var(--sans); font-size: 15px; font-weight: 600;
+  padding: 15px 28px; border-radius: 10px; border: none; cursor: pointer;
+  background: var(--accent); color: #FFFFFF;
+  display: inline-flex; align-items: center; gap: 8px; margin-top: 8px;
+}
+.submit-btn:disabled { opacity: .6; cursor: default; }
+.form-status { font-size: 14px; line-height: 1.6; display: none; margin-top: 14px; }
+.form-status.ok { display: block; color: #2E7D4F; }
+.form-status.err { display: block; color: var(--accent); }
+.hp-field { position: absolute; left: -9999px; opacity: 0; height: 0; overflow: hidden; }
+
+.steps { margin-top: 36px; }
+.step-item {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 20px;
+  border-top: 1px solid var(--line); padding: 26px 0; align-items: start;
+}
+.step-item:last-child { border-bottom: 1px solid var(--line); }
+.step-num {
+  font-family: var(--serif); font-weight: 300; font-style: italic;
+  font-size: 40px; line-height: 1; color: var(--accent); min-width: 1.5em;
+}
+.step-item h3 { font-family: var(--serif); font-size: 21px; font-weight: 400; margin-bottom: 6px; }
+.step-item p { font-size: 14.5px; line-height: 1.7; color: var(--soft); max-width: 520px; }
+.step-item p + p { margin-top: 10px; }
+.step-item p strong { color: var(--ink); font-weight: 600; }
+
+.note-box {
+  border: 1px solid var(--line); border-left: 3px solid var(--accent-light);
+  border-radius: 0 12px 12px 0; background: #FFFFFF;
+  padding: 14px 18px; font-size: 13.5px; line-height: 1.7; color: var(--soft); margin-top: 28px;
+}
+
+.page-cta { margin: 44px 0 0; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 600; padding: 15px 26px; border-radius: 10px;
+  background: var(--accent); color: #FFFFFF;
+}
+.btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+
+/* 印刷（A4）では選択肢のコーラル塗りは不要＝白地に戻す（インク節約・視認性）。 */
+@media print {
+  .choice:has(input:checked) { background: #FFFFFF; border-color: #BBBBBB; }
+}
+
+footer { border-top: 1px solid var(--line); margin-top: 72px; }
+.footer-inner {
+  max-width: 1024px; margin: 0 auto; padding: 28px 20px 36px;
+  font-size: 12px; color: var(--faint); line-height: 1.7;
+  display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between;
+}
+.footer-inner a { color: var(--soft); }
+main { padding-bottom: 20px; }
